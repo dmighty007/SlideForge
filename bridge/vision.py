@@ -34,6 +34,10 @@ _VISION_PRIORITY = [
 ]
 _OLLAMA_BASE = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 _CACHE_DIR = Path(__file__).parent / ".vision_cache"
+_LOW_SIGNAL_TEXT = (
+    "logo", "publisher", "cover page", "table of contents", "graphical abstract",
+    "dense paragraph", "copyright", "journal page", "title page", "author list",
+)
 
 
 def _available_vision_model() -> str | None:
@@ -219,6 +223,17 @@ def enrich_catalog(visual_catalog: list, status_cb=None) -> list:
     for idx, entry in enumerate(visual_catalog, start=1):
         new_entry = dict(entry)
         path = entry.get("path")
+        screen = None
+        if path and os.path.isfile(path):
+            screen = analyze_figure_candidate(path, model=model)
+            if screen:
+                new_entry["screen"] = screen
+                if status_cb:
+                    status_cb("vision_candidate", f"Screened {entry.get('id', path)}", {"current": idx, "total": total})
+                if _should_drop_candidate(new_entry):
+                    if status_cb:
+                        status_cb("vision_candidate", f"Rejected {entry.get('id', path)}", {"current": idx, "total": total})
+                    continue
         if new_entry.get("vision"):
             enriched.append(new_entry)
             if status_cb:
@@ -233,3 +248,21 @@ def enrich_catalog(visual_catalog: list, status_cb=None) -> list:
         enriched.append(new_entry)
 
     return enriched
+
+
+def _should_drop_candidate(entry: dict) -> bool:
+    screen = entry.get("screen") or {}
+    if not isinstance(screen, dict):
+        return False
+
+    confidence = float(screen.get("confidence") or 0.0)
+    brief_reason = str(screen.get("brief_reason") or "").lower()
+    caption = str(entry.get("caption") or "").lower()
+
+    if not screen.get("is_figure") and confidence >= 0.55:
+        return True
+    if any(term in brief_reason for term in _LOW_SIGNAL_TEXT):
+        return True
+    if any(term in caption for term in ("table of contents", "articles you may be interested", "aip publishing")):
+        return True
+    return False

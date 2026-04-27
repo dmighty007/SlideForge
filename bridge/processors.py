@@ -25,6 +25,7 @@ _LOW_SIGNAL_CAPTION_RE = re.compile(
 _MIN_VISUAL_WIDTH = 40
 _MIN_VISUAL_HEIGHT = 40
 _MIN_VISUAL_AREA = 4000
+_FIGURE_CAPTION_RE = re.compile(r"^\*?\*?\s*(fig(?:ure)?|table|scheme|chart)\b", re.I)
 
 class LocalVisionPDFProcessor(PDFProcessor):
     def __init__(self, filepath: str, llm_provider=None, status_callback=None):
@@ -69,43 +70,125 @@ class LocalVisionPDFProcessor(PDFProcessor):
         extracted = []
         pattern = re.compile(r'!\[(.*?)\]\((.*?\.jpeg|.*?\.png)\)')
         lines = self.marker_markdown.split('\n')
-        for idx, line in enumerate(lines):
+        idx = 0
+        while idx < len(lines):
+            line = lines[idx]
             match = pattern.search(line)
-            if not match: continue
-            img_rel_path = match.group(2)
-            img_path = os.path.join(marker_out_dir, base_name, img_rel_path)
-            if not os.path.exists(img_path): continue
-            
-            caption = match.group(1).strip()
-            if not caption:
-                for lookahead in range(1, min(6, len(lines) - idx)):
-                    next_line = lines[idx + lookahead].strip()
-                    if next_line:
-                        if next_line.lower().startswith(('fig', 'table', 'scheme', 'chart')): caption = next_line
-                        break
-            if not caption: caption = f"Extracted visual {img_rel_path}"
-            if _LOW_SIGNAL_CAPTION_RE.search(caption):
+            if not match:
+                idx += 1
                 continue
 
-            try:
-                with Image.open(img_path) as img: w, h = img.size
-            except: w, h = 1000, 1000
-            # Keep most extracted visuals and defer quality decisions to ranking.
-            # Only reject truly tiny scraps that are almost certainly decorative noise.
-            if w < _MIN_VISUAL_WIDTH or h < _MIN_VISUAL_HEIGHT or (w * h) < _MIN_VISUAL_AREA:
+            block = []
+            block_start = idx
+            while idx < len(lines):
+                current_line = lines[idx].strip()
+                current = pattern.search(lines[idx])
+                if current:
+                    block.append((current.group(1).strip(), current.group(2)))
+                    idx += 1
+                    continue
+                if not current_line:
+                    idx += 1
+                    continue
+                break
+
+            caption = self._infer_marker_caption(lines, block_start, idx, block)
+            if caption and _LOW_SIGNAL_CAPTION_RE.search(caption):
                 continue
-            
-            extracted.append({
-                "id": f"marker_{os.path.splitext(os.path.basename(img_path))[0]}",
-                "path": os.path.abspath(img_path),
-                "caption": caption,
-                "kind": "image",
-                "page": self._guess_page_from_filename(img_rel_path),
-                "width": w,
-                "height": h,
-            })
+
+            valid_items = []
+            for _, img_rel_path in block:
+                img_path = os.path.join(marker_out_dir, base_name, img_rel_path)
+                if not os.path.exists(img_path):
+                    continue
+                try:
+                    with Image.open(img_path) as img:
+                        w, h = img.size
+                except Exception:
+                    w, h = 1000, 1000
+                if w < _MIN_VISUAL_WIDTH or h < _MIN_VISUAL_HEIGHT or (w * h) < _MIN_VISUAL_AREA:
+                    continue
+                valid_items.append({
+                    "rel_path": img_rel_path,
+                    "path": img_path,
+                    "width": w,
+                    "height": h,
+                })
+
+            if not valid_items:
+                continue
+
+            if len(valid_items) > 1 and caption and _FIGURE_CAPTION_RE.search(caption):
+                merged = self._merge_marker_panels(marker_out_dir, base_name, valid_items)
+                if merged:
+                    extracted.append({
+                        "id": merged["id"],
+                        "path": merged["path"],
+                        "caption": caption,
+                        "kind": "image",
+                        "page": self._guess_page_from_filename(valid_items[0]["rel_path"]),
+                        "width": merged["width"],
+                        "height": merged["height"],
+                        "panel_count": len(valid_items),
+                        "source_paths": [os.path.abspath(item["path"]) for item in valid_items],
+                    })
+                    continue
+
+            for item in valid_items:
+                extracted.append({
+                    "id": f"marker_{os.path.splitext(os.path.basename(item['path']))[0]}",
+                    "path": os.path.abspath(item["path"]),
+                    "caption": caption or f"Extracted visual {item['rel_path']}",
+                    "kind": "image",
+                    "page": self._guess_page_from_filename(item["rel_path"]),
+                    "width": item["width"],
+                    "height": item["height"],
+                })
         self.visual_catalog = extracted
         return extracted
+
+    def _infer_marker_caption(self, lines, block_start, block_end, block):
+        inline = next((caption for caption, _ in block if caption), "")
+        if inline:
+            return inline
+
+        for lookahead in range(block_end, min(len(lines), block_end + 8)):
+            candidate = lines[lookahead].strip()
+            if not candidate:
+                continue
+            if pattern := re.search(r'!\[.*?\]\((.*?\.jpeg|.*?\.png)\)', candidate):
+                break
+            if candidate.startswith("#") and lookahead > block_end:
+                break
+            if _FIGURE_CAPTION_RE.search(candidate):
+                return candidate
+        return ""
+
+    def _merge_marker_panels(self, marker_out_dir, base_name, items):
+        gap = 16
+        total_width = sum(item["width"] for item in items) + gap * (len(items) - 1)
+        max_height = max(item["height"] for item in items)
+        canvas = Image.new("RGB", (total_width, max_height), color=(255, 255, 255))
+        x_offset = 0
+        for item in items:
+            try:
+                with Image.open(item["path"]) as img:
+                    panel = img.convert("RGB")
+                y_offset = max(0, (max_height - panel.height) // 2)
+                canvas.paste(panel, (x_offset, y_offset))
+                x_offset += panel.width + gap
+            except Exception:
+                return None
+
+        merged_name = "_merged_" + "_".join(os.path.splitext(os.path.basename(item["path"]))[0] for item in items) + ".jpeg"
+        merged_path = os.path.join(marker_out_dir, base_name, merged_name)
+        canvas.save(merged_path, format="JPEG", quality=92)
+        return {
+            "id": f"marker_{os.path.splitext(merged_name)[0]}",
+            "path": os.path.abspath(merged_path),
+            "width": canvas.width,
+            "height": canvas.height,
+        }
 
     def _guess_page_from_filename(self, filename: str) -> int:
         match = re.search(r'page_(\d+)', filename)
