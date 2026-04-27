@@ -38,9 +38,13 @@ def ai_import_start(request):
     if not filename.lower().endswith(".pdf"):
         filename = f"{filename}.pdf"
 
-    if uploaded_file is None and not request.body:
+    raw_body = b""
+    if uploaded_file is None:
+        raw_body = request.body
+
+    if uploaded_file is None and not raw_body:
         return HttpResponseBadRequest("Empty upload")
-    if not _looks_like_pdf(uploaded_file, request.body):
+    if not _looks_like_pdf(uploaded_file, raw_body):
         return HttpResponseBadRequest("Uploaded file is not a valid PDF")
 
     job = ImportJob.objects.create(
@@ -53,7 +57,7 @@ def ai_import_start(request):
     if uploaded_file is not None:
         job.source_pdf.save(filename, uploaded_file, save=True)
     else:
-        job.source_pdf.save(filename, ContentFile(request.body), save=True)
+        job.source_pdf.save(filename, ContentFile(raw_body), save=True)
     queue_import_job(job)
     return JsonResponse({"job_id": str(job.id)})
 

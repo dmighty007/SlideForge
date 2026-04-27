@@ -22,6 +22,9 @@ _LOW_SIGNAL_CAPTION_RE = re.compile(
     r"\b(aip publishing|all rights reserved|copyright|journal|publisher|view article online|downloaded from|graphical abstract|table of contents)\b",
     re.I,
 )
+_MIN_VISUAL_WIDTH = 40
+_MIN_VISUAL_HEIGHT = 40
+_MIN_VISUAL_AREA = 4000
 
 class LocalVisionPDFProcessor(PDFProcessor):
     def __init__(self, filepath: str, llm_provider=None, status_callback=None):
@@ -87,14 +90,19 @@ class LocalVisionPDFProcessor(PDFProcessor):
             try:
                 with Image.open(img_path) as img: w, h = img.size
             except: w, h = 1000, 1000
-            if w < 150 or h < 100: continue
+            # Keep most extracted visuals and defer quality decisions to ranking.
+            # Only reject truly tiny scraps that are almost certainly decorative noise.
+            if w < _MIN_VISUAL_WIDTH or h < _MIN_VISUAL_HEIGHT or (w * h) < _MIN_VISUAL_AREA:
+                continue
             
             extracted.append({
                 "id": f"marker_{os.path.splitext(os.path.basename(img_path))[0]}",
                 "path": os.path.abspath(img_path),
                 "caption": caption,
                 "kind": "image",
-                "page": self._guess_page_from_filename(img_rel_path)
+                "page": self._guess_page_from_filename(img_rel_path),
+                "width": w,
+                "height": h,
             })
         self.visual_catalog = extracted
         return extracted
