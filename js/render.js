@@ -917,8 +917,9 @@ function _createStaticNode(elData) {
 
 function createElementNode(elData) {
     const el = document.createElement("div");
+    const animation = normalizeElementAnimation(elData);
     el.id = elData.id;
-    el.className = `canvas-element ${elData.animation || ""}`;
+    el.className = "canvas-element";
     el.setAttribute("data-id", elData.id);
     el.setAttribute("data-type", elData.type);
     el.style.transform = `translate(${elData.x}px, ${elData.y}px)`;
@@ -952,6 +953,11 @@ function createElementNode(elData) {
         const badge = document.createElement("div");
         badge.className = "anim-badge";
         badge.innerHTML = `<i class="fa-solid fa-wand-sparkles"></i> ${elData.fragmentIndex ?? 0}`;
+        el.appendChild(badge);
+    } else if (animation) {
+        const badge = document.createElement("div");
+        badge.className = "anim-badge";
+        badge.innerHTML = `<i class="fa-solid fa-bolt"></i> ${animation.trigger === "on-click" ? `#${animation.order}` : "Slide"}`;
         el.appendChild(badge);
     }
 

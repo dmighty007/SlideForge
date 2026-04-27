@@ -469,6 +469,87 @@ body {
     cursor: none !important;
 }
 
+.canvas-element.sf-anim-hidden {
+    opacity: 0 !important;
+    visibility: hidden !important;
+}
+
+.canvas-element.sf-anim-visible {
+    opacity: 1;
+    visibility: visible;
+}
+
+.canvas-element.sf-anim-playing {
+    animation-duration: var(--sf-anim-duration, 800ms);
+    animation-delay: var(--sf-anim-delay, 0ms);
+    animation-timing-function: var(--sf-anim-easing, ease-out);
+    animation-fill-mode: both;
+}
+
+.canvas-element.sf-anim-playing.sf-anim-effect-fade-in { animation-name: slideforgeFadeIn; }
+.canvas-element.sf-anim-playing.sf-anim-effect-slide-up { animation-name: slideforgeSlideUp; }
+.canvas-element.sf-anim-playing.sf-anim-effect-slide-down { animation-name: slideforgeSlideDown; }
+.canvas-element.sf-anim-playing.sf-anim-effect-slide-left { animation-name: slideforgeSlideLeft; }
+.canvas-element.sf-anim-playing.sf-anim-effect-slide-right { animation-name: slideforgeSlideRight; }
+.canvas-element.sf-anim-playing.sf-anim-effect-zoom-in { animation-name: slideforgeZoomIn; }
+.canvas-element.sf-anim-playing.sf-anim-effect-pop-in { animation-name: slideforgePopIn; }
+.canvas-element.sf-anim-playing.sf-anim-effect-wipe-in { animation-name: slideforgeWipeIn; }
+.canvas-element.sf-anim-playing.sf-anim-effect-pulse { animation-name: slideforgePulse; }
+.canvas-element.sf-anim-playing.sf-anim-effect-glow { animation-name: slideforgeGlow; }
+
+@keyframes slideforgeFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideforgeSlideUp {
+    from { opacity: 0; transform: var(--sf-base-transform) translateY(var(--sf-anim-distance, 48px)); }
+    to { opacity: 1; transform: var(--sf-base-transform) translateY(0); }
+}
+
+@keyframes slideforgeSlideDown {
+    from { opacity: 0; transform: var(--sf-base-transform) translateY(calc(var(--sf-anim-distance, 48px) * -1)); }
+    to { opacity: 1; transform: var(--sf-base-transform) translateY(0); }
+}
+
+@keyframes slideforgeSlideLeft {
+    from { opacity: 0; transform: var(--sf-base-transform) translateX(var(--sf-anim-distance, 48px)); }
+    to { opacity: 1; transform: var(--sf-base-transform) translateX(0); }
+}
+
+@keyframes slideforgeSlideRight {
+    from { opacity: 0; transform: var(--sf-base-transform) translateX(calc(var(--sf-anim-distance, 48px) * -1)); }
+    to { opacity: 1; transform: var(--sf-base-transform) translateX(0); }
+}
+
+@keyframes slideforgeZoomIn {
+    from { opacity: 0; transform: var(--sf-base-transform) scale(var(--sf-anim-scale, 0.88)); }
+    to { opacity: 1; transform: var(--sf-base-transform) scale(1); }
+}
+
+@keyframes slideforgePopIn {
+    0% { opacity: 0; transform: var(--sf-base-transform) scale(calc(var(--sf-anim-scale, 0.88) - 0.1)); }
+    75% { opacity: 1; transform: var(--sf-base-transform) scale(1.04); }
+    100% { opacity: 1; transform: var(--sf-base-transform) scale(1); }
+}
+
+@keyframes slideforgeWipeIn {
+    from { opacity: 0; clip-path: inset(0 100% 0 0); }
+    to { opacity: 1; clip-path: inset(0 0 0 0); }
+}
+
+@keyframes slideforgePulse {
+    0% { opacity: 1; transform: var(--sf-base-transform) scale(1); }
+    50% { opacity: 1; transform: var(--sf-base-transform) scale(1.05); }
+    100% { opacity: 1; transform: var(--sf-base-transform) scale(1); }
+}
+
+@keyframes slideforgeGlow {
+    0% { opacity: 1; filter: drop-shadow(0 0 0 rgba(56, 189, 248, 0)); }
+    50% { opacity: 1; filter: drop-shadow(0 0 16px rgba(56, 189, 248, 0.65)); }
+    100% { opacity: 1; filter: drop-shadow(0 0 0 rgba(56, 189, 248, 0)); }
+}
+
 .sr-only {
     position: absolute;
     width: 1px;
@@ -686,8 +767,26 @@ function initViewer(data) {
     };
     const pageSetupId = pageSetups[data.pageSetup] ? data.pageSetup : 'standard-4-3';
     const page = pageSetups[pageSetupId];
+    const animationEffects = ['fade-in', 'slide-up', 'slide-down', 'slide-left', 'slide-right', 'zoom-in', 'pop-in', 'wipe-in', 'pulse', 'glow'];
+    const runtime = { clickGroups: [], revealedGroups: 0, slideIndex: -1 };
     document.documentElement.style.setProperty('--slide-width', page.width + 'px');
     document.documentElement.style.setProperty('--slide-height', page.height + 'px');
+
+    function normalizeAnimation(el) {
+        const legacyValue = typeof el.animation === 'string' ? el.animation.trim() : '';
+        const raw = legacyValue ? { effect: legacyValue } : (el.animation && typeof el.animation === 'object' ? el.animation : null);
+        if (!raw || !raw.effect || !animationEffects.includes(raw.effect)) return null;
+        return {
+            effect: raw.effect,
+            trigger: raw.trigger === 'on-click' ? 'on-click' : 'on-slide',
+            order: Number.isFinite(Number(raw.order)) ? Number(raw.order) : 0,
+            durationMs: Math.max(100, Number(raw.durationMs ?? el.animDuration) || 800),
+            delayMs: Math.max(0, Number(raw.delayMs ?? el.animDelay) || 0),
+            easing: ['ease-out', 'ease-in-out', 'linear'].includes(raw.easing) ? raw.easing : 'ease-out',
+            distancePx: Number.isFinite(Number(raw.distancePx)) ? Number(raw.distancePx) : 48,
+            scaleFrom: Number.isFinite(Number(raw.scaleFrom)) ? Number(raw.scaleFrom) : 0.88
+        };
+    }
 
     function closeMenus() {
         if (menu) menu.classList.add('hidden');
@@ -728,6 +827,105 @@ function initViewer(data) {
             stage.classList.toggle('presentation-cursor-hidden', laserEnabled);
             stage.classList.toggle('presentation-cursor-chalk', chalkEnabled && !laserEnabled);
         }
+    }
+
+    function getAnimatedEntries(slideIndex) {
+        const slide = slides[slideIndex];
+        if (!slide) return [];
+        return (slide.elements || [])
+            .map(el => ({ el, animation: normalizeAnimation(el) }))
+            .filter(entry => entry.animation)
+            .sort((a, b) => {
+                const triggerDelta = (a.animation.trigger === 'on-slide' ? 0 : 1) - (b.animation.trigger === 'on-slide' ? 0 : 1);
+                if (triggerDelta !== 0) return triggerDelta;
+                const orderDelta = (Number(a.animation.order) || 0) - (Number(b.animation.order) || 0);
+                if (orderDelta !== 0) return orderDelta;
+                return String(a.el.id).localeCompare(String(b.el.id));
+            });
+    }
+
+    function clearAnimationClasses(dom) {
+        if (!dom) return;
+        [
+            'sf-anim-hidden', 'sf-anim-visible', 'sf-anim-playing',
+            'sf-anim-effect-fade-in', 'sf-anim-effect-slide-up', 'sf-anim-effect-slide-down',
+            'sf-anim-effect-slide-left', 'sf-anim-effect-slide-right', 'sf-anim-effect-zoom-in',
+            'sf-anim-effect-pop-in', 'sf-anim-effect-wipe-in', 'sf-anim-effect-pulse', 'sf-anim-effect-glow'
+        ].forEach(className => dom.classList.remove(className));
+        dom.style.removeProperty('--sf-base-transform');
+        dom.style.removeProperty('--sf-anim-duration');
+        dom.style.removeProperty('--sf-anim-delay');
+        dom.style.removeProperty('--sf-anim-easing');
+        dom.style.removeProperty('--sf-anim-distance');
+        dom.style.removeProperty('--sf-anim-scale');
+    }
+
+    function applyAnimationDomState(dom, animation) {
+        if (!dom || !animation) return;
+        clearAnimationClasses(dom);
+        dom.classList.add('sf-anim-effect-' + animation.effect);
+        dom.style.setProperty('--sf-base-transform', dom.style.transform || '');
+        dom.style.setProperty('--sf-anim-duration', Math.max(100, Number(animation.durationMs) || 800) + 'ms');
+        dom.style.setProperty('--sf-anim-delay', Math.max(0, Number(animation.delayMs) || 0) + 'ms');
+        dom.style.setProperty('--sf-anim-easing', animation.easing || 'ease-out');
+        dom.style.setProperty('--sf-anim-distance', Math.max(8, Number(animation.distancePx) || 48) + 'px');
+        dom.style.setProperty('--sf-anim-scale', String(Number(animation.scaleFrom) || 0.88));
+    }
+
+    function hideAnimatedEntry(entry) {
+        const dom = document.getElementById(entry.el.id);
+        if (!dom) return;
+        applyAnimationDomState(dom, entry.animation);
+        dom.classList.remove('sf-anim-visible', 'sf-anim-playing');
+        dom.classList.add('sf-anim-hidden');
+    }
+
+    function showAnimatedEntry(entry, animate) {
+        const dom = document.getElementById(entry.el.id);
+        if (!dom) return;
+        applyAnimationDomState(dom, entry.animation);
+        dom.classList.remove('sf-anim-hidden');
+        dom.classList.add('sf-anim-visible');
+        if (!animate) {
+            dom.classList.remove('sf-anim-playing');
+            return;
+        }
+        dom.classList.remove('sf-anim-playing');
+        void dom.offsetWidth;
+        dom.classList.add('sf-anim-playing');
+    }
+
+    function prepareSlideAnimations(slideIndex) {
+        runtime.slideIndex = slideIndex;
+        const entries = getAnimatedEntries(slideIndex);
+        entries.forEach(entry => hideAnimatedEntry(entry));
+        entries.filter(entry => entry.animation.trigger === 'on-slide').forEach(entry => showAnimatedEntry(entry, true));
+        runtime.clickGroups = [];
+        entries.filter(entry => entry.animation.trigger === 'on-click').forEach(entry => {
+            const order = Number(entry.animation.order) || 0;
+            const current = runtime.clickGroups[runtime.clickGroups.length - 1];
+            if (current && current.order === order) current.entries.push(entry);
+            else runtime.clickGroups.push({ order, entries: [entry] });
+        });
+        runtime.revealedGroups = 0;
+    }
+
+    function revealNextAnimationGroup() {
+        const group = runtime.clickGroups[runtime.revealedGroups];
+        if (!group) return false;
+        group.entries.forEach(entry => showAnimatedEntry(entry, true));
+        runtime.revealedGroups += 1;
+        return true;
+    }
+
+    function hidePreviousAnimationGroup() {
+        const previousIndex = runtime.revealedGroups - 1;
+        if (previousIndex < 0) return false;
+        const group = runtime.clickGroups[previousIndex];
+        if (!group) return false;
+        group.entries.forEach(entry => hideAnimatedEntry(entry));
+        runtime.revealedGroups = previousIndex;
+        return true;
     }
     
     slides.forEach(slide => {
@@ -840,6 +1038,9 @@ function initViewer(data) {
         });
         const current = getSlideDom(activeSlideIndex);
         if (current) playSlideAnimations(current);
+        if (runtime.slideIndex !== activeSlideIndex) {
+            prepareSlideAnimations(activeSlideIndex);
+        }
         if (status) status.textContent = (activeSlideIndex + 1) + ' / ' + Math.max(1, slides.length);
         syncHash();
     }
@@ -854,23 +1055,29 @@ function initViewer(data) {
 
     function nextStep() {
         const fragments = getFragments(getSlideDom(activeSlideIndex));
+        if (revealNextAnimationGroup()) return;
         if (activeFragmentIndex < fragments.length - 1) {
             activeFragmentIndex += 1;
+            applySlideState();
         } else if (activeSlideIndex < slides.length - 1) {
             activeSlideIndex += 1;
             activeFragmentIndex = -1;
+            applySlideState();
         }
-        applySlideState();
     }
 
     function prevStep() {
+        if (hidePreviousAnimationGroup()) return;
         if (activeFragmentIndex >= 0) {
             activeFragmentIndex -= 1;
+            applySlideState();
         } else if (activeSlideIndex > 0) {
             activeSlideIndex -= 1;
             activeFragmentIndex = getFragments(getSlideDom(activeSlideIndex)).length - 1;
+            applySlideState();
+            runtime.revealedGroups = runtime.clickGroups.length;
+            runtime.clickGroups.forEach(group => group.entries.forEach(entry => showAnimatedEntry(entry, false)));
         }
-        applySlideState();
     }
 
     prevBtn && prevBtn.addEventListener('click', prevStep);
@@ -1011,6 +1218,7 @@ function initViewer(data) {
 
 function createViewerElement(elData) {
     const el = document.createElement('div');
+    const animation = normalizeAnimation(elData);
     el.className = 'canvas-element';
     el.style.transform = 'translate(' + elData.x + 'px, ' + elData.y + 'px)';
     if (elData.width) el.style.width = elData.width;
@@ -1021,6 +1229,9 @@ function createViewerElement(elData) {
         if (elData.fragmentIndex != null) {
             el.setAttribute('data-fragment-index', elData.fragmentIndex);
         }
+    }
+    if (animation) {
+        el.classList.add('has-structured-animation');
     }
     
     if (elData.type === 'text') {

@@ -17,6 +17,7 @@ function buildDefaultPresentationState() {
         slides: [
             {
                 id: generateId("slide"),
+                notes: "",
                 elements: [
                     {
                         id: generateId("el"),
@@ -34,7 +35,7 @@ function buildDefaultPresentationState() {
                             textAlign: "left",
                             zIndex: 1,
                         },
-                        animation: "",
+                        animation: null,
                     },
                 ],
             },
@@ -62,6 +63,86 @@ let _autosaveTimer = null;
 let _lastPersistedFingerprint = "";
 let _backendApiAvailable = true;
 const PRESENTATION_STORAGE_KEY = "pptmaker_presentation_id";
+const PRESENTATION_ANIMATION_EFFECTS = [
+    "fade-in",
+    "slide-up",
+    "slide-down",
+    "slide-left",
+    "slide-right",
+    "zoom-in",
+    "pop-in",
+    "wipe-in",
+    "pulse",
+    "glow",
+];
+const PRESENTATION_ENTRANCE_EFFECTS = new Set([
+    "fade-in",
+    "slide-up",
+    "slide-down",
+    "slide-left",
+    "slide-right",
+    "zoom-in",
+    "pop-in",
+    "wipe-in",
+]);
+const PRESENTATION_EMPHASIS_EFFECTS = new Set(["pulse", "glow"]);
+
+function isStructuredAnimationEffect(effect) {
+    return PRESENTATION_ANIMATION_EFFECTS.includes(effect);
+}
+
+function createDefaultAnimation(effect = "fade-in", overrides = {}) {
+    const safeEffect = isStructuredAnimationEffect(effect) ? effect : "fade-in";
+    return {
+        effect: safeEffect,
+        trigger: overrides.trigger === "on-click" ? "on-click" : "on-slide",
+        order: Number.isFinite(Number(overrides.order)) ? Number(overrides.order) : 0,
+        durationMs: Math.max(100, Number(overrides.durationMs) || 800),
+        delayMs: Math.max(0, Number(overrides.delayMs) || 0),
+        easing: ["ease-out", "ease-in-out", "linear"].includes(overrides.easing) ? overrides.easing : "ease-out",
+        direction: typeof overrides.direction === "string" ? overrides.direction : "",
+        distancePx: Number.isFinite(Number(overrides.distancePx)) ? Number(overrides.distancePx) : 48,
+        scaleFrom: Number.isFinite(Number(overrides.scaleFrom)) ? Number(overrides.scaleFrom) : 0.88,
+        emphasisStyle:
+            overrides.emphasisStyle === "glow" || overrides.emphasisStyle === "shake" || overrides.emphasisStyle === "pulse"
+                ? overrides.emphasisStyle
+                : PRESENTATION_EMPHASIS_EFFECTS.has(safeEffect)
+                  ? safeEffect
+                  : "pulse",
+    };
+}
+
+function normalizeElementAnimation(el = {}) {
+    const legacyValue = typeof el.animation === "string" ? el.animation.trim() : "";
+    const raw = legacyValue ? { effect: legacyValue } : el.animation && typeof el.animation === "object" ? el.animation : null;
+    if (!raw || !raw.effect || !isStructuredAnimationEffect(raw.effect)) {
+        return null;
+    }
+    const normalized = createDefaultAnimation(raw.effect, {
+        ...raw,
+        durationMs: raw.durationMs ?? el.animDuration,
+        delayMs: raw.delayMs ?? el.animDelay,
+    });
+    if (PRESENTATION_ENTRANCE_EFFECTS.has(normalized.effect)) {
+        if (!normalized.direction) {
+            normalized.direction =
+                normalized.effect === "slide-up"
+                    ? "up"
+                    : normalized.effect === "slide-down"
+                      ? "down"
+                      : normalized.effect === "slide-left"
+                        ? "left"
+                        : normalized.effect === "slide-right"
+                          ? "right"
+                          : "";
+        }
+    }
+    return normalized;
+}
+
+function isElementAnimationConfigured(el = {}) {
+    return Boolean(normalizeElementAnimation(el));
+}
 
 function updateProjectTitleUi() {
     const input = document.getElementById("project-title-input");
@@ -216,10 +297,14 @@ function normalizeStateIds() {
                     : {}),
             };
 
+            const normalizedAnimation = normalizeElementAnimation(safeEl);
             return {
                 ...safeEl,
                 id: nextElId,
                 type: fallbackType,
+                animation: normalizedAnimation,
+                animDuration: undefined,
+                animDelay: undefined,
                 ...(fallbackType === "video"
                     ? {
                           videoType:
@@ -321,11 +406,16 @@ function normalizeStateIds() {
             };
         });
 
-        return { ...safeSlide, id: nextSlideId, elements: normalizedElements };
+        return {
+            ...safeSlide,
+            id: nextSlideId,
+            notes: typeof safeSlide.notes === "string" ? safeSlide.notes : "",
+            elements: normalizedElements,
+        };
     });
 
     if (!state.slides.length) {
-        state.slides = [{ id: generateId("slide"), elements: [] }];
+        state.slides = [{ id: generateId("slide"), notes: "", elements: [] }];
     }
 
     if (currentSlideIndex > state.slides.length - 1) {

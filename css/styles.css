@@ -1244,6 +1244,87 @@ body {
     cursor: none !important;
 }
 
+.canvas-element.sf-anim-hidden {
+    opacity: 0 !important;
+    visibility: hidden !important;
+}
+
+.canvas-element.sf-anim-visible {
+    opacity: 1;
+    visibility: visible;
+}
+
+.canvas-element.sf-anim-playing {
+    animation-duration: var(--sf-anim-duration, 800ms);
+    animation-delay: var(--sf-anim-delay, 0ms);
+    animation-timing-function: var(--sf-anim-easing, ease-out);
+    animation-fill-mode: both;
+}
+
+.canvas-element.sf-anim-playing.sf-anim-effect-fade-in { animation-name: slideforgeFadeIn; }
+.canvas-element.sf-anim-playing.sf-anim-effect-slide-up { animation-name: slideforgeSlideUp; }
+.canvas-element.sf-anim-playing.sf-anim-effect-slide-down { animation-name: slideforgeSlideDown; }
+.canvas-element.sf-anim-playing.sf-anim-effect-slide-left { animation-name: slideforgeSlideLeft; }
+.canvas-element.sf-anim-playing.sf-anim-effect-slide-right { animation-name: slideforgeSlideRight; }
+.canvas-element.sf-anim-playing.sf-anim-effect-zoom-in { animation-name: slideforgeZoomIn; }
+.canvas-element.sf-anim-playing.sf-anim-effect-pop-in { animation-name: slideforgePopIn; }
+.canvas-element.sf-anim-playing.sf-anim-effect-wipe-in { animation-name: slideforgeWipeIn; }
+.canvas-element.sf-anim-playing.sf-anim-effect-pulse { animation-name: slideforgePulse; }
+.canvas-element.sf-anim-playing.sf-anim-effect-glow { animation-name: slideforgeGlow; }
+
+@keyframes slideforgeFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideforgeSlideUp {
+    from { opacity: 0; transform: var(--sf-base-transform) translateY(var(--sf-anim-distance, 48px)); }
+    to { opacity: 1; transform: var(--sf-base-transform) translateY(0); }
+}
+
+@keyframes slideforgeSlideDown {
+    from { opacity: 0; transform: var(--sf-base-transform) translateY(calc(var(--sf-anim-distance, 48px) * -1)); }
+    to { opacity: 1; transform: var(--sf-base-transform) translateY(0); }
+}
+
+@keyframes slideforgeSlideLeft {
+    from { opacity: 0; transform: var(--sf-base-transform) translateX(var(--sf-anim-distance, 48px)); }
+    to { opacity: 1; transform: var(--sf-base-transform) translateX(0); }
+}
+
+@keyframes slideforgeSlideRight {
+    from { opacity: 0; transform: var(--sf-base-transform) translateX(calc(var(--sf-anim-distance, 48px) * -1)); }
+    to { opacity: 1; transform: var(--sf-base-transform) translateX(0); }
+}
+
+@keyframes slideforgeZoomIn {
+    from { opacity: 0; transform: var(--sf-base-transform) scale(var(--sf-anim-scale, 0.88)); }
+    to { opacity: 1; transform: var(--sf-base-transform) scale(1); }
+}
+
+@keyframes slideforgePopIn {
+    0% { opacity: 0; transform: var(--sf-base-transform) scale(calc(var(--sf-anim-scale, 0.88) - 0.1)); }
+    75% { opacity: 1; transform: var(--sf-base-transform) scale(1.04); }
+    100% { opacity: 1; transform: var(--sf-base-transform) scale(1); }
+}
+
+@keyframes slideforgeWipeIn {
+    from { opacity: 0; clip-path: inset(0 100% 0 0); }
+    to { opacity: 1; clip-path: inset(0 0 0 0); }
+}
+
+@keyframes slideforgePulse {
+    0% { opacity: 1; transform: var(--sf-base-transform) scale(1); }
+    50% { opacity: 1; transform: var(--sf-base-transform) scale(1.05); }
+    100% { opacity: 1; transform: var(--sf-base-transform) scale(1); }
+}
+
+@keyframes slideforgeGlow {
+    0% { opacity: 1; filter: drop-shadow(0 0 0 rgba(56, 189, 248, 0)); }
+    50% { opacity: 1; filter: drop-shadow(0 0 16px rgba(56, 189, 248, 0.65)); }
+    100% { opacity: 1; filter: drop-shadow(0 0 0 rgba(56, 189, 248, 0)); }
+}
+
 .sr-only {
     position: absolute;
     width: 1px;

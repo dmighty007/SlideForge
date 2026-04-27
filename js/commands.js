@@ -14,7 +14,7 @@ function getActiveSlideIndex() {
 function ensureActiveSlideSync() {
     const idx = getActiveSlideIndex();
     if (idx !== currentSlideIndex) setCurrentSlideIndex(idx);
-    if (!state.slides[idx]) state.slides[idx] = { id: generateId("slide"), elements: [] };
+    if (!state.slides[idx]) state.slides[idx] = { id: generateId("slide"), notes: "", elements: [] };
     return idx;
 }
 
@@ -28,7 +28,7 @@ function _normalizeSlideIndex(index) {
 function addSlide(targetIndex = null) {
     const activeIndex = _normalizeSlideIndex(targetIndex) ?? ensureActiveSlideSync();
     saveStateToUndo();
-    state.slides.splice(activeIndex + 1, 0, { id: generateId("slide"), elements: [] });
+    state.slides.splice(activeIndex + 1, 0, { id: generateId("slide"), notes: "", elements: [] });
     setCurrentSlideIndex(activeIndex + 1);
     renderSlidesFromState();
     Reveal.slide(activeIndex + 1);
@@ -152,6 +152,7 @@ function addElement(type, options = {}) {
             zIndex: 1,
             borderRadius: type === "shape" ? shapeBorderRadius : type === "video" || type === "pdf" ? "8px" : "0px",
         },
+        animation: null,
     });
     renderSlidesFromState();
     selectElement(id);
@@ -2039,6 +2040,7 @@ function _presentationToolsElements() {
         chalkBtn: document.getElementById("present-chalk-btn"),
         laserBtn: document.getElementById("present-laser-btn"),
         clearBtn: document.getElementById("present-clear-chalk-btn"),
+        presenterBtn: document.getElementById("present-presenter-btn"),
         colorInput: document.getElementById("present-chalk-color"),
         fullscreenBtn: document.getElementById("present-menu-fullscreen-btn"),
         exitBtn: document.getElementById("present-exit-btn"),
@@ -2209,6 +2211,7 @@ function initPresentationTools() {
         chalkBtn,
         laserBtn,
         clearBtn,
+        presenterBtn,
         colorInput,
         fullscreenBtn,
         exitBtn,
@@ -2231,6 +2234,10 @@ function initPresentationTools() {
     });
     clearBtn?.addEventListener("click", () => {
         clearPresentationChalkboard();
+        closePresentationMenus();
+    });
+    presenterBtn?.addEventListener("click", () => {
+        openPresenterView();
         closePresentationMenus();
     });
     chalkEraserBtn?.addEventListener("click", () => {
@@ -2361,8 +2368,395 @@ function initPresentationTools() {
         } else if (key === "m") {
             event.preventDefault();
             togglePresentationMenu();
+        } else if (key === "p") {
+            event.preventDefault();
+            openPresenterView();
+        } else if (["arrowright", "arrowdown", "pagedown", " "].includes(key)) {
+            event.preventDefault();
+            presentationNextStep();
+        } else if (["arrowleft", "arrowup", "pageup"].includes(key)) {
+            event.preventDefault();
+            presentationPrevStep();
         }
     });
+}
+
+const _presentationRuntimeState = {
+    slideIndex: -1,
+    clickGroups: [],
+    revealedGroups: 0,
+    restorePreviousSlideFully: false,
+    channel: null,
+    presenterWindow: null,
+    presenterStartTs: 0,
+    presenterBound: false,
+};
+const _PRESENTER_SYNC_STORAGE_KEY = "slideforge_presenter_sync";
+const _PRESENTER_COMMAND_STORAGE_KEY = "slideforge_presenter_command";
+
+function _getAnimatedSlideEntries(slideIndex) {
+    const slide = state.slides?.[slideIndex];
+    if (!slide) return [];
+    return (slide.elements || [])
+        .map(el => ({ el, animation: normalizeElementAnimation(el) }))
+        .filter(entry => entry.animation)
+        .sort((a, b) => {
+            const triggerDelta =
+                (a.animation.trigger === "on-slide" ? 0 : 1) - (b.animation.trigger === "on-slide" ? 0 : 1);
+            if (triggerDelta !== 0) return triggerDelta;
+            const orderDelta = (Number(a.animation.order) || 0) - (Number(b.animation.order) || 0);
+            if (orderDelta !== 0) return orderDelta;
+            return String(a.el.id).localeCompare(String(b.el.id));
+        });
+}
+
+function _groupAnimatedEntries(entries) {
+    const groups = [];
+    entries.forEach(entry => {
+        if (entry.animation.trigger !== "on-click") return;
+        const order = Number(entry.animation.order) || 0;
+        const current = groups[groups.length - 1];
+        if (current && current.order === order) {
+            current.entries.push(entry);
+        } else {
+            groups.push({ order, entries: [entry] });
+        }
+    });
+    return groups;
+}
+
+function _clearAnimationClasses(dom) {
+    if (!dom) return;
+    [
+        "sf-anim-hidden",
+        "sf-anim-visible",
+        "sf-anim-playing",
+        "sf-anim-effect-fade-in",
+        "sf-anim-effect-slide-up",
+        "sf-anim-effect-slide-down",
+        "sf-anim-effect-slide-left",
+        "sf-anim-effect-slide-right",
+        "sf-anim-effect-zoom-in",
+        "sf-anim-effect-pop-in",
+        "sf-anim-effect-wipe-in",
+        "sf-anim-effect-pulse",
+        "sf-anim-effect-glow",
+    ].forEach(className => dom.classList.remove(className));
+    dom.style.removeProperty("--sf-anim-duration");
+    dom.style.removeProperty("--sf-anim-delay");
+    dom.style.removeProperty("--sf-anim-easing");
+    dom.style.removeProperty("--sf-anim-distance");
+    dom.style.removeProperty("--sf-anim-scale");
+}
+
+function _applyAnimationDomState(dom, animation) {
+    if (!dom || !animation) return;
+    _clearAnimationClasses(dom);
+    dom.classList.add(`sf-anim-effect-${animation.effect}`);
+    dom.style.setProperty("--sf-base-transform", dom.style.transform || "");
+    dom.style.setProperty("--sf-anim-duration", `${Math.max(100, Number(animation.durationMs) || 800)}ms`);
+    dom.style.setProperty("--sf-anim-delay", `${Math.max(0, Number(animation.delayMs) || 0)}ms`);
+    dom.style.setProperty("--sf-anim-easing", animation.easing || "ease-out");
+    dom.style.setProperty("--sf-anim-distance", `${Math.max(8, Number(animation.distancePx) || 48)}px`);
+    dom.style.setProperty("--sf-anim-scale", String(Number(animation.scaleFrom) || 0.88));
+}
+
+function _hideAnimatedEntry(entry) {
+    const dom = document.getElementById(entry.el.id);
+    if (!dom) return;
+    _applyAnimationDomState(dom, entry.animation);
+    dom.classList.remove("sf-anim-visible", "sf-anim-playing");
+    dom.classList.add("sf-anim-hidden");
+}
+
+function _showAnimatedEntry(entry, { animate = true } = {}) {
+    const dom = document.getElementById(entry.el.id);
+    if (!dom) return;
+    _applyAnimationDomState(dom, entry.animation);
+    dom.classList.remove("sf-anim-hidden");
+    dom.classList.add("sf-anim-visible");
+    if (!animate) {
+        dom.classList.remove("sf-anim-playing");
+        return;
+    }
+    dom.classList.remove("sf-anim-playing");
+    void dom.offsetWidth;
+    dom.classList.add("sf-anim-playing");
+}
+
+function _resetAnimatedEntry(entry) {
+    const dom = document.getElementById(entry.el.id);
+    if (!dom) return;
+    _clearAnimationClasses(dom);
+}
+
+function _syncPresenterPayload() {
+    if (!document.body.classList.contains("play-mode-active")) return;
+    const slideConfig = getPresentationPageSetupConfig();
+    const currentSection = document.getElementById(state.slides?.[currentSlideIndex]?.id || "");
+    const nextSlide = state.slides?.[currentSlideIndex + 1];
+    const nextSection = nextSlide ? document.getElementById(nextSlide.id) : null;
+    const payload = {
+        type: "state",
+        currentIndex: currentSlideIndex,
+        total: state.slides?.length || 0,
+        notes: state.slides?.[currentSlideIndex]?.notes || "",
+        elapsedMs: Math.max(0, Date.now() - (_presentationRuntimeState.presenterStartTs || Date.now())),
+        slideWidth: Number(slideConfig.width) || 1024,
+        slideHeight: Number(slideConfig.height) || 768,
+        currentHtml: currentSection ? currentSection.outerHTML : "",
+        nextHtml: nextSection ? nextSection.outerHTML : "",
+    };
+    if (_presentationRuntimeState.channel) {
+        _presentationRuntimeState.channel.postMessage(payload);
+    } else {
+        localStorage.setItem(_PRESENTER_SYNC_STORAGE_KEY, JSON.stringify({ ...payload, stamp: Date.now() }));
+    }
+}
+
+function _ensurePresenterMessaging() {
+    if (_presentationRuntimeState.presenterBound) return;
+    _presentationRuntimeState.presenterBound = true;
+    if (typeof BroadcastChannel !== "undefined") {
+        _presentationRuntimeState.channel = new BroadcastChannel("slideforge-presenter");
+        _presentationRuntimeState.channel.addEventListener("message", event => {
+            const msg = event.data || {};
+            if (msg.type === "command") {
+                if (msg.action === "next") presentationNextStep();
+                if (msg.action === "prev") presentationPrevStep();
+                if (msg.action === "jump") presentationGoToSlide(Number(msg.index) || 0);
+                if (msg.action === "reset-timer") {
+                    _presentationRuntimeState.presenterStartTs = Date.now();
+                    _syncPresenterPayload();
+                }
+            }
+        });
+    }
+    window.addEventListener("storage", event => {
+        if (event.key !== _PRESENTER_COMMAND_STORAGE_KEY || !event.newValue) return;
+        try {
+            const msg = JSON.parse(event.newValue);
+            if (msg.action === "next") presentationNextStep();
+            if (msg.action === "prev") presentationPrevStep();
+            if (msg.action === "jump") presentationGoToSlide(Number(msg.index) || 0);
+            if (msg.action === "reset-timer") {
+                _presentationRuntimeState.presenterStartTs = Date.now();
+                _syncPresenterPayload();
+            }
+        } catch (_err) {
+            return;
+        }
+    });
+}
+
+function _presenterWindowHtml() {
+    const stylesheetMarkup = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+        .map(node => node.outerHTML)
+        .join("\n");
+    return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Presenter View</title>
+${stylesheetMarkup}
+<style>
+body{margin:0;font-family:Inter,system-ui,sans-serif;background:#0f172a;color:#e2e8f0}
+.presenter-shell{display:grid;grid-template-columns:minmax(0,1.45fr) 360px;min-height:100vh}
+.presenter-main{padding:20px;display:grid;grid-template-rows:auto 1fr auto;gap:14px}
+.presenter-side{padding:20px;border-left:1px solid rgba(148,163,184,.24);background:rgba(15,23,42,.88);display:flex;flex-direction:column;gap:14px}
+.presenter-card{background:rgba(15,23,42,.72);border:1px solid rgba(148,163,184,.18);border-radius:18px;padding:14px;box-shadow:0 18px 48px rgba(2,6,23,.28)}
+.presenter-stage,.presenter-next{position:relative;overflow:hidden;border-radius:16px;background:#020617;display:grid;place-items:center}
+.presenter-stage{min-height:0}
+.presenter-next{aspect-ratio:16/9}
+.presenter-slide-frame{width:100%;height:100%;display:grid;place-items:center}
+.presenter-slide-frame section{position:relative !important;visibility:visible !important;opacity:1 !important;pointer-events:none !important;transform:none !important;inset:auto !important}
+.presenter-head{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.presenter-title{font-size:14px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8}
+.presenter-meta{font-size:28px;font-weight:800}
+.presenter-notes{white-space:pre-wrap;font-size:14px;line-height:1.6;color:#cbd5e1;min-height:160px}
+.presenter-controls{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.presenter-controls button,.presenter-controls input{border-radius:12px;border:1px solid rgba(148,163,184,.22);background:#0f172a;color:#e2e8f0;padding:10px 12px;font-size:13px}
+.presenter-controls button{cursor:pointer;font-weight:700}
+</style>
+</head>
+<body>
+<div class="presenter-shell">
+  <div class="presenter-main">
+    <div class="presenter-head">
+      <div><div class="presenter-title">Current Slide</div><div id="presenter-meta" class="presenter-meta">1 / 1</div></div>
+      <div><div class="presenter-title">Elapsed</div><div id="presenter-timer" class="presenter-meta">00:00</div></div>
+    </div>
+    <div class="presenter-card presenter-stage"><div id="presenter-current" class="presenter-slide-frame"></div></div>
+    <div class="presenter-controls">
+      <button data-action="prev" type="button">Previous</button>
+      <button data-action="next" type="button">Next</button>
+      <input id="presenter-jump" type="number" min="1" placeholder="Slide #" />
+      <button data-action="reset-timer" type="button">Reset Timer</button>
+    </div>
+  </div>
+  <aside class="presenter-side">
+    <div class="presenter-card">
+      <div class="presenter-title">Next Slide</div>
+      <div class="presenter-next"><div id="presenter-next" class="presenter-slide-frame"></div></div>
+    </div>
+    <div class="presenter-card">
+      <div class="presenter-title">Notes</div>
+      <div id="presenter-notes" class="presenter-notes">No notes for this slide.</div>
+    </div>
+  </aside>
+</div>
+<script>
+const syncKey = "${_PRESENTER_SYNC_STORAGE_KEY}";
+const commandKey = "${_PRESENTER_COMMAND_STORAGE_KEY}";
+const currentEl = document.getElementById("presenter-current");
+const nextEl = document.getElementById("presenter-next");
+const notesEl = document.getElementById("presenter-notes");
+const metaEl = document.getElementById("presenter-meta");
+const timerEl = document.getElementById("presenter-timer");
+const jumpEl = document.getElementById("presenter-jump");
+function formatTime(ms){const s=Math.max(0,Math.floor(ms/1000));const m=String(Math.floor(s/60)).padStart(2,"0");const r=String(s%60).padStart(2,"0");return m+":"+r;}
+function updateFromPayload(payload){
+  currentEl.innerHTML = payload.currentHtml || "";
+  nextEl.innerHTML = payload.nextHtml || "";
+  notesEl.textContent = payload.notes || "No notes for this slide.";
+  metaEl.textContent = (payload.currentIndex + 1) + " / " + Math.max(1, payload.total || 1);
+  timerEl.textContent = formatTime(payload.elapsedMs || 0);
+  document.querySelectorAll(".presenter-slide-frame section").forEach(section => {
+    section.style.width = (payload.slideWidth || 1024) + "px";
+    section.style.height = (payload.slideHeight || 768) + "px";
+  });
+}
+function sendCommand(action, index){
+  const msg = { type: "command", action, index, stamp: Date.now() };
+  if (window.presenterChannel) window.presenterChannel.postMessage(msg);
+  else localStorage.setItem(commandKey, JSON.stringify(msg));
+}
+if (typeof BroadcastChannel !== "undefined") {
+  window.presenterChannel = new BroadcastChannel("slideforge-presenter");
+  window.presenterChannel.addEventListener("message", event => {
+    const payload = event.data || {};
+    if (payload.type === "state") updateFromPayload(payload);
+  });
+}
+window.addEventListener("storage", event => {
+  if (event.key === syncKey && event.newValue) {
+    try { updateFromPayload(JSON.parse(event.newValue)); } catch (_err) {}
+  }
+});
+document.querySelectorAll("[data-action]").forEach(button => {
+  button.addEventListener("click", () => {
+    const action = button.getAttribute("data-action");
+    if (action === "next" || action === "prev" || action === "reset-timer") sendCommand(action);
+  });
+});
+jumpEl.addEventListener("change", () => sendCommand("jump", Math.max(0, (parseInt(jumpEl.value, 10) || 1) - 1)));
+</script>
+</body>
+</html>`;
+}
+
+function openPresenterView() {
+    _ensurePresenterMessaging();
+    const existing = _presentationRuntimeState.presenterWindow;
+    if (existing && !existing.closed) {
+        existing.focus();
+        _syncPresenterPayload();
+        return existing;
+    }
+    const presenterWindow = window.open("", "slideforge-presenter", "popup=yes,width=1400,height=900");
+    if (!presenterWindow) return null;
+    presenterWindow.document.open();
+    presenterWindow.document.write(_presenterWindowHtml());
+    presenterWindow.document.close();
+    _presentationRuntimeState.presenterWindow = presenterWindow;
+    setTimeout(() => _syncPresenterPayload(), 300);
+    return presenterWindow;
+}
+
+function _preparePresentationSlideAnimations(slideIndex) {
+    _presentationRuntimeState.slideIndex = slideIndex;
+    const entries = _getAnimatedSlideEntries(slideIndex);
+    entries.forEach(entry => _hideAnimatedEntry(entry));
+    entries
+        .filter(entry => entry.animation.trigger === "on-slide")
+        .forEach(entry => _showAnimatedEntry(entry, { animate: true }));
+    _presentationRuntimeState.clickGroups = _groupAnimatedEntries(entries);
+    _presentationRuntimeState.revealedGroups = 0;
+    if (_presentationRuntimeState.restorePreviousSlideFully) {
+        _presentationRuntimeState.revealedGroups = _presentationRuntimeState.clickGroups.length;
+        _presentationRuntimeState.clickGroups.forEach(group => group.entries.forEach(entry => _showAnimatedEntry(entry, { animate: false })));
+        _presentationRuntimeState.restorePreviousSlideFully = false;
+    }
+    _syncPresenterPayload();
+}
+
+function _runPresentationSlideAnimations(slideIndex) {
+    _preparePresentationSlideAnimations(slideIndex);
+}
+
+function _revealNextAnimationGroup() {
+    const group = _presentationRuntimeState.clickGroups[_presentationRuntimeState.revealedGroups];
+    if (!group) return false;
+    group.entries.forEach(entry => _showAnimatedEntry(entry, { animate: true }));
+    _presentationRuntimeState.revealedGroups += 1;
+    _syncPresenterPayload();
+    return true;
+}
+
+function _hidePreviousAnimationGroup() {
+    const previousIndex = _presentationRuntimeState.revealedGroups - 1;
+    if (previousIndex < 0) return false;
+    const group = _presentationRuntimeState.clickGroups[previousIndex];
+    if (!group) return false;
+    group.entries.forEach(entry => _hideAnimatedEntry(entry));
+    _presentationRuntimeState.revealedGroups = previousIndex;
+    _syncPresenterPayload();
+    return true;
+}
+
+function _hasRevealFragmentAdvance(reverse = false) {
+    if (typeof Reveal === "undefined") return false;
+    const fn = reverse ? Reveal.prevFragment : Reveal.nextFragment;
+    if (typeof fn !== "function") return false;
+    return Boolean(fn.call(Reveal));
+}
+
+function presentationGoToSlide(index) {
+    const safeIndex = Math.max(0, Math.min(Number(index) || 0, Math.max(0, (state.slides?.length || 1) - 1)));
+    currentSlideIndex = safeIndex;
+    if (typeof Reveal !== "undefined" && typeof Reveal.slide === "function") {
+        Reveal.slide(safeIndex, 0, 0);
+    } else {
+        _preparePresentationSlideAnimations(safeIndex);
+    }
+}
+
+function presentationNextStep() {
+    if (!document.body.classList.contains("play-mode-active")) return false;
+    if (_revealNextAnimationGroup()) return true;
+    if (_hasRevealFragmentAdvance(false)) {
+        _syncPresenterPayload();
+        return true;
+    }
+    const nextIndex = Math.min((state.slides?.length || 1) - 1, currentSlideIndex + 1);
+    if (nextIndex === currentSlideIndex) return true;
+    presentationGoToSlide(nextIndex);
+    return true;
+}
+
+function presentationPrevStep() {
+    if (!document.body.classList.contains("play-mode-active")) return false;
+    if (_hidePreviousAnimationGroup()) return true;
+    if (_hasRevealFragmentAdvance(true)) {
+        _syncPresenterPayload();
+        return true;
+    }
+    const prevIndex = Math.max(0, currentSlideIndex - 1);
+    if (prevIndex === currentSlideIndex) return true;
+    _presentationRuntimeState.restorePreviousSlideFully = true;
+    presentationGoToSlide(prevIndex);
+    return true;
 }
 
 async function togglePlayMode() {
@@ -2383,14 +2777,9 @@ async function togglePlayMode() {
 
     if (typeof Reveal !== "undefined" && typeof Reveal.configure === "function") {
         Reveal.configure({
-            controls: isPlaying,
-            progress: isPlaying,
-            keyboard: isPlaying
-                ? {
-                      66: () => window.RevealChalkboard?.toggleChalkboard?.(),
-                      67: () => window.RevealChalkboard?.toggleNotesCanvas?.(),
-                  }
-                : false,
+            controls: false,
+            progress: false,
+            keyboard: false,
         });
         Reveal.sync?.();
     }
@@ -2413,7 +2802,9 @@ async function togglePlayMode() {
     if (isPlaying) {
         clearSelection();
         _resizePresentationChalkboard();
-        _playSlideAnimations(currentSlideIndex);
+        _ensurePresenterMessaging();
+        _presentationRuntimeState.presenterStartTs = Date.now();
+        _preparePresentationSlideAnimations(currentSlideIndex);
     } else {
         _resetAnimations();
         resetPresentationTools();
@@ -2448,32 +2839,25 @@ function handlePresentationFullscreenChange() {
         });
         _resetAnimations();
         resetPresentationTools();
+        try {
+            _presentationRuntimeState.presenterWindow?.close?.();
+        } catch (_err) {
+            // ignore cross-window close errors
+        }
+        _presentationRuntimeState.presenterWindow = null;
     }
 }
 
 function _playSlideAnimations(slideIndex) {
-    const slide = state.slides[slideIndex];
-    if (!slide) return;
-    slide.elements.forEach(el => {
-        if (!el.animation) return;
-        const dom = document.getElementById(el.id);
-        if (!dom) return;
-        dom.style.transition = "none";
-        dom.classList.remove("anim-active");
-        dom.classList.add("anim-pending", el.animation);
-        setTimeout(() => {
-            dom.style.transition = `all ${el.animDuration || 800}ms ease-out`;
-            dom.classList.remove("anim-pending");
-            dom.classList.add("anim-active");
-        }, el.animDelay || 0);
-    });
+    _runPresentationSlideAnimations(slideIndex);
 }
 
 function _resetAnimations() {
-    document.querySelectorAll(".canvas-element").forEach(el => {
-        el.style.transition = "";
-        el.classList.remove("anim-pending", "anim-active");
-    });
+    document.querySelectorAll(".canvas-element").forEach(el => _clearAnimationClasses(el));
+    _presentationRuntimeState.slideIndex = -1;
+    _presentationRuntimeState.clickGroups = [];
+    _presentationRuntimeState.revealedGroups = 0;
+    _presentationRuntimeState.restorePreviousSlideFully = false;
 }
 
 // ─── Export ───────────────────────────────────────────────────────────────────

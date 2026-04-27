@@ -57,7 +57,9 @@ window.onload = async () => {
         updateSlideCounter();
         clearSelection();
         if (document.body.classList.contains("play-mode-active")) {
-            // trigger animation playback via commands
+            if (typeof _playSlideAnimations === "function") {
+                _playSlideAnimations(event.indexh);
+            }
         }
         renderSlidePreviews();
     });

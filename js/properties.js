@@ -348,6 +348,114 @@ function syncFragmentDomState(dom, fragmentAnimation, fragmentIndex) {
     }
 }
 
+function getElementAnimationConfig(el) {
+    return normalizeElementAnimation(el);
+}
+
+function getSlideAnimationEntries(slide = state.slides[currentSlideIndex]) {
+    if (!slide) return [];
+    return (slide.elements || [])
+        .map(el => ({ el, animation: getElementAnimationConfig(el) }))
+        .filter(entry => entry.animation)
+        .sort((a, b) => {
+            const triggerDelta =
+                (a.animation.trigger === "on-slide" ? 0 : 1) - (b.animation.trigger === "on-slide" ? 0 : 1);
+            if (triggerDelta !== 0) return triggerDelta;
+            const orderDelta = (a.animation.order || 0) - (b.animation.order || 0);
+            if (orderDelta !== 0) return orderDelta;
+            return String(a.el.id).localeCompare(String(b.el.id));
+        });
+}
+
+function describeAnimationEffect(effect) {
+    const labels = {
+        "fade-in": "Fade In",
+        "slide-up": "Slide Up",
+        "slide-down": "Slide Down",
+        "slide-left": "Slide Left",
+        "slide-right": "Slide Right",
+        "zoom-in": "Zoom In",
+        "pop-in": "Pop In",
+        "wipe-in": "Wipe In",
+        pulse: "Pulse",
+        glow: "Glow",
+    };
+    return labels[effect] || effect;
+}
+
+function setElementAnimationConfig(id, config, { skipUndo = false } = {}) {
+    const data = state.slides[currentSlideIndex]?.elements?.find(e => e.id === id);
+    if (!data) return;
+    if (!skipUndo) saveStateToUndo();
+    updateElementState(id, {
+        animation: config ? createDefaultAnimation(config.effect, config) : null,
+        fragmentAnimation: "none",
+        fragmentIndex: null,
+        animDuration: undefined,
+        animDelay: undefined,
+    });
+    if (window.renderSlidesFromState) window.renderSlidesFromState();
+    buildPropertiesPanel();
+}
+
+function moveElementAnimationOrder(id, direction) {
+    const slide = state.slides[currentSlideIndex];
+    if (!slide) return;
+    const target = slide.elements.find(el => el.id === id);
+    const targetAnimation = getElementAnimationConfig(target);
+    if (!targetAnimation) return;
+    const peers = getSlideAnimationEntries(slide)
+        .filter(entry => entry.animation.trigger === targetAnimation.trigger)
+        .map(entry => entry.el.id);
+    const currentIndex = peers.indexOf(id);
+    const swapIndex = currentIndex + direction;
+    if (currentIndex === -1 || swapIndex < 0 || swapIndex >= peers.length) return;
+    saveStateToUndo();
+    const swapId = peers[swapIndex];
+    const swapEl = slide.elements.find(el => el.id === swapId);
+    const swapAnimation = getElementAnimationConfig(swapEl);
+    if (!swapAnimation) return;
+    updateElementState(id, { animation: { ...targetAnimation, order: swapAnimation.order } });
+    updateElementState(swapId, { animation: { ...swapAnimation, order: targetAnimation.order } });
+    if (window.renderSlidesFromState) window.renderSlidesFromState();
+    buildPropertiesPanel();
+}
+
+function applyAnimationConfigToSelection(config, { assignSequentialOrder = false } = {}) {
+    if (!state.selectedIds.length) return;
+    saveStateToUndo();
+    let nextOrder = 0;
+    if (assignSequentialOrder) {
+        const entries = getSlideAnimationEntries();
+        nextOrder = entries
+            .filter(entry => entry.animation.trigger === "on-click")
+            .reduce((maxOrder, entry) => Math.max(maxOrder, Number(entry.animation.order) || 0), -1) + 1;
+    }
+    state.selectedIds.forEach((id, offset) => {
+        updateElementState(id, {
+            animation: config
+                ? createDefaultAnimation(config.effect, {
+                      ...config,
+                      order: assignSequentialOrder ? nextOrder + offset : config.order,
+                  })
+                : null,
+            fragmentAnimation: "none",
+            fragmentIndex: null,
+            animDuration: undefined,
+            animDelay: undefined,
+        });
+    });
+    if (window.renderSlidesFromState) window.renderSlidesFromState();
+    buildPropertiesPanel();
+}
+
+function updateCurrentSlideNotes(value) {
+    const slide = state.slides[currentSlideIndex];
+    if (!slide) return;
+    slide.notes = String(value || "");
+    schedulePresentationAutosave?.(150);
+}
+
 function shiftTextBulletLevels(data, delta) {
     if (!isStructuredBulletContent(data.content)) return;
     const nextContent = data.content.map(item => ({
@@ -966,53 +1074,127 @@ function buildPropertiesPanel() {
             panel.appendChild(eqGrp);
         }
 
-        // ── Animation (all element types) ─────────────────────────────────
         {
-            const animGrp = createGroup("Animation (Reveal.js)");
-            const curAnim  = data.fragmentAnimation || "none";
-            const curIndex = data.fragmentIndex != null ? data.fragmentIndex : 0;
-
+            const animation = getElementAnimationConfig(data);
+            const animGrp = createGroup("Animation");
             animGrp.innerHTML += `
                 <div class="flex flex-col gap-2">
-                    <div class="flex flex-col gap-1">
-                        <label class="text-[10px] text-gray-500 uppercase font-semibold tracking-wider">Effect</label>
-                        <select id="prop-anim-type" class="w-full text-xs">
-                            <option value="none"       ${curAnim==="none"              ?"selected":""}>None (always visible)</option>
-                            <optgroup label="Entrance">
-                                <option value="fade-in"      ${curAnim==="fade-in"         ?"selected":""}>Fade In</option>
-                                <option value="fade-in-then-out" ${curAnim==="fade-in-then-out" ?"selected":""}>Fade In Then Out</option>
-                                <option value="fade-in-then-semi-out" ${curAnim==="fade-in-then-semi-out" ?"selected":""}>Fade In Then Semi Out</option>
-                                <option value="fade-up"      ${curAnim==="fade-up"         ?"selected":""}>Fade Up</option>
-                                <option value="fade-down"    ${curAnim==="fade-down"       ?"selected":""}>Fade Down</option>
-                                <option value="fade-left"    ${curAnim==="fade-left"       ?"selected":""}>Fade Left</option>
-                                <option value="fade-right"   ${curAnim==="fade-right"      ?"selected":""}>Fade Right</option>
-                                <option value="grow"         ${curAnim==="grow"            ?"selected":""}>Grow</option>
-                            </optgroup>
-                            <optgroup label="Exit">
-                                <option value="fade-out"     ${curAnim==="fade-out"        ?"selected":""}>Fade Out</option>
-                                <option value="shrink"       ${curAnim==="shrink"          ?"selected":""}>Shrink</option>
-                                <option value="semi-fade-out" ${curAnim==="semi-fade-out"  ?"selected":""}>Semi Fade Out</option>
-                            </optgroup>
-                            <optgroup label="Highlight">
-                                <option value="highlight-red"   ${curAnim==="highlight-red"  ?"selected":""}>Highlight Red</option>
-                                <option value="highlight-green" ${curAnim==="highlight-green"?"selected":""}>Highlight Green</option>
-                                <option value="highlight-blue"  ${curAnim==="highlight-blue" ?"selected":""}>Highlight Blue</option>
-                                <option value="highlight-current-red" ${curAnim==="highlight-current-red" ?"selected":""}>Highlight Current Red</option>
-                                <option value="highlight-current-green" ${curAnim==="highlight-current-green" ?"selected":""}>Highlight Current Green</option>
-                                <option value="highlight-current-blue" ${curAnim==="highlight-current-blue" ?"selected":""}>Highlight Current Blue</option>
-                                <option value="current-visible" ${curAnim==="current-visible"?"selected":""}>Current Visible (auto-hide)</option>
-                            </optgroup>
-                        </select>
-                    </div>
-                    <div class="flex flex-col gap-1" id="prop-anim-index-wrap">
-                        <label class="text-[10px] text-gray-500 uppercase font-semibold tracking-wider">Order (fragment index)</label>
-                        <input type="number" id="prop-anim-index" class="w-full text-xs" min="0" max="99" value="${curIndex}" placeholder="0">
-                        <p class="text-[10px] text-gray-600 leading-snug">Lower = appears earlier. Same index = appear together.</p>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input id="prop-anim-enabled" type="checkbox" class="rounded" ${animation ? "checked" : ""}>
+                        <span class="text-xs text-slate-700 font-medium">Enable animation</span>
+                    </label>
+                    <div id="prop-anim-controls" class="space-y-2 ${animation ? "" : "hidden"}">
+                        <div class="flex flex-col gap-1">
+                            <label class="text-[10px] text-gray-500 uppercase font-semibold tracking-wider">Effect</label>
+                            <select id="prop-anim-effect" class="w-full text-xs">
+                                ${PRESENTATION_ANIMATION_EFFECTS.map(effect => `
+                                    <option value="${effect}" ${(animation?.effect || "fade-in") === effect ? "selected" : ""}>${describeAnimationEffect(effect)}</option>
+                                `).join("")}
+                            </select>
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <label class="text-[10px] text-gray-500 uppercase font-semibold tracking-wider">Trigger</label>
+                            <select id="prop-anim-trigger" class="w-full text-xs">
+                                <option value="on-slide" ${(animation?.trigger || "on-slide") === "on-slide" ? "selected" : ""}>With Slide</option>
+                                <option value="on-click" ${animation?.trigger === "on-click" ? "selected" : ""}>On Click</option>
+                            </select>
+                        </div>
+                        <div id="prop-anim-order-wrap" class="flex flex-col gap-1 ${(animation?.trigger || "on-slide") === "on-click" ? "" : "hidden"}">
+                            <label class="text-[10px] text-gray-500 uppercase font-semibold tracking-wider">Click Order</label>
+                            <input type="number" id="prop-anim-order" class="w-full text-xs" min="0" max="99" value="${animation?.order ?? 0}">
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div class="flex flex-col gap-1">
+                                <label class="text-[10px] text-gray-500 uppercase font-semibold tracking-wider">Duration</label>
+                                <input type="number" id="prop-anim-duration" class="w-full text-xs" min="100" step="50" value="${animation?.durationMs ?? 800}">
+                            </div>
+                            <div class="flex flex-col gap-1">
+                                <label class="text-[10px] text-gray-500 uppercase font-semibold tracking-wider">Delay</label>
+                                <input type="number" id="prop-anim-delay" class="w-full text-xs" min="0" step="50" value="${animation?.delayMs ?? 0}">
+                            </div>
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <label class="text-[10px] text-gray-500 uppercase font-semibold tracking-wider">Easing</label>
+                            <select id="prop-anim-easing" class="w-full text-xs">
+                                <option value="ease-out" ${(animation?.easing || "ease-out") === "ease-out" ? "selected" : ""}>Ease Out</option>
+                                <option value="ease-in-out" ${animation?.easing === "ease-in-out" ? "selected" : ""}>Ease In-Out</option>
+                                <option value="linear" ${animation?.easing === "linear" ? "selected" : ""}>Linear</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
             `;
             panel.appendChild(animGrp);
         }
+    }
+
+    if (!data && state.selectedIds.length > 1) {
+        const multiAnimGrp = createGroup("Animation");
+        multiAnimGrp.innerHTML += `
+            <div class="space-y-2">
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input id="prop-multi-anim-enabled" type="checkbox" class="rounded">
+                    <span class="text-xs text-slate-700 font-medium">Apply animation to selection</span>
+                </label>
+                <div id="prop-multi-anim-controls" class="space-y-2 hidden">
+                    <select id="prop-multi-anim-effect" class="w-full text-xs">
+                        ${PRESENTATION_ANIMATION_EFFECTS.map(effect => `<option value="${effect}">${describeAnimationEffect(effect)}</option>`).join("")}
+                    </select>
+                    <select id="prop-multi-anim-trigger" class="w-full text-xs">
+                        <option value="on-slide">With Slide</option>
+                        <option value="on-click">On Click</option>
+                    </select>
+                    <div class="grid grid-cols-2 gap-2">
+                        <input type="number" id="prop-multi-anim-duration" class="w-full text-xs" min="100" step="50" value="800" placeholder="Duration">
+                        <input type="number" id="prop-multi-anim-delay" class="w-full text-xs" min="0" step="50" value="0" placeholder="Delay">
+                    </div>
+                    <select id="prop-multi-anim-easing" class="w-full text-xs">
+                        <option value="ease-out">Ease Out</option>
+                        <option value="ease-in-out">Ease In-Out</option>
+                        <option value="linear">Linear</option>
+                    </select>
+                    <button id="prop-multi-anim-apply" class="w-full py-2 rounded bg-primary text-white text-xs font-semibold">Apply To Selection</button>
+                </div>
+            </div>
+        `;
+        panel.appendChild(multiAnimGrp);
+    }
+
+    {
+        const slide = state.slides[currentSlideIndex] || { notes: "", elements: [] };
+        const notesGrp = createGroup("Slide Notes");
+        notesGrp.innerHTML += `
+            <div class="space-y-2">
+                <textarea id="prop-slide-notes" class="w-full min-h-[120px] text-xs leading-5" placeholder="Presenter notes for this slide...">${slide.notes || ""}</textarea>
+                <div class="text-[10px] text-slate-500">Notes are saved with the slide and used in presenter view only.</div>
+            </div>
+        `;
+        panel.appendChild(notesGrp);
+    }
+
+    {
+        const slideEntries = getSlideAnimationEntries();
+        const listGrp = createGroup("Slide Animation Order");
+        listGrp.innerHTML += slideEntries.length
+            ? `<div class="space-y-2">${slideEntries
+                  .map(
+                      entry => `
+                    <div class="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2">
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="min-w-0">
+                                <div class="text-[11px] font-semibold text-slate-700">${describeAnimationEffect(entry.animation.effect)}</div>
+                                <div class="text-[10px] text-slate-500">${entry.animation.trigger === "on-click" ? `On click #${entry.animation.order}` : "With slide"}</div>
+                            </div>
+                            <div class="flex items-center gap-1">
+                                <button class="prop-anim-move-up rounded border border-slate-200 bg-white px-2 py-1 text-[10px]" data-anim-id="${entry.el.id}" title="Move earlier">Up</button>
+                                <button class="prop-anim-move-down rounded border border-slate-200 bg-white px-2 py-1 text-[10px]" data-anim-id="${entry.el.id}" title="Move later">Down</button>
+                            </div>
+                        </div>
+                    </div>`,
+                  )
+                  .join("")}</div>`
+            : `<div class="text-[11px] text-slate-500">No slide animations yet.</div>`;
+        panel.appendChild(listGrp);
     }
 
     // Listeners
@@ -1031,6 +1213,49 @@ function buildPropertiesPanel() {
                     document.getElementById(id).style.backgroundColor = e.target.value;
                 });
                 if (window.refreshPreviews) window.refreshPreviews();
+            };
+        }
+
+        const slideNotes = document.getElementById("prop-slide-notes");
+        if (slideNotes) {
+            let lastNotesValue = slideNotes.value;
+            slideNotes.oninput = e => {
+                updateCurrentSlideNotes(e.target.value);
+            };
+            slideNotes.onchange = e => {
+                if (e.target.value === lastNotesValue) return;
+                saveStateToUndo();
+                updateCurrentSlideNotes(e.target.value);
+                lastNotesValue = e.target.value;
+            };
+        }
+
+        document.querySelectorAll(".prop-anim-move-up").forEach(button => {
+            button.onclick = () => moveElementAnimationOrder(button.dataset.animId, -1);
+        });
+        document.querySelectorAll(".prop-anim-move-down").forEach(button => {
+            button.onclick = () => moveElementAnimationOrder(button.dataset.animId, 1);
+        });
+
+        const multiAnimEnabled = document.getElementById("prop-multi-anim-enabled");
+        const multiAnimControls = document.getElementById("prop-multi-anim-controls");
+        const multiAnimApply = document.getElementById("prop-multi-anim-apply");
+        if (multiAnimEnabled && multiAnimControls) {
+            multiAnimEnabled.onchange = () => {
+                multiAnimControls.classList.toggle("hidden", !multiAnimEnabled.checked);
+            };
+        }
+        if (multiAnimApply) {
+            multiAnimApply.onclick = () => {
+                const effect = document.getElementById("prop-multi-anim-effect")?.value || "fade-in";
+                const trigger = document.getElementById("prop-multi-anim-trigger")?.value === "on-click" ? "on-click" : "on-slide";
+                const durationMs = parseInt(document.getElementById("prop-multi-anim-duration")?.value, 10) || 800;
+                const delayMs = parseInt(document.getElementById("prop-multi-anim-delay")?.value, 10) || 0;
+                const easing = document.getElementById("prop-multi-anim-easing")?.value || "ease-out";
+                applyAnimationConfigToSelection(
+                    { effect, trigger, durationMs, delayMs, easing, order: 0 },
+                    { assignSequentialOrder: trigger === "on-click" },
+                );
             };
         }
 
@@ -1697,39 +1922,46 @@ function buildPropertiesPanel() {
                 }
             }
 
-            // ── Animation listeners ─────────────────────────────────────────
             {
-                const animType  = document.getElementById("prop-anim-type");
-                const animIndex = document.getElementById("prop-anim-index");
+                const enabled = document.getElementById("prop-anim-enabled");
+                const controls = document.getElementById("prop-anim-controls");
+                const effect = document.getElementById("prop-anim-effect");
+                const trigger = document.getElementById("prop-anim-trigger");
+                const orderWrap = document.getElementById("prop-anim-order-wrap");
+                const order = document.getElementById("prop-anim-order");
+                const duration = document.getElementById("prop-anim-duration");
+                const delay = document.getElementById("prop-anim-delay");
+                const easing = document.getElementById("prop-anim-easing");
 
-                const applyAnimation = () => {
-                    const type  = animType  ? animType.value  : "none";
-                    const idx   = animIndex ? parseInt(animIndex.value) || 0 : 0;
-                    const dom   = document.getElementById(data.id);
+                const buildConfig = () => ({
+                    effect: effect?.value || "fade-in",
+                    trigger: trigger?.value === "on-click" ? "on-click" : "on-slide",
+                    order: parseInt(order?.value, 10) || 0,
+                    durationMs: parseInt(duration?.value, 10) || 800,
+                    delayMs: parseInt(delay?.value, 10) || 0,
+                    easing: easing?.value || "ease-out",
+                });
 
-                    if (type === "none") {
-                        updateElementState(data.id, { fragmentAnimation: "none", fragmentIndex: null });
-                        data.fragmentAnimation = "none";
-                        data.fragmentIndex = null;
-                        syncFragmentDomState(dom, "none", null);
-                    } else {
-                        updateElementState(data.id, { fragmentAnimation: type, fragmentIndex: idx });
-                        data.fragmentAnimation = type;
-                        data.fragmentIndex = idx;
-                        syncFragmentDomState(dom, type, idx);
+                const commitAnimation = () => {
+                    if (!enabled?.checked) {
+                        setElementAnimationConfig(data.id, null);
+                        return;
                     }
-                    // Show/hide order input
-                    const wrap = document.getElementById("prop-anim-index-wrap");
-                    if (wrap) wrap.style.display = type === "none" ? "none" : "";
+                    setElementAnimationConfig(data.id, buildConfig());
                 };
 
-                if (animType)  animType.onchange  = applyAnimation;
-                if (animIndex) animIndex.onchange  = applyAnimation;
-                if (animIndex) animIndex.oninput   = applyAnimation;
-
-                // Initial state: hide order input if no animation
-                const wrap = document.getElementById("prop-anim-index-wrap");
-                if (wrap && (data.fragmentAnimation || "none") === "none") wrap.style.display = "none";
+                enabled && (enabled.onchange = () => {
+                    controls?.classList.toggle("hidden", !enabled.checked);
+                    commitAnimation();
+                });
+                trigger && (trigger.onchange = () => {
+                    orderWrap?.classList.toggle("hidden", trigger.value !== "on-click");
+                    commitAnimation();
+                });
+                [effect, order, duration, delay, easing].forEach(input => {
+                    if (!input) return;
+                    input.onchange = commitAnimation;
+                });
             }
 
             if (data.type === "video") {
