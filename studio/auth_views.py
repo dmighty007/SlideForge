@@ -2,7 +2,6 @@ import json
 
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.http import HttpResponseBadRequest, JsonResponse
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
 
 
@@ -36,7 +35,6 @@ def auth_session(request):
     return JsonResponse(_session_payload(request))
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
 def auth_register(request):
     try:
@@ -59,7 +57,6 @@ def auth_register(request):
     return JsonResponse(_session_payload(request), status=201)
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
 def auth_login(request):
     try:
@@ -77,7 +74,6 @@ def auth_login(request):
     return JsonResponse(_session_payload(request))
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
 def auth_logout(request):
     logout(request)

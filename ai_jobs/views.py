@@ -3,7 +3,6 @@ import json
 from django.core.files.base import ContentFile
 from django.http import HttpResponseBadRequest, JsonResponse
 from django.utils.text import get_valid_filename
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
 from .models import ImportJob
@@ -27,7 +26,6 @@ def _looks_like_pdf(uploaded_file=None, raw_body=b""):
     return bytes(raw_body[:5]) == b"%PDF-"
 
 
-@csrf_exempt
 @require_POST
 def ai_import_start(request):
     auth_error = _auth_required(request)

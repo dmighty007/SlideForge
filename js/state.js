@@ -425,14 +425,38 @@ function isPresentationHydrating() {
     return _presentationHydrating;
 }
 
+function _getCsrfToken() {
+    const cookie = document.cookie
+        .split(";")
+        .map(part => part.trim())
+        .find(part => part.startsWith("csrftoken="));
+    return cookie ? decodeURIComponent(cookie.split("=", 2)[1] || "") : "";
+}
+
+async function _apiFetch(path, options = {}) {
+    const method = String(options.method || "GET").toUpperCase();
+    const headers = { ...(options.headers || {}) };
+    if (!(options.body instanceof FormData) && !("Content-Type" in headers)) {
+        headers["Content-Type"] = "application/json";
+    }
+    if (!["GET", "HEAD", "OPTIONS", "TRACE"].includes(method)) {
+        const csrfToken = _getCsrfToken();
+        if (csrfToken) {
+            headers["X-CSRFToken"] = csrfToken;
+        }
+    }
+    return fetch(path, {
+        credentials: "same-origin",
+        ...options,
+        method,
+        headers,
+    });
+}
+
 async function _presentationRequest(path, options = {}) {
-    const headers = {
-        "Content-Type": "application/json",
-        ...(options.headers || {}),
-    };
     let response;
     try {
-        response = await fetch(path, { ...options, headers });
+        response = await _apiFetch(path, options);
     } catch (err) {
         markBackendUnavailable(`Presentation API request failed: ${err.message || err}`);
         throw err;
@@ -453,13 +477,9 @@ async function _presentationRequest(path, options = {}) {
 }
 
 async function _authRequest(path, options = {}) {
-    const headers = {
-        "Content-Type": "application/json",
-        ...(options.headers || {}),
-    };
     let response;
     try {
-        response = await fetch(path, { ...options, headers });
+        response = await _apiFetch(path, options);
     } catch (err) {
         markBackendUnavailable(`Auth API request failed: ${err.message || err}`);
         throw err;

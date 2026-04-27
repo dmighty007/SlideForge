@@ -378,7 +378,7 @@ function copyElement(clipboardEvent = null) {
 async function copySelectionToClipboard() {
     const selectedElements = _cloneSelectedElements();
     if (!selectedElements.length) {
-        alert("Select a text or image element first.");
+        setProjectSaveHint?.("Select a text or image element first", "warn");
         return false;
     }
     _clipboard = { elements: selectedElements };
@@ -387,7 +387,7 @@ async function copySelectionToClipboard() {
         return true;
     } catch (err) {
         console.warn("Explicit clipboard copy failed:", err);
-        alert("Clipboard copy was blocked by the browser.");
+        setProjectSaveHint?.("Clipboard copy was blocked by the browser", "danger");
         return false;
     }
 }
@@ -610,7 +610,7 @@ async function pasteFromClipboard() {
         return true;
     }
 
-    alert("Nothing usable was found in the clipboard, or clipboard access was blocked.");
+    setProjectSaveHint?.("Nothing usable was found in the clipboard, or clipboard access was blocked", "warn");
     return false;
 }
 
@@ -728,7 +728,7 @@ async function handleImageFileInsert(event) {
     event.target.value = "";
     if (!file) return;
     if (!file.type.startsWith("image/")) {
-        alert("Please choose a valid image file.");
+        setProjectSaveHint?.("Please choose a valid image file", "danger");
         return;
     }
 
@@ -756,7 +756,7 @@ async function handleImageFileInsert(event) {
         selectElement(id);
     } catch (err) {
         console.error("Image insert error:", err);
-        alert("Failed to process image.");
+        setProjectSaveHint?.("Failed to process image", "danger");
     }
 }
 
@@ -765,13 +765,13 @@ function handleVideoFileInsert(event) {
     event.target.value = "";
     if (!file) return;
     if (!file.type.startsWith("video/")) {
-        alert("Please choose a valid video file.");
+        setProjectSaveHint?.("Please choose a valid video file", "danger");
         return;
     }
 
     _insertUploadedVideo(file).catch(err => {
         console.error("Video insert error:", err);
-        alert(err?.message || "Failed to process video.");
+        setProjectSaveHint?.(err?.message || "Failed to process video", "danger");
     });
 }
 
@@ -780,7 +780,7 @@ async function handlePdfFileInsert(event) {
     event.target.value = "";
     if (!file) return;
     if (file.type !== "application/pdf" && !String(file.name || "").toLowerCase().endsWith(".pdf")) {
-        alert("Please choose a valid PDF file.");
+        setProjectSaveHint?.("Please choose a valid PDF file", "danger");
         return;
     }
 
@@ -834,7 +834,7 @@ async function _uploadAssetFile(file, { presentationId = currentPresentationId }
     formData.append("file", file, file.name || "asset");
     if (presentationId) formData.append("presentationId", presentationId);
 
-    const response = await fetch("/api/assets/upload/", {
+    const response = await _apiFetch("/api/assets/upload/", {
         method: "POST",
         body: formData,
     });
@@ -1871,7 +1871,7 @@ function importPresentationData(data, { showSuccessAlert = true } = {}) {
         schedulePresentationAutosave(0);
     }
     if (showSuccessAlert) {
-        alert("Presentation imported successfully!");
+        setProjectSaveHint?.("Presentation imported successfully", "success");
     }
 }
 
@@ -1881,7 +1881,7 @@ async function runAIPdfImport(file) {
     const formData = new FormData();
     formData.append("file", file, file.name);
 
-    const startResp = await fetch(`/api/ai-import-start?filename=${encodeURIComponent(file.name)}`, {
+    const startResp = await _apiFetch(`/api/ai-import-start?filename=${encodeURIComponent(file.name)}`, {
         method: "POST",
         body: formData,
     });
@@ -1897,7 +1897,7 @@ async function runAIPdfImport(file) {
 
     let lastPercent = 4;
     for (;;) {
-        const statusResp = await fetch(`/api/ai-import-status?job_id=${encodeURIComponent(jobId)}`);
+        const statusResp = await _apiFetch(`/api/ai-import-status?job_id=${encodeURIComponent(jobId)}`);
         if (!statusResp.ok) {
             throw new Error(`Status check failed (${statusResp.status})`);
         }
@@ -1917,7 +1917,7 @@ async function runAIPdfImport(file) {
             importPresentationData(status.result, { showSuccessAlert: false });
             showAIImportSuccess(`Presentation generated successfully${status.result?.title ? `: ${status.result.title}` : "!"}`);
             setTimeout(() => hideAIImportProgress(), 1400);
-            alert("Presentation imported successfully!");
+            setProjectSaveHint?.("AI import complete", "success");
             return;
         }
         if (status.state === "failed") {
@@ -1937,7 +1937,7 @@ function handleAIJsonUpload(event) {
             const data = JSON.parse(e.target.result);
             importPresentationData(data);
         } catch (err) {
-            alert("Invalid JSON file: " + err.message);
+            setProjectSaveHint?.(`Invalid JSON file: ${err.message}`, "danger");
         }
     };
     reader.readAsText(file);
@@ -1954,7 +1954,7 @@ async function handleAIImportUpload(event) {
             await runAIPdfImport(file);
         } catch (err) {
             hideAIImportProgress();
-            alert(`AI PDF import failed: ${err.message}`);
+            setProjectSaveHint?.(`AI PDF import failed: ${err.message}`, "danger");
         }
         return;
     }
@@ -2119,7 +2119,7 @@ function importPresentationJson() {
                     await duplicateCurrentStateToNewProject(currentPresentationTitle);
                 }
             } catch (err) {
-                alert("Invalid JSON file: " + err.message);
+                setProjectSaveHint?.(`Invalid JSON file: ${err.message}`, "danger");
             }
         };
         reader.readAsText(file);

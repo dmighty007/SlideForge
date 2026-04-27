@@ -4,6 +4,50 @@ import json
 def _tokenize(text: str) -> set[str]:
     return set(re.findall(r"\w+", (text or "").lower()))
 
+_LOW_VALUE_FIGURE_TERMS = {
+    "publisher", "publishing", "journal", "copyright", "license", "logo",
+    "authors", "author", "affiliation", "abstract", "introduction", "received",
+    "accepted", "supplementary", "supporting", "table of contents", "graphical abstract",
+    "cover", "frontispiece", "view article", "downloaded", "email", "orcid",
+}
+_HIGH_VALUE_FIGURE_TYPES = {"graph", "chart", "diagram", "microscopy", "table", "equation"}
+
+def _figure_text_blob(figure: dict) -> str:
+    vision = figure.get("vision", {}) or {}
+    return " ".join(
+        part for part in [
+            figure.get("caption", ""),
+            vision.get("caption_enhanced", ""),
+            vision.get("key_finding", ""),
+            " ".join(vision.get("axis_labels", []) or []),
+        ]
+        if part
+    )
+
+def _figure_quality_score(figure: dict) -> float:
+    vision = figure.get("vision", {}) or {}
+    text_blob = _figure_text_blob(figure).lower()
+    score = 0.0
+
+    if any(term in text_blob for term in _LOW_VALUE_FIGURE_TERMS):
+        score -= 0.75
+    if vision.get("figure_type") in _HIGH_VALUE_FIGURE_TYPES:
+        score += 0.45
+    if vision.get("axis_labels"):
+        score += 0.2
+    if vision.get("key_finding"):
+        score += 0.15
+    if re.search(r"\b(fig(?:ure)?|chart|plot|diagram|scheme|table)\b", text_blob):
+        score += 0.15
+    if re.search(r"\b(aip publishing|elsevier|springer|wiley|acs publications)\b", text_blob):
+        score -= 1.0
+
+    figure_id = str(figure.get("id", "")).lower()
+    if "picture" in figure_id and not vision.get("axis_labels") and vision.get("figure_type") not in _HIGH_VALUE_FIGURE_TYPES:
+        score -= 0.2
+
+    return score
+
 def _figure_match_score(text: str, figure: dict) -> float:
     text_tokens = _tokenize(text)
     caption_tokens = _tokenize(figure.get("caption", ""))
@@ -33,7 +77,7 @@ def _slide_content_text(title: str, points: list[dict]) -> str:
 def _rank_figures_for_text(text: str, figures: list[dict], limit: int = 3) -> list[dict]:
     ranked = sorted(
         figures,
-        key=lambda figure: _figure_match_score(text, figure),
+        key=lambda figure: (_figure_match_score(text, figure), _figure_quality_score(figure)),
         reverse=True,
     )
     return ranked[: min(limit, len(ranked))]
@@ -48,8 +92,10 @@ def _assign_figures_to_slides(slides: list[dict], candidate_figures: list[dict])
     all_pairs = []
     for idx, slide_text in slide_texts.items():
         for figure in candidate_figures:
-            all_pairs.append((idx, figure["id"], _figure_match_score(slide_text, figure)))
-    all_pairs.sort(key=lambda item: item[2], reverse=True)
+            match_score = _figure_match_score(slide_text, figure)
+            quality_score = _figure_quality_score(figure)
+            all_pairs.append((idx, figure["id"], match_score, quality_score, match_score + (quality_score * 0.35)))
+    all_pairs.sort(key=lambda item: item[4], reverse=True)
 
     assignments = {idx: [] for idx in range(len(slides))}
     figure_use_counts = {figure["id"]: 0 for figure in candidate_figures}
@@ -64,22 +110,22 @@ def _assign_figures_to_slides(slides: list[dict], candidate_figures: list[dict])
                     assignments[idx].append(fid)
                     figure_use_counts[fid] += 1
 
-    for idx, figure_id, score in all_pairs:
+    for idx, figure_id, score, quality_score, combined_score in all_pairs:
         if assignments[idx] or figure_use_counts[figure_id] > 0:
             continue
-        if score < 0.08:
+        if score < 0.08 or combined_score < 0.02 or quality_score < -0.8:
             continue
         assignments[idx].append(figure_id)
         figure_use_counts[figure_id] += 1
 
-    for idx, figure_id, score in all_pairs:
+    for idx, figure_id, score, quality_score, combined_score in all_pairs:
         if len(assignments[idx]) >= 2:
             continue
         if figure_id in assignments[idx]:
             continue
         if figure_use_counts[figure_id] >= 2:
             continue
-        if score < 0.16:
+        if score < 0.16 or combined_score < 0.12 or quality_score < -0.4:
             continue
         assignments[idx].append(figure_id)
         figure_use_counts[figure_id] += 1

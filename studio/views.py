@@ -9,7 +9,6 @@ from pathlib import Path
 from django.core.files.base import File
 from django.http import FileResponse, HttpResponseBadRequest, JsonResponse
 from django.views.decorators.csrf import ensure_csrf_cookie
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
 
 from .models import Asset, Presentation, PresentationRevision
@@ -133,7 +132,6 @@ def spa_index(request):
     return FileResponse(open(Path(__file__).resolve().parent.parent / "index.html", "rb"))
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
 def asset_upload(request):
     uploaded_file = request.FILES.get("file")
@@ -174,7 +172,6 @@ def asset_upload(request):
     )
 
 
-@csrf_exempt
 @require_http_methods(["GET", "POST"])
 def presentation_create(request):
     auth_error = _auth_required(request)
@@ -227,7 +224,6 @@ def presentation_create(request):
     )
 
 
-@csrf_exempt
 @require_http_methods(["GET", "PATCH", "PUT"])
 def presentation_detail(request, presentation_id):
     auth_error = _auth_required(request)

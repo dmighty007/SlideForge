@@ -18,6 +18,10 @@ except (ImportError, ModuleNotFoundError):
     from .llm_utils import _unload_ollama_models
 
 _MINERU_VISUAL_TYPES = {"image", "figure", "chart", "diagram", "plot", "table", "picture"}
+_LOW_SIGNAL_CAPTION_RE = re.compile(
+    r"\b(aip publishing|all rights reserved|copyright|journal|publisher|view article online|downloaded from|graphical abstract|table of contents)\b",
+    re.I,
+)
 
 class LocalVisionPDFProcessor(PDFProcessor):
     def __init__(self, filepath: str, llm_provider=None, status_callback=None):
@@ -77,6 +81,8 @@ class LocalVisionPDFProcessor(PDFProcessor):
                         if next_line.lower().startswith(('fig', 'table', 'scheme', 'chart')): caption = next_line
                         break
             if not caption: caption = f"Extracted visual {img_rel_path}"
+            if _LOW_SIGNAL_CAPTION_RE.search(caption):
+                continue
 
             try:
                 with Image.open(img_path) as img: w, h = img.size
