@@ -1,0 +1,12 @@
+{
+  "is_figure": true,
+  "confidence": 0.95,
+  "figure_type": "chart",
+  "brief_reason": "The chart appears to be a bar chart showing the percentage of classified images for different phases of the image classification process.",
+  "caption_enhanced": "The chart shows the performance of the image classification model across different phases, with the model achieving high accuracy in later phases.",
+  "key_finding": "The model's performance improves with each phase, reaching high accuracy in later phases.",
+  "axis_labels": [
+    "Actual Phase",
+    "Percent classified"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "is_figure": true,
+  "confidence": 0.98,
+  "figure_type": "graph",
+  "brief_reason": "The image appears to be a bar graph showing the percentage of classified images for different phases.",
+  "caption_enhanced": "The image shows the performance of a classification model on different phases, with a high percentage of accurate classifications.",
+  "key_finding": "The model performs well on all phases, with a high percentage of accurate classifications.",
+  "axis_labels": [
+    "liquid",
+    "fcc",
+    "hcp",
+    "bcc"
+  ]
+}

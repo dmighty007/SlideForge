@@ -1,0 +1,18 @@
+{
+  "is_figure": true,
+  "confidence": 0.9,
+  "figure_type": "chart",
+  "brief_reason": "The image appears to be a bar chart showing the distribution of different types of ice and hydroslyte.",
+  "caption_enhanced": "The chart shows the distribution of different types of ice and hydroslyte, with ice-VI and hyd-sII being the most abundant.",
+  "key_finding": "The chart shows the distribution of different types of ice and hydroslyte, with ice-VI and hyd-sII being the most abundant.",
+  "axis_labels": [
+    "ice-Ih",
+    "ice-Ic",
+    "ice-III",
+    "ice-V",
+    "ice-VI",
+    "hyd-sI",
+    "hyd-sII",
+    "hyd-sIII"
+  ]
+}

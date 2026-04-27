@@ -1,0 +1,14 @@
+.codex/
+.env
+__pycache__/
+*.py[cod]
+
+db.sqlite3
+media/
+extracted_figures/
+
+scratch/
+out.json
+test_output.json
+test_fail.json
+test_fail.pptx

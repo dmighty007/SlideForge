@@ -1,0 +1,10 @@
+{
+  "caption_enhanced": "The figure shows a comparison of four models, each with a different number of layers, and their performance on a specific task. The results are presented in a series of plots, with each plot showing the performance of a particular model.",
+  "key_finding": "The model with 10 layers performs the best, with a high accuracy rate and a low loss value.",
+  "axis_labels": [
+    "Model F1-Score",
+    "Loss Value",
+    "Accuracy",
+    "Number of Layers"
+  ]
+}

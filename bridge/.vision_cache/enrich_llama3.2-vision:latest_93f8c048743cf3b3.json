@@ -1,0 +1,8 @@
+{
+  "caption_enhanced": "The figure shows a graph with multiple lines representing different materials, including FCC, BCC, HCP, and others. The x-axis represents the FCC PTM RC, and the y-axis represents the corresponding values.",
+  "key_finding": "The figure shows that the FCC material has the highest value at a certain point, while the BCC and HCP materials have lower values.",
+  "axis_labels": [
+    "FCC PTM RC",
+    "Corresponding values"
+  ]
+}

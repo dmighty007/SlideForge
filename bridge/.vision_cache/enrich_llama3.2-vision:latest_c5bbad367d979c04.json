@@ -1,0 +1,10 @@
+{
+  "caption_enhanced": "The figure shows the results of an analysis of FCCPTM and BCCPTM data, with multiple plots and graphs displaying the data in different formats.",
+  "key_finding": "The most important result is the comparison of FCCPTM and BCCPTM data, which shows significant differences in their behavior and characteristics.",
+  "axis_labels": [
+    "time/ns",
+    "FCCPTM",
+    "BCCPTM"
+  ],
+  "figure_type": "graph"
+}

@@ -1,0 +1,8 @@
+{
+  "caption_enhanced": "This figure shows a bar chart comparing the actual phase of a system across different phases, including liquid (liq), lam, hex, and others, with their corresponding phase- and phase-.",
+  "key_finding": "The most important result is that the hex phase has the highest percentage of actual phase.",
+  "axis_labels": [
+    "Actual Phase",
+    "Percent classified"
+  ]
+}

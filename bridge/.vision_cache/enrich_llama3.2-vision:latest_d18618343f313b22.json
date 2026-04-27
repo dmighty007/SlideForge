@@ -1,0 +1,8 @@
+{
+  "caption_enhanced": "This figure shows a bar chart comparing the actual phase of a system with different phases (liq, lam, lxs, hex, gyr, bcc) across multiple phases, with each phase represented by a different color.",
+  "key_finding": "The most important result is that the actual phase of the system is different from the expected phase for each phase.",
+  "axis_labels": [
+    "Actual Phase",
+    "Percent classified"
+  ]
+}

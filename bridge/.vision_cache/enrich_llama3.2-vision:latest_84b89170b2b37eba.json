@@ -1,0 +1,15 @@
+{
+  "caption_enhanced": "The figure shows the classification of ice-III, ice-V, and ice-VI phases in the liquid-ice-III-ice-V-ice-VI-hydr-sI-hydr-sII phase diagram, with each phase represented by a different color. The percentages of each phase are shown on the y-axis.",
+  "key_finding": "The most important result is that the hydr-sI and hydr-sII phases are both present in the system, but they are not as stable as the other phases.",
+  "axis_labels": [
+    "Liquid",
+    "ice-Ih",
+    "ice-Ic",
+    "ice-III",
+    "ice-V",
+    "ice-VI",
+    "hyd-sI",
+    "hyd-sII",
+    "Percent classified"
+  ]
+}

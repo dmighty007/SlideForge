@@ -1,0 +1,9 @@
+{
+  "caption_enhanced": "The figure shows a line plot of seed size over time for three different sets of data (purple, green, and blue) with different ranges (r_c = 1.5, 2.0, and 2.6) and different seed sizes (r_c = 1.5, 2.0, and 2.6).",
+  "key_finding": "The most important result is that the seed size increases over time for all three sets of data, but the rate of increase is different for each set.",
+  "axis_labels": [
+    "Time",
+    "Seed size"
+  ],
+  "figure_type": "graph"
+}

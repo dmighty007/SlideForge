@@ -1,0 +1,15 @@
+{
+  "is_figure": true,
+  "confidence": 0.9,
+  "figure_type": "chart",
+  "brief_reason": "The image appears to be a bar chart with multiple bars of different colors.",
+  "caption_enhanced": "The chart shows the distribution of different types of data, with each bar representing a specific category.",
+  "key_finding": "The chart indicates that the majority of the data falls within the 'liq' category.",
+  "axis_labels": [
+    "liq",
+    "lam",
+    "ixs",
+    "gyr",
+    "bcc"
+  ]
+}

@@ -1,0 +1,703 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SlideForge — Professional Presentation Builder</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        surface: "#F8FAFC",
+                        canvas: "#FFFFFF",
+                        primary: "#2563EB",
+                        "primary-hover": "#1D4ED8",
+                        accent: "#10B981",
+                        "text-main": "#0F172A",
+                        "text-sub": "#475569",
+                        border: "#E5E7EB",
+                        sidebar: "#FFFFFF",
+                        panel: "#FFFFFF",
+                    },
+                    fontFamily: {
+                        sans: ["Inter", "system-ui", "sans-serif"],
+                    },
+                    boxShadow: {
+                        slide: "0 20px 50px rgba(0,0,0,0.08)",
+                        panel: "2px 0 8px rgba(0,0,0,0.04)",
+                        toolbar: "0 1px 4px rgba(0,0,0,0.06)",
+                    },
+                },
+            },
+        };
+    </script>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=DM+Sans:wght@400;500;700&family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Manrope:wght@400;500;700;800&family=Montserrat:wght@500;700;800&family=Newsreader:opsz,wght@6..72,500;6..72,700&family=Space+Grotesk:wght@400;500;700&family=Work+Sans:wght@400;500;700&display=swap" />
+
+    <!-- Reveal.js CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reveal.min.css" />
+    <link id="reveal-theme" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/theme/white.min.css" />
+
+    <!-- KaTeX for LaTeX -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+
+    <!-- App Styles -->
+    <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body class="font-sans bg-surface text-text-main flex flex-col h-screen overflow-hidden select-none">
+
+    <!-- ═══════════════════════════════════════════════════════════ TOP TOOLBAR -->
+    <header id="app-toolbar" class="toolbar-shell z-30 shrink-0">
+        <div class="toolbar-brand">
+            <div class="toolbar-logo">
+                <i class="fa-solid fa-layer-group text-white text-xs"></i>
+            </div>
+            <div class="toolbar-brand-copy">
+                <span class="toolbar-product">SlideForge</span>
+                <div class="toolbar-meta">
+                    <span id="slide-counter">Slide 1 / 1</span>
+                    <span id="autosave-status">Autosave on</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="toolbar-project">
+            <div class="toolbar-cluster">
+                <button onclick="createNewProject()" class="toolbar-btn" title="New Project">
+                    <i class="fa-regular fa-file text-sm"></i>
+                </button>
+                <button onclick="openProjectsModal()" class="toolbar-btn" title="Open Saved Project">
+                    <i class="fa-regular fa-folder-open text-sm"></i>
+                </button>
+            </div>
+            <div class="toolbar-title-wrap">
+                <div class="toolbar-title-card">
+                    <div class="toolbar-title-row">
+                        <span class="toolbar-title-label">Project</span>
+                        <input
+                            id="project-title-input"
+                            type="text"
+                            value="Untitled Presentation"
+                            placeholder="Project title"
+                            class="toolbar-title-input"
+                            title="Project Title"
+                        />
+                        <span id="project-save-hint" class="toolbar-title-hint">Saved</span>
+                        <button onclick="saveCurrentProject()" class="toolbar-btn toolbar-btn-primary toolbar-save-btn" title="Save Project">
+                            <i class="fa-regular fa-floppy-disk text-sm"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="toolbar-actions">
+            <div class="toolbar-cluster toolbar-cluster-muted">
+                <button onclick="undo()" title="Undo (Ctrl+Z)" class="toolbar-btn" id="btn-undo">
+                    <i class="fa-solid fa-rotate-left text-sm"></i>
+                </button>
+                <label class="toolbar-label" for="theme-selector">Theme</label>
+                <select id="theme-selector" class="toolbar-select">
+                    <option value="editorial">Editorial</option>
+                    <option value="blueprint">Blueprint</option>
+                    <option value="fieldnotes">Field Notes</option>
+                    <option value="monograph">Monograph</option>
+                    <option value="graphite">Graphite</option>
+                    <option value="horizon">Horizon</option>
+                </select>
+            </div>
+
+            <div class="toolbar-cluster">
+                <button id="toolbar-ai-import" onclick="triggerAIImportPicker()" title="Import PDF or AI JSON" class="toolbar-btn toolbar-btn-accent">
+                    <i class="fa-solid fa-wand-magic-sparkles text-sm"></i>
+                    <span class="toolbar-btn-label">AI Import</span>
+                </button>
+                <button onclick="copySelectionToClipboard()" class="toolbar-btn" title="Copy Selected Element">
+                    <i class="fa-regular fa-copy text-sm"></i>
+                </button>
+                <button onclick="pasteFromClipboard()" class="toolbar-btn" title="Paste From Clipboard">
+                    <i class="fa-regular fa-clipboard text-sm"></i>
+                </button>
+            </div>
+
+            <div class="toolbar-cluster toolbar-cluster-strong">
+                <button onclick="togglePlayMode()" id="btn-present" class="toolbar-btn toolbar-btn-success" title="Present">
+                    <i class="fa-solid fa-play text-sm"></i>
+                    <span class="toolbar-btn-label">Present</span>
+                </button>
+                <button onclick="exportPresentationZip()" class="toolbar-btn toolbar-btn-primary" title="Export">
+                    <i class="fa-solid fa-file-zipper text-sm"></i>
+                    <span class="toolbar-btn-label">Export</span>
+                </button>
+            </div>
+
+            <div class="toolbar-cluster toolbar-auth">
+                <button id="auth-menu-button" class="toolbar-user-btn" onclick="toggleUserMenu()" title="Account">
+                    <span id="auth-user-glyph" class="toolbar-user-glyph">
+                        <i class="fa-regular fa-user"></i>
+                    </span>
+                    <span id="auth-status" class="toolbar-auth-status">Guest</span>
+                    <i class="fa-solid fa-chevron-down text-[10px] text-slate-400"></i>
+                </button>
+                <div id="auth-menu" class="toolbar-user-menu hidden">
+                    <div id="auth-menu-header" class="toolbar-user-menu-header">Not signed in</div>
+                    <button id="auth-primary-btn" type="button" class="toolbar-user-menu-item" onclick="openAuthModal('login')">
+                        <i class="fa-solid fa-right-to-bracket"></i>
+                        <span>Sign In</span>
+                    </button>
+                    <button id="auth-secondary-btn" type="button" class="toolbar-user-menu-item" onclick="openAuthModal('register')">
+                        <i class="fa-regular fa-user-plus"></i>
+                        <span>Register</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- ═══════════════════════════════════════════════════════════ MAIN BODY -->
+    <div class="flex flex-1 min-h-0">
+
+        <!-- ══════════════════════════════════════ LEFT SIDEBAR -->
+        <aside class="w-56 bg-white border-r border-border flex flex-col z-20 shrink-0 shadow-panel">
+
+            <!-- Tab Switcher -->
+            <div class="flex border-b border-border shrink-0">
+                <button id="tab-slides" onclick="switchSidebarTab('slides')"
+                    class="sidebar-tab sidebar-tab-active flex-1 py-2.5 text-xs font-semibold">
+                    <i class="fa-regular fa-images mr-1.5"></i>Slides
+                </button>
+                <button id="tab-elements" onclick="switchSidebarTab('elements')"
+                    class="sidebar-tab flex-1 py-2.5 text-xs font-semibold">
+                    <i class="fa-solid fa-plus mr-1.5"></i>Elements
+                </button>
+            </div>
+
+            <!-- SLIDES TAB -->
+            <div id="panel-slides" class="flex flex-col flex-1 min-h-0">
+                <!-- Add Slide CTA -->
+                <div class="p-3 border-b border-border shrink-0">
+                    <button onclick="addSlide()"
+                        class="w-full py-2 rounded-lg bg-primary text-white text-xs font-semibold hover:bg-primary-hover transition-colors flex items-center justify-center gap-2 shadow-sm">
+                        <i class="fa-solid fa-plus"></i> New Slide
+                    </button>
+                </div>
+                <!-- Slide Thumbnails -->
+                <div id="slide-previews" class="flex-1 overflow-y-auto p-3 space-y-2 bg-surface/50">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+
+            <!-- ELEMENTS TAB -->
+            <div id="panel-elements" class="flex flex-col flex-1 min-h-0 hidden">
+                <div class="flex-1 overflow-y-auto p-3 space-y-1">
+
+                    <!-- Section: Content -->
+                    <p class="element-section-label">Content</p>
+                    <div class="space-y-1">
+                        <button onclick="addElement('text')" class="element-btn">
+                            <i class="fa-solid fa-t w-5 text-primary"></i>
+                            <span>Text Block</span>
+                        </button>
+                        <button onclick="document.getElementById('image-file-upload').click()" class="element-btn">
+                            <i class="fa-regular fa-image w-5 text-primary"></i>
+                            <span>Image</span>
+                        </button>
+                        <button onclick="document.getElementById('html-file-upload').click()" class="element-btn">
+                            <i class="fa-solid fa-code w-5 text-violet-500"></i>
+                            <span>HTML Embed</span>
+                        </button>
+                    </div>
+
+                    <!-- Section: Math & Science -->
+                    <p class="element-section-label mt-2">Math & Science</p>
+                    <div class="element-grid">
+                        <button onclick="openEquationModal()" class="element-btn-sm">
+                            <i class="fa-solid fa-square-root-variable text-amber-500"></i>
+                            <span>LaTeX</span>
+                        </button>
+                        <button onclick="openSymbolPicker()" class="element-btn-sm">
+                            <i class="fa-solid fa-omega text-amber-500"></i>
+                            <span>Symbols</span>
+                        </button>
+                    </div>
+
+                    <!-- Section: Media -->
+                    <p class="element-section-label mt-2">Media</p>
+                    <div class="element-grid">
+                        <button onclick="addElement('video')" class="element-btn-sm">
+                            <i class="fa-solid fa-link text-blue-500"></i>
+                            <span>Video URL</span>
+                        </button>
+                        <button onclick="document.getElementById('video-file-upload').click()" class="element-btn-sm">
+                            <i class="fa-solid fa-file-video text-blue-500"></i>
+                            <span>Local Video</span>
+                        </button>
+                        <button onclick="addElement('pdf')" class="element-btn-sm">
+                            <i class="fa-regular fa-file-pdf text-red-500"></i>
+                            <span>PDF URL</span>
+                        </button>
+                        <button onclick="document.getElementById('pdf-file-upload').click()" class="element-btn-sm">
+                            <i class="fa-solid fa-file-pdf text-red-500"></i>
+                            <span>Local PDF</span>
+                        </button>
+                    </div>
+
+                    <!-- Section: Shapes -->
+                    <p class="element-section-label mt-3">Shapes</p>
+                    <div class="grid grid-cols-1 gap-1">
+                        <button onclick="openShapePicker()" class="element-btn-sm element-btn-wide">
+                            <i class="fa-regular fa-square text-text-sub"></i>
+                            <span>Shapes &amp; Arrows</span>
+                        </button>
+                    </div>
+
+                    <p class="element-section-label mt-2">Connectors</p>
+                    <div class="grid grid-cols-3 gap-1">
+                        <button onclick="addConnector('line')" class="element-btn-sm">
+                            <i class="fa-solid fa-slash text-text-sub"></i>
+                            <span>Line</span>
+                        </button>
+                        <button onclick="addConnector('curve')" class="element-btn-sm">
+                            <i class="fa-solid fa-bezier-curve text-text-sub"></i>
+                            <span>Curve</span>
+                        </button>
+                        <button onclick="addConnector('poly')" class="element-btn-sm">
+                            <i class="fa-solid fa-share-nodes text-text-sub"></i>
+                            <span>Poly</span>
+                        </button>
+                    </div>
+
+                    <!-- Section: Preset Slides -->
+                    <p class="element-section-label mt-2">Slide Presets</p>
+                    <div class="grid grid-cols-2 gap-1.5" id="preset-slides-list">
+                        <button onclick="insertPresetSlide('title-page')" class="element-btn-sm">
+                            <i class="fa-solid fa-star text-yellow-400"></i>
+                            <span class="text-[9px]">Title Page</span>
+                        </button>
+                        <button onclick="insertPresetSlide('section-divider')" class="element-btn-sm">
+                            <i class="fa-solid fa-grip-lines text-indigo-400"></i>
+                            <span class="text-[9px]">Divider</span>
+                        </button>
+                        <button onclick="insertPresetSlide('content-slide')" class="element-btn-sm">
+                            <i class="fa-solid fa-align-left text-blue-400"></i>
+                            <span class="text-[9px]">Content</span>
+                        </button>
+                        <button onclick="insertPresetSlide('two-column')" class="element-btn-sm">
+                            <i class="fa-solid fa-table-columns text-emerald-400"></i>
+                            <span class="text-[9px]">2 Column</span>
+                        </button>
+                        <button onclick="insertPresetSlide('figure-caption')" class="element-btn-sm">
+                            <i class="fa-solid fa-image text-purple-400"></i>
+                            <span class="text-[9px]">Figure</span>
+                        </button>
+                        <button onclick="insertPresetSlide('methodology')" class="element-btn-sm">
+                            <i class="fa-solid fa-diagram-project text-cyan-400"></i>
+                            <span class="text-[9px]">Method</span>
+                        </button>
+                        <button onclick="insertPresetSlide('results-data')" class="element-btn-sm">
+                            <i class="fa-solid fa-chart-bar text-orange-400"></i>
+                            <span class="text-[9px]">Results</span>
+                        </button>
+                        <button onclick="insertPresetSlide('conclusion')" class="element-btn-sm">
+                            <i class="fa-solid fa-flag-checkered text-green-400"></i>
+                            <span class="text-[9px]">Conclusion</span>
+                        </button>
+                        <button onclick="insertPresetSlide('bibliography')" class="element-btn-sm">
+                            <i class="fa-solid fa-book-open text-rose-400"></i>
+                            <span class="text-[9px]">Refs</span>
+                        </button>
+                        <button onclick="insertPresetSlide('blank-titled')" class="element-btn-sm">
+                            <i class="fa-regular fa-square text-gray-400"></i>
+                            <span class="text-[9px]">Blank</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ══════════════════════════════════════ CANVAS AREA -->
+        <main class="flex-1 flex flex-col min-w-0 bg-surface relative">
+            <!-- Canvas wrapper (Reveal.js lives here) -->
+            <div class="flex-1 relative editor-mode overflow-hidden" id="canvas-wrapper">
+                <div class="reveal">
+                    <div class="slides" id="slides-container"></div>
+                </div>
+
+                <!-- Play Mode Exit Button -->
+                <div class="play-mode-ui fixed top-4 right-4 z-[300]">
+                    <button onclick="togglePlayMode()"
+                        class="px-4 py-2 rounded-lg bg-black/70 backdrop-blur text-white text-sm font-medium hover:bg-black/80 transition-all flex items-center gap-2">
+                        <i class="fa-solid fa-xmark"></i> Exit
+                    </button>
+                </div>
+
+                <!-- Floating Text Toolbar -->
+                <div id="floating-text-toolbar" class="floating-text-toolbar hidden">
+                    <!-- Text Controls -->
+                    <button id="floating-text-bold" class="floating-text-button" title="Bold (Ctrl+B)">
+                        <i class="fa-solid fa-bold"></i>
+                    </button>
+                    <button id="floating-text-italic" class="floating-text-button" title="Italic (Ctrl+I)">
+                        <i class="fa-solid fa-italic"></i>
+                    </button>
+                    <div class="floating-toolbar-divider"></div>
+                    <select id="floating-text-font" class="floating-text-select" title="Font Family" style="width:110px;">
+                        <option value="Inter, sans-serif">Inter</option>
+                        <option value='"Manrope", sans-serif'>Manrope</option>
+                        <option value='"DM Sans", sans-serif'>DM Sans</option>
+                        <option value='"Work Sans", sans-serif'>Work Sans</option>
+                        <option value='"Space Grotesk", sans-serif'>Space Grotesk</option>
+                        <option value='"Montserrat", sans-serif'>Montserrat</option>
+                        <option value='"Fraunces", serif'>Fraunces</option>
+                        <option value='"Newsreader", serif'>Newsreader</option>
+                    </select>
+                    <input type="text" id="floating-text-size" class="floating-text-select text-center" style="width:64px;" title="Font Size" placeholder="Size">
+                    <input type="color" id="floating-text-color" class="floating-text-button p-0 border-0" style="width:28px;height:28px;cursor:pointer;border-radius:6px;overflow:hidden;" title="Text Color">
+                    <div class="floating-toolbar-divider"></div>
+                    <button id="floating-text-sub" class="floating-text-button" title="Subscript">
+                        <i class="fa-solid fa-subscript"></i>
+                    </button>
+                    <button id="floating-text-sup" class="floating-text-button" title="Superscript">
+                        <i class="fa-solid fa-superscript"></i>
+                    </button>
+                    <div class="floating-toolbar-divider"></div>
+                    <button id="floating-insert-symbol" class="floating-text-button" title="Insert Symbol" onclick="openSymbolPicker()">
+                        <i class="fa-solid fa-icons"></i>
+                    </button>
+                    <button id="floating-insert-equation" class="floating-text-button" title="Insert Equation" onclick="openEquationModal()">
+                        <i class="fa-solid fa-square-root-variable"></i>
+                    </button>
+
+                </div>
+
+                <!-- Dot grid overlay (editor only) -->
+                <div class="editor-ui absolute inset-0 pointer-events-none"
+                    style="background-image: radial-gradient(circle, #CBD5E1 1px, transparent 1px); background-size: 24px 24px; opacity: 0.5;">
+                </div>
+
+                <!-- Marquee -->
+                <div id="marquee" class="absolute border-2 border-primary bg-primary/10 pointer-events-none hidden z-[100] rounded-sm"></div>
+
+                <!-- Group Bound -->
+                <div id="group-bound" class="absolute border-2 border-primary/60 hidden z-[90] rounded-sm" style="cursor:move;">
+                    <span class="resize-handle tr"></span>
+                    <span class="resize-handle tl"></span>
+                    <span class="resize-handle br"></span>
+                    <span class="resize-handle bl"></span>
+                    <span class="resize-handle tc"></span>
+                    <span class="resize-handle bc"></span>
+                    <span class="resize-handle lc"></span>
+                    <span class="resize-handle rc"></span>
+                </div>
+            </div>
+        </main>
+
+        <!-- ══════════════════════════════════════ RIGHT PANEL (Properties) -->
+        <aside id="properties-panel" class="w-72 bg-white border-l border-border flex flex-col z-20 shrink-0 shadow-panel">
+            <div class="h-11 border-b border-border flex items-center px-4 shrink-0">
+                <h2 class="text-xs font-bold text-text-sub uppercase tracking-widest">Properties</h2>
+            </div>
+            <div class="flex-1 overflow-y-auto" id="properties-content">
+                <div class="flex flex-col items-center justify-center h-full text-text-sub gap-3 py-20 px-6">
+                    <div class="w-12 h-12 rounded-xl bg-surface flex items-center justify-center border border-border">
+                        <i class="fa-solid fa-arrow-pointer text-xl text-text-sub/50"></i>
+                    </div>
+                    <p class="text-sm text-center text-text-sub/60">Select an element to edit its properties</p>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- ══════════════════════════════════════════ HIDDEN FILE INPUTS -->
+    <input type="file" id="ai-json-upload" accept=".json,.pdf,application/json,application/pdf" class="hidden" onchange="handleAIImportUpload(event)" />
+    <input type="file" id="image-file-upload" accept="image/*" class="hidden" onchange="handleImageFileInsert(event)" />
+    <input type="file" id="html-file-upload" accept=".html,.htm,text/html" class="hidden" onchange="handleHtmlFileInsert(event)" />
+    <input type="file" id="video-file-upload" accept="video/*" class="hidden" onchange="handleVideoFileInsert(event)" />
+    <input type="file" id="pdf-file-upload" accept=".pdf,application/pdf" class="hidden" onchange="handlePdfFileInsert(event)" />
+
+    <div id="ai-import-progress-modal" class="fixed inset-0 bg-slate-950/45 hidden items-center justify-center z-[120]">
+        <div id="ai-import-progress-card" class="w-[min(92vw,560px)] rounded-2xl border border-slate-200 bg-white shadow-2xl p-6 transition-colors duration-300">
+            <div class="flex items-start justify-between gap-4">
+                <div>
+                    <div id="ai-import-progress-title" class="text-sm font-semibold text-slate-900">AI Import In Progress</div>
+                    <div id="ai-import-progress-message" class="text-sm text-slate-500 mt-1">Preparing PDF processing…</div>
+                </div>
+                <button type="button" onclick="hideAIImportProgress()" class="text-slate-400 hover:text-slate-600" title="Hide progress">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="mt-5 h-3 rounded-full bg-slate-100 overflow-hidden">
+                <div id="ai-import-progress-bar" class="h-full w-0 bg-gradient-to-r from-violet-500 to-sky-500 transition-all duration-300"></div>
+            </div>
+            <div class="mt-3 flex items-center justify-between text-xs text-slate-500">
+                <span id="ai-import-progress-label">0%</span>
+                <span id="ai-import-progress-event">queued</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="auth-modal" class="fixed inset-0 bg-slate-950/45 hidden items-center justify-center z-[300]">
+        <div class="w-[min(92vw,420px)] rounded-2xl border border-slate-200 bg-white shadow-2xl p-6">
+            <div class="flex items-start justify-between gap-4">
+                <div>
+                    <div id="auth-modal-title" class="text-sm font-semibold text-slate-900">Sign in</div>
+                    <div id="auth-modal-subtitle" class="text-sm text-slate-500 mt-1">Sign in to load, save, and import presentations.</div>
+                </div>
+            </div>
+            <form class="mt-5 space-y-3" onsubmit="submitAuthForm(event)">
+                <input id="auth-username" type="text" autocomplete="username" placeholder="Username" class="w-full border border-border rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/30">
+                <input id="auth-password" type="password" autocomplete="current-password" placeholder="Password" class="w-full border border-border rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/30">
+                <div id="auth-error" class="text-xs text-red-500 min-h-4"></div>
+                <div class="flex gap-3 pt-1">
+                    <button type="submit" id="auth-submit-btn" class="flex-1 py-2 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary-hover transition-colors">Sign in</button>
+                    <button type="button" id="auth-toggle-btn" onclick="toggleAuthMode()" class="flex-1 py-2 rounded-xl border border-border text-sm font-medium text-text-sub hover:bg-surface transition-colors">Create account</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="projects-modal" class="fixed inset-0 bg-slate-950/45 hidden items-center justify-center z-[300]">
+        <div class="w-[min(92vw,560px)] rounded-2xl border border-slate-200 bg-white shadow-2xl p-6">
+            <div class="flex items-start justify-between gap-4">
+                <div>
+                    <div class="text-sm font-semibold text-slate-900">Saved Projects</div>
+                    <div class="text-sm text-slate-500 mt-1">Open a previously saved presentation.</div>
+                </div>
+                <button type="button" onclick="closeProjectsModal()" class="text-slate-400 hover:text-slate-600" title="Close">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div id="projects-status" class="text-sm text-slate-500 mt-5"></div>
+            <div id="projects-list" class="mt-4 space-y-3 max-h-[60vh] overflow-y-auto"></div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════ SYMBOL PICKER MODAL -->
+    <div id="symbol-picker-modal" style="display:none" class="fixed inset-0 z-[500] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl shadow-2xl w-[520px] max-h-[75vh] flex flex-col border border-border">
+            <div class="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
+                <h3 class="text-sm font-semibold text-text-main">Insert Symbol</h3>
+                <button onclick="closeSymbolPicker()" class="text-text-sub hover:text-text-main w-7 h-7 flex items-center justify-center rounded-lg hover:bg-surface transition-colors">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="p-4 overflow-y-auto">
+                <p class="text-[10px] font-bold text-text-sub uppercase tracking-widest mb-2">Symbols &amp; Math</p>
+                <div id="symbol-grid" class="grid grid-cols-10 gap-1"></div>
+            </div>
+            <div class="px-5 py-3 border-t border-border text-xs text-text-sub shrink-0">
+                Click a symbol to insert it at the cursor position in a selected text box, or as a new text element.
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════ SHAPE PICKER MODAL -->
+    <div id="shape-picker-modal" style="display:none" class="fixed inset-0 z-[500] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+        <div class="shape-picker-sheet bg-white rounded-2xl shadow-2xl w-[560px] max-w-[92vw] flex flex-col border border-border">
+            <div class="flex items-center justify-between px-5 py-3 border-b border-border">
+                <div>
+                    <h3 class="text-sm font-semibold text-text-main">Insert Shape</h3>
+                    <p class="text-xs text-text-sub">Basic shapes and directional arrows</p>
+                </div>
+                <button onclick="closeShapePicker()" class="text-text-sub hover:text-text-main w-7 h-7 flex items-center justify-center rounded-lg hover:bg-surface transition-colors">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="p-5">
+                <div class="shape-picker-grid">
+                    <button onclick="insertShapeFromPicker('rectangle')" class="shape-picker-item">
+                        <i class="fa-regular fa-square"></i>
+                        <span>Rectangle</span>
+                    </button>
+                    <button onclick="insertShapeFromPicker('circle')" class="shape-picker-item">
+                        <i class="fa-regular fa-circle"></i>
+                        <span>Circle</span>
+                    </button>
+                    <button onclick="insertShapeFromPicker('triangle')" class="shape-picker-item">
+                        <i class="fa-solid fa-play rotate-90"></i>
+                        <span>Triangle</span>
+                    </button>
+                    <button onclick="insertShapeFromPicker('diamond')" class="shape-picker-item">
+                        <i class="fa-regular fa-gem"></i>
+                        <span>Diamond</span>
+                    </button>
+                    <button onclick="insertShapeFromPicker('hexagon')" class="shape-picker-item">
+                        <i class="fa-solid fa-stop"></i>
+                        <span>Hexagon</span>
+                    </button>
+                    <button onclick="insertShapeFromPicker('parallelogram')" class="shape-picker-item">
+                        <i class="fa-solid fa-minus"></i>
+                        <span>Parallelogram</span>
+                    </button>
+                    <button onclick="insertShapeFromPicker('arrow-right')" class="shape-picker-item">
+                        <i class="fa-solid fa-arrow-right"></i>
+                        <span>Arrow Right</span>
+                    </button>
+                    <button onclick="insertShapeFromPicker('arrow-left')" class="shape-picker-item">
+                        <i class="fa-solid fa-arrow-left"></i>
+                        <span>Arrow Left</span>
+                    </button>
+                    <button onclick="insertShapeFromPicker('arrow-up')" class="shape-picker-item">
+                        <i class="fa-solid fa-arrow-up"></i>
+                        <span>Arrow Up</span>
+                    </button>
+                    <button onclick="insertShapeFromPicker('arrow-down')" class="shape-picker-item">
+                        <i class="fa-solid fa-arrow-down"></i>
+                        <span>Arrow Down</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════ EQUATION MODAL -->
+    <div id="equation-modal" style="display:none" class="fixed inset-0 z-[500] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl shadow-2xl w-[560px] flex flex-col border border-border">
+            <div class="flex items-center justify-between px-5 py-3 border-b border-border">
+                <h3 class="text-sm font-semibold text-text-main"><i class="fa-solid fa-square-root-variable text-amber-500 mr-2"></i>Insert LaTeX Equation</h3>
+                <button onclick="closeEquationModal()" class="text-text-sub hover:text-text-main w-7 h-7 flex items-center justify-center rounded-lg hover:bg-surface">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="p-5 space-y-4">
+                <div>
+                    <label class="text-xs font-semibold text-text-sub uppercase tracking-wider block mb-2">LaTeX Expression</label>
+                    <textarea id="equation-input" rows="3"
+                        class="w-full border border-border rounded-xl px-3 py-2 text-sm font-mono bg-surface focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+                        placeholder="e.g.  \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}"
+                        oninput="previewEquation()"></textarea>
+                </div>
+                <div class="bg-surface rounded-xl border border-border p-4 min-h-[64px] flex items-center justify-center" id="equation-preview">
+                    <span class="text-text-sub text-xs">Preview will appear here…</span>
+                </div>
+                <div class="flex gap-2 flex-wrap">
+                    <span class="text-[10px] font-bold text-text-sub uppercase tracking-widest w-full">Quick Insert</span>
+                    <button onclick="setEquationQuick('\\frac{a}{b}')" class="px-2 py-1 rounded-lg border border-border text-xs hover:border-primary hover:text-primary transition-colors font-mono">a/b</button>
+                    <button onclick="setEquationQuick('\\sqrt{x}')" class="px-2 py-1 rounded-lg border border-border text-xs hover:border-primary hover:text-primary transition-colors font-mono">√x</button>
+                    <button onclick="setEquationQuick('\\sum_{i=0}^{n}')" class="px-2 py-1 rounded-lg border border-border text-xs hover:border-primary hover:text-primary transition-colors font-mono">Σ</button>
+                    <button onclick="setEquationQuick('\\int_{a}^{b}')" class="px-2 py-1 rounded-lg border border-border text-xs hover:border-primary hover:text-primary transition-colors font-mono">∫</button>
+                    <button onclick="setEquationQuick('\\lim_{x \\to \\infty}')" class="px-2 py-1 rounded-lg border border-border text-xs hover:border-primary hover:text-primary transition-colors font-mono">lim</button>
+                    <button onclick="setEquationQuick('\\vec{v} = \\frac{d\\vec{r}}{dt}')" class="px-2 py-1 rounded-lg border border-border text-xs hover:border-primary hover:text-primary transition-colors font-mono">d/dt</button>
+                    <button onclick="setEquationQuick('\\alpha \\beta \\gamma \\delta')" class="px-2 py-1 rounded-lg border border-border text-xs hover:border-primary hover:text-primary transition-colors font-mono">αβγδ</button>
+                    <button onclick="setEquationQuick('E = mc^2')" class="px-2 py-1 rounded-lg border border-border text-xs hover:border-primary hover:text-primary transition-colors font-mono">E=mc²</button>
+                    <button onclick="setEquationQuick('\\hat{H}\\psi = E\\psi')" class="px-2 py-1 rounded-lg border border-border text-xs hover:border-primary hover:text-primary transition-colors font-mono">Ĥψ=Eψ</button>
+                </div>
+            </div>
+            <div class="flex gap-3 px-5 py-4 border-t border-border">
+                <button onclick="closeEquationModal()" class="flex-1 py-2 rounded-xl border border-border text-sm font-medium text-text-sub hover:bg-surface transition-colors">Cancel</button>
+                <button onclick="insertEquation()" class="flex-1 py-2 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary-hover transition-colors">Insert Equation</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════ EXTERNAL LIBS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reveal.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js-plugins@4.6.0/chalkboard/style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/reveal.js-plugins@4.6.0/chalkboard/plugin.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+
+    <!-- ══════════════════════════════════════════ APP SCRIPTS -->
+    <script src="js/state.js"></script>
+    <script src="js/textContent.js"></script>
+    <script src="js/themes.js"></script>
+    <script src="js/htmlEmbed.js"></script>
+    <script src="js/textLayout.js"></script>
+    <script src="js/textSelection.js"></script>
+    <script src="js/crop.js"></script>
+    <script src="js/render.js"></script>
+    <script src="js/properties.js"></script>
+    <script src="js/interact.js"></script>
+    <script src="js/export.js"></script>
+    <script src="js/components.js"></script>
+    <script src="js/commands.js"></script>
+    <script src="js/keyboard.js"></script>
+    <script src="js/main.js"></script>
+
+    <!-- ══════════════════════════════════════════ UI HELPERS -->
+    <script>
+        // Sidebar tab switching
+        function switchSidebarTab(tab) {
+            const isSlides = tab === 'slides';
+            document.getElementById('tab-slides').classList.toggle('sidebar-tab-active', isSlides);
+            document.getElementById('tab-elements').classList.toggle('sidebar-tab-active', !isSlides);
+            document.getElementById('panel-slides').classList.toggle('hidden', !isSlides);
+            document.getElementById('panel-elements').classList.toggle('hidden', isSlides);
+        }
+
+        // Equation modal
+        function openEquationModal(existingLatex) {
+            window._editingEquationId = null;
+            const modal = document.getElementById('equation-modal');
+            if (modal) modal.style.display = 'flex';
+            const inp = document.getElementById('equation-input');
+            if (inp) {
+                inp.value = existingLatex || '';
+                setTimeout(() => inp.focus(), 50);
+            }
+            if (existingLatex) {
+                previewEquation();
+            } else {
+                document.getElementById('equation-preview').innerHTML = '<span style="color:#94a3b8;font-size:12px">Preview will appear here…</span>';
+            }
+        }
+
+        function closeEquationModal() {
+            const modal = document.getElementById('equation-modal');
+            if (modal) modal.style.display = 'none';
+            window._editingEquationId = null;
+        }
+
+        function previewEquation() {
+            const src = document.getElementById('equation-input').value.trim();
+            const preview = document.getElementById('equation-preview');
+            if (!src) { preview.innerHTML = '<span style="color:#94a3b8;font-size:12px">Preview will appear here…</span>'; return; }
+            try {
+                preview.innerHTML = '';
+                katex.render(src, preview, { throwOnError: false, displayMode: true });
+            } catch(e) {
+                preview.innerHTML = '<span style="color:#ef4444;font-size:12px">Invalid LaTeX</span>';
+            }
+        }
+
+        function setEquationQuick(latex) {
+            const inp = document.getElementById('equation-input');
+            if (inp) { inp.value = latex; previewEquation(); }
+        }
+
+        function insertEquation() {
+            const src = document.getElementById('equation-input').value.trim();
+            if (!src) return;
+            const editId = window._editingEquationId;
+            if (editId && typeof updateElementState === 'function') {
+                // Update existing equation element
+                let renderedHtml = src;
+                try {
+                    if (typeof katex !== 'undefined') {
+                        renderedHtml = katex.renderToString(src, { throwOnError: false, displayMode: true });
+                    }
+                } catch(e) {}
+                updateElementState(editId, { latexSrc: src, content: renderedHtml });
+                if (typeof renderSlidesFromState === 'function') renderSlidesFromState();
+            } else if (typeof addEquationElement === 'function') {
+                addEquationElement(src);
+            }
+            closeEquationModal();
+        }
+    </script>
+    <script src="js/slide-presets.js"></script>
+</body>
+</html>
