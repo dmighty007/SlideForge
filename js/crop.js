@@ -12,8 +12,9 @@ class SimpleCrop {
         this.originalEl = document.getElementById(this.elementId);
         if (!this.originalEl) return;
 
-        // Save current state for cancellation
-        this.initialTransform = this.elData.cropTransform ? { ...this.elData.cropTransform } : null;
+        // Save full element state for cancellation and undo.
+        this.initialElementState = JSON.parse(JSON.stringify(this.elData));
+        this.hasRecordedUndo = false;
 
         const img = new Image();
         img.src = this.elData.content;
@@ -110,6 +111,10 @@ class SimpleCrop {
 
     handleMouseDown(e) {
         e.stopPropagation();
+        if (!this.hasRecordedUndo && window.saveStateToUndo) {
+            window.saveStateToUndo();
+            this.hasRecordedUndo = true;
+        }
         if (e.target.classList.contains("crop-simple-handle")) {
             this.activeHandle = e.target.dataset.id;
         } else {
@@ -198,7 +203,6 @@ class SimpleCrop {
 
     confirm() {
         this.cleanup();
-        if (window.saveStateToUndo) window.saveStateToUndo();
         if (window.renderSlidesFromState) window.renderSlidesFromState();
         if (window.updateGroupBound) window.updateGroupBound();
         if (window.buildPropertiesPanel) window.buildPropertiesPanel();
@@ -206,12 +210,15 @@ class SimpleCrop {
 
     cancel() {
         this.cleanup();
-        if (this.initialTransform) {
-            this.elData.cropTransform = this.initialTransform;
-        } else {
-            delete this.elData.cropTransform;
+        const slide = state.slides[currentSlideIndex];
+        const elementIndex = slide?.elements?.findIndex(e => e.id === this.elementId) ?? -1;
+        if (elementIndex >= 0) {
+            slide.elements[elementIndex] = JSON.parse(JSON.stringify(this.initialElementState));
+            this.elData = slide.elements[elementIndex];
         }
         if (window.renderSlidesFromState) window.renderSlidesFromState();
+        if (window.updateGroupBound) window.updateGroupBound();
+        if (window.buildPropertiesPanel) window.buildPropertiesPanel();
     }
 
     cleanup() {

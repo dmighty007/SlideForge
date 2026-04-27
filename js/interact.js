@@ -111,6 +111,9 @@ function _setupElementInteract() {
                     _clearGuides();
                     updateGroupBound();
                     renderSlidePreviews();
+                    if (typeof schedulePresentationAutosave === "function") {
+                        schedulePresentationAutosave();
+                    }
                 },
             },
         })
@@ -212,6 +215,9 @@ function _setupElementInteract() {
                 end() {
                     updateGroupBound();
                     renderSlidePreviews();
+                    if (typeof schedulePresentationAutosave === "function") {
+                        schedulePresentationAutosave();
+                    }
                 },
             },
         });
@@ -270,6 +276,9 @@ function _setupGroupBoundInteract() {
                 );
                 updateGroupBound();
                 renderSlidePreviews();
+                if (typeof schedulePresentationAutosave === "function") {
+                    schedulePresentationAutosave();
+                }
             }
         }
     });
@@ -337,6 +346,9 @@ function _setupGroupBoundInteract() {
         window.removeEventListener("mouseup", onUp);
         renderSlidePreviews();
         updateGroupBound();
+        if (typeof schedulePresentationAutosave === "function") {
+            schedulePresentationAutosave();
+        }
     };
 
     handles.forEach(handle => {

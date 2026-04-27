@@ -16,6 +16,17 @@ def _auth_required(request):
     return JsonResponse({"error": "Authentication required"}, status=401)
 
 
+def _looks_like_pdf(uploaded_file=None, raw_body=b""):
+    if uploaded_file is not None:
+        try:
+            head = uploaded_file.read(5)
+            uploaded_file.seek(0)
+        except Exception:
+            return False
+        return head == b"%PDF-"
+    return bytes(raw_body[:5]) == b"%PDF-"
+
+
 @csrf_exempt
 @require_POST
 def ai_import_start(request):
@@ -31,6 +42,8 @@ def ai_import_start(request):
 
     if uploaded_file is None and not request.body:
         return HttpResponseBadRequest("Empty upload")
+    if not _looks_like_pdf(uploaded_file, request.body):
+        return HttpResponseBadRequest("Uploaded file is not a valid PDF")
 
     job = ImportJob.objects.create(
         owner=request.user,

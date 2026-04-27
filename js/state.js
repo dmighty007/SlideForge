@@ -47,6 +47,7 @@ let state = buildDefaultPresentationState();
 
 let currentSlideIndex = 0;
 let undoStack = [];
+let redoStack = [];
 let currentPresentationId = null;
 let currentPresentationAutosaveVersion = 0;
 let currentPresentationTitle = "Untitled Presentation";
@@ -346,15 +347,47 @@ function setSelectedIds(ids) {
     state.selectedIds = Array.from(new Set(asArray.filter(Boolean)));
 }
 
+function _serializeEditorSnapshot() {
+    return JSON.stringify({
+        state,
+        currentSlideIndex,
+    });
+}
+
+function _restoreEditorSnapshot(rawSnapshot) {
+    const parsed = JSON.parse(rawSnapshot);
+    if (parsed && typeof parsed === "object" && parsed.state && Array.isArray(parsed.state.slides)) {
+        state = parsed.state;
+        currentSlideIndex = Number.isInteger(parsed.currentSlideIndex) ? parsed.currentSlideIndex : currentSlideIndex;
+        return true;
+    }
+    if (parsed && typeof parsed === "object" && Array.isArray(parsed.slides)) {
+        state = parsed;
+        return true;
+    }
+    return false;
+}
+
 function saveStateToUndo() {
-    undoStack.push(JSON.stringify(state));
+    undoStack.push(_serializeEditorSnapshot());
     if (undoStack.length > 30) undoStack.shift();
+    redoStack = [];
 }
 
 function restoreUndoState() {
     if (undoStack.length > 0) {
-        state = JSON.parse(undoStack.pop());
-        return true;
+        redoStack.push(_serializeEditorSnapshot());
+        if (redoStack.length > 30) redoStack.shift();
+        return _restoreEditorSnapshot(undoStack.pop());
+    }
+    return false;
+}
+
+function restoreRedoState() {
+    if (redoStack.length > 0) {
+        undoStack.push(_serializeEditorSnapshot());
+        if (undoStack.length > 30) undoStack.shift();
+        return _restoreEditorSnapshot(redoStack.pop());
     }
     return false;
 }

@@ -6,6 +6,7 @@ __pycache__/
 db.sqlite3
 media/
 extracted_figures/
+bridge/.vision_cache/
 
 scratch/
 out.json

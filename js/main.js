@@ -373,7 +373,7 @@ window.openShapePicker = openShapePicker;
 window.closeShapePicker = closeShapePicker;
 window.insertShapeFromPicker = insertShapeFromPicker;
 window.undo = undo;
-window.redo = () => {}; // TODO: implement redo
+window.redo = redo;
 window.copyElement = copyElement;
 window.pasteElement = pasteElement;
 window.copySelectionToClipboard = copySelectionToClipboard;

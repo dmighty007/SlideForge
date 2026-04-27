@@ -1082,6 +1082,9 @@ function _applyTypeContent(el, elData) {
             el.classList.remove("cursor-text", "editing-text");
             interact(el).draggable(true);
             interact(el).resizable(true);
+            if (typeof schedulePresentationAutosave === "function") {
+                schedulePresentationAutosave();
+            }
         });
     } else if (elData.type === "image") {
         if (elData.cropTransform) {

@@ -72,6 +72,7 @@ function initKeyboard() {
         
         // Delete / Backspace: Delete selected elements
         if ((e.key === "Delete" || e.key === "Backspace") && state.selectedIds.length) {
+            e.preventDefault();
             deleteSelectedElements();
         }
         

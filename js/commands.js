@@ -330,6 +330,9 @@ function nudgeSelectedElements(dx, dy) {
     });
     updateGroupBound();
     renderSlidePreviews();
+    if (typeof schedulePresentationAutosave === "function") {
+        schedulePresentationAutosave();
+    }
 }
 
 // ─── Clipboard ───────────────────────────────────────────────────────────────
@@ -1963,6 +1966,15 @@ async function handleAIImportUpload(event) {
 
 function undo() {
     if (restoreUndoState()) {
+        renderSlidesFromState();
+        clearSelection();
+        Reveal.slide(Math.min(currentSlideIndex, state.slides.length - 1));
+        updateSlideCounter();
+    }
+}
+
+function redo() {
+    if (restoreRedoState()) {
         renderSlidesFromState();
         clearSelection();
         Reveal.slide(Math.min(currentSlideIndex, state.slides.length - 1));
