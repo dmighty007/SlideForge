@@ -18,25 +18,35 @@ from pathlib import Path
 import requests
 
 _VISION_PRIORITY = [
-    "llama3.2-vision:latest",
-    "llama3.2-vision",
-    "qwen2.5vl",
-    "qwen2.5-vl",
-    "llama3.2-vision:90b",
-    "llama3.2-vision:11b",
-    "llava:34b",
-    "llava:13b",
-    "minicpm-v",
-    "llava",
-    "moondream",
-    "bakllava",
-    "llava-phi3",
+    "gemma4:latest",
+    "gemma4:31b",
+    # "llama3.2-vision:latest",
+    # "llama3.2-vision",
+    # "qwen2.5vl",
+    # "qwen2.5-vl",
+    # "llama3.2-vision:90b",
+    # "llama3.2-vision:11b",
+    # "llava:34b",
+    # "llava:13b",
+    # "minicpm-v",
+    # "llava",
+    # "moondream",
+    # "bakllava",
+    # "llava-phi3",
 ]
 _OLLAMA_BASE = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 _CACHE_DIR = Path(__file__).parent / ".vision_cache"
 _LOW_SIGNAL_TEXT = (
-    "logo", "publisher", "cover page", "table of contents", "graphical abstract",
-    "dense paragraph", "copyright", "journal page", "title page", "author list",
+    "logo",
+    "publisher",
+    "cover page",
+    "table of contents",
+    "graphical abstract",
+    "dense paragraph",
+    "copyright",
+    "journal page",
+    "title page",
+    "author list",
 )
 
 
@@ -232,12 +242,16 @@ def enrich_catalog(visual_catalog: list, status_cb=None) -> list:
                     status_cb("vision_candidate", f"Screened {entry.get('id', path)}", {"current": idx, "total": total})
                 if _should_drop_candidate(new_entry):
                     if status_cb:
-                        status_cb("vision_candidate", f"Rejected {entry.get('id', path)}", {"current": idx, "total": total})
+                        status_cb(
+                            "vision_candidate", f"Rejected {entry.get('id', path)}", {"current": idx, "total": total}
+                        )
                     continue
         if new_entry.get("vision"):
             enriched.append(new_entry)
             if status_cb:
-                status_cb("vision_figure", f"Reused enrichment for {entry.get('id', path)}", {"current": idx, "total": total})
+                status_cb(
+                    "vision_figure", f"Reused enrichment for {entry.get('id', path)}", {"current": idx, "total": total}
+                )
             continue
         if path and os.path.isfile(path):
             result = enrich_figure(path, model=model)

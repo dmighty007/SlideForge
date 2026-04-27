@@ -1,38 +1,42 @@
-import os
-import requests
-import re
 import json
+import os
+import re
 import sys
+
+import requests
 
 # Ensure local imports work when running as a script
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 try:
-    from utils import _parse_jsonish
-    from vision import _available_vision_model
     from standalone_pdf2ppt import (
-        GroqProvider,
         GeminiProvider,
+        GroqProvider,
         OllamaProvider,
         SmartFallbackProvider,
     )
+    from utils import _parse_jsonish
+    from vision import _available_vision_model
 except (ImportError, ModuleNotFoundError):
     try:
-        from .utils import _parse_jsonish
-        from .vision import _available_vision_model
         from .standalone_pdf2ppt import (
-            GroqProvider,
             GeminiProvider,
+            GroqProvider,
             OllamaProvider,
             SmartFallbackProvider,
         )
+        from .utils import _parse_jsonish
+        from .vision import _available_vision_model
     except Exception:
         # Fallback for some environments
         import utils
+
         _parse_jsonish = utils._parse_jsonish
 
 _OLLAMA_BASE = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
-_TEXT_MODEL_PRIORITY = ["llama3.1:8b", "qwen2.5:7b", "llama3:latest"]
+# _TEXT_MODEL_PRIORITY = ["llama3.1:8b", "qwen2.5:7b", "llama3:latest"]
+_TEXT_MODEL_PRIORITY = ["gemma4:latest", "gemma4:31b"]
+
 
 def _available_ollama_models() -> set[str]:
     """Return installed Ollama model names, including tagless aliases."""
@@ -50,6 +54,7 @@ def _available_ollama_models() -> set[str]:
     except Exception:
         return set()
 
+
 def _choose_text_model() -> str | None:
     available = _available_ollama_models()
     for model in _TEXT_MODEL_PRIORITY:
@@ -59,6 +64,7 @@ def _choose_text_model() -> str | None:
         if base in available:
             return model if ":" in model else base
     return None
+
 
 def _validate_local_models() -> tuple[str, str]:
     """Require both a local vision model and a local text model."""
@@ -77,6 +83,7 @@ def _validate_local_models() -> tuple[str, str]:
 
     return text_model, vision_model
 
+
 def _unload_ollama_models():
     """Tells Ollama to unload all models from GPU memory to free up VRAM for Marker."""
     ollama_base = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
@@ -87,11 +94,12 @@ def _unload_ollama_models():
             for m in models:
                 name = m.get("name")
                 if name:
-                    requests.post(f"{ollama_base}/api/generate", 
-                                 json={"model": name, "prompt": "", "keep_alive": 0}, 
-                                 timeout=5)
+                    requests.post(
+                        f"{ollama_base}/api/generate", json={"model": name, "prompt": "", "keep_alive": 0}, timeout=5
+                    )
     except Exception:
         pass
+
 
 def _generate_structured_json(llm, prompt: str, system_prompt: str, context: str, schema_hint: str = ""):
     raw = llm.generate(prompt, system_prompt, json_mode=True)
@@ -117,6 +125,7 @@ def _generate_structured_json(llm, prompt: str, system_prompt: str, context: str
                 f"Raw preview: {preview}"
             ) from second_exc
 
+
 def build_provider(allow_remote: bool = False):
     text_model = _choose_text_model()
     providers = []
@@ -128,6 +137,7 @@ def build_provider(allow_remote: bool = False):
     providers.append(OllamaProvider(model=text_model or "llama3:latest"))
     return SmartFallbackProvider(providers)
 
+
 def build_task_provider(task: str = "general", allow_remote: bool = False):
     providers = []
     if allow_remote:
@@ -136,5 +146,11 @@ def build_task_provider(task: str = "general", allow_remote: bool = False):
         if os.getenv("GOOGLE_API_KEY"):
             providers.append(GeminiProvider())
     text_model = _choose_text_model()
-    providers.append(OllamaProvider(models=[text_model, "llama3.1:8b", "qwen2.5:7b", "llama3:latest"] if text_model else ["llama3.1:8b", "qwen2.5:7b", "llama3:latest"]))
+    providers.append(
+        OllamaProvider(
+            models=[text_model, "llama3.1:8b", "qwen2.5:7b", "llama3:latest"]
+            if text_model
+            else ["llama3.1:8b", "qwen2.5:7b", "llama3:latest"]
+        )
+    )
     return SmartFallbackProvider(providers)

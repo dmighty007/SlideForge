@@ -40,6 +40,44 @@ except (ImportError, ModuleNotFoundError):
     )
 
 class PDF2PPTxBridge(PDF2PPTx):
+    def _normalize_slide_payload(self, payload, orig_slide):
+        fallback_title = str(orig_slide.get("title") or "Untitled").strip() or "Untitled"
+        normalized = payload if isinstance(payload, dict) else {}
+
+        title = str(normalized.get("title") or fallback_title).strip() or fallback_title
+
+        normalized_points = []
+        raw_points = normalized.get("points", [])
+        if isinstance(raw_points, list):
+            for raw_point in raw_points:
+                if not isinstance(raw_point, dict):
+                    continue
+                heading = str(raw_point.get("heading") or "").strip()
+                raw_content = raw_point.get("content", [])
+                if isinstance(raw_content, list):
+                    content = [str(item).strip() for item in raw_content if str(item).strip()]
+                elif isinstance(raw_content, str) and raw_content.strip():
+                    content = [raw_content.strip()]
+                else:
+                    content = []
+                if heading or content:
+                    normalized_points.append({"heading": heading, "content": content})
+
+        fig_ids = []
+        model_fig_id = normalized.get("fig_id")
+        if model_fig_id:
+            fig_ids.append(str(model_fig_id))
+        for requested_fig_id in orig_slide.get("fig_ids", []):
+            if requested_fig_id and requested_fig_id not in fig_ids:
+                fig_ids.append(requested_fig_id)
+
+        return {
+            "title": title,
+            "points": normalized_points,
+            "fig_id": fig_ids[0] if fig_ids else None,
+            "fig_ids": fig_ids,
+        }
+
     def convert_to_json(self, pdf_path, json_output, pptx_output=None, start=0, end=-1, 
                         max_slides=0, max_sections=0, json_progress=False, status_callback=None):
         
@@ -168,11 +206,10 @@ class PDF2PPTxBridge(PDF2PPTx):
         if max_slides: planned_total = min(planned_total, max_slides)
 
         candidate_figure_map = {f["id"]: f for f in enriched_catalog}
+        generated_sections = []
 
         for s_idx, section in enumerate(sections):
             emit("section", f"Elaborating section {s_idx+1}/{len(sections)}: {section['name']}", {"current": total_content_slides, "total": planned_total})
-            gen.add_section_slide(section["name"])
-            export_data["slides"].append({"type": "section", "title": section["name"]})
 
             # Parallel slide generation for speed
             def process_slide(orig_slide):
@@ -260,8 +297,7 @@ class PDF2PPTxBridge(PDF2PPTx):
                     "Return only JSON."
                 )
                 res = _generate_structured_json(slide_llm, prompt, "Write technical slides.", "slide generation")
-                if not isinstance(res, dict): res = {"title": orig_slide.get("title", "Untitled"), "points": []}
-                return res
+                return self._normalize_slide_payload(res, orig_slide)
 
             with ThreadPoolExecutor(max_workers=5) as executor:
                 slides_to_process = section["slides"]
@@ -271,10 +307,19 @@ class PDF2PPTxBridge(PDF2PPTx):
                     slides_to_process = slides_to_process[:remaining]
                 
                 generated_slides = list(executor.map(process_slide, slides_to_process))
+                generated_sections.append({"name": section["name"], "slides": generated_slides})
+                total_content_slides += len(generated_slides)
 
-            assigned = _assign_figures_to_slides(generated_slides, enriched_catalog)
-            for i, s_data in enumerate(generated_slides):
-                fids = assigned.get(i, [])
+        flat_generated_slides = [slide for section in generated_sections for slide in section["slides"]]
+        assigned = _assign_figures_to_slides(flat_generated_slides, enriched_catalog)
+
+        flat_idx = 0
+        for section in generated_sections:
+            gen.add_section_slide(section["name"])
+            export_data["slides"].append({"type": "section", "title": section["name"]})
+
+            for s_data in section["slides"]:
+                fids = assigned.get(flat_idx, [])
                 slide_visuals = []
                 for fid in fids:
                     fig = candidate_figure_map.get(fid)
@@ -287,7 +332,7 @@ class PDF2PPTxBridge(PDF2PPTx):
                     "visual_id": slide_visuals[0]["id"] if slide_visuals else None,
                     "visuals": slide_visuals
                 })
-                total_content_slides += 1
+                flat_idx += 1
 
         if pptx_output: gen.save(pptx_output)
         with open(json_output, "w", encoding="utf-8") as f: json.dump(export_data, f, indent=2, ensure_ascii=False)

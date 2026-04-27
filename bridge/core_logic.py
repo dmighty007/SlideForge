@@ -1,6 +1,10 @@
 import re
 import json
 
+
+_MAX_FIGURES_PER_SLIDE = 3
+
+
 def _tokenize(text: str) -> set[str]:
     return set(re.findall(r"\w+", (text or "").lower()))
 
@@ -119,7 +123,7 @@ def _assign_figures_to_slides(slides: list[dict], candidate_figures: list[dict])
         figure_use_counts[figure_id] += 1
 
     for idx, figure_id, score, quality_score, combined_score in all_pairs:
-        if len(assignments[idx]) >= 2:
+        if len(assignments[idx]) >= _MAX_FIGURES_PER_SLIDE:
             continue
         if figure_id in assignments[idx]:
             continue
@@ -129,6 +133,36 @@ def _assign_figures_to_slides(slides: list[dict], candidate_figures: list[dict])
             continue
         assignments[idx].append(figure_id)
         figure_use_counts[figure_id] += 1
+
+    # Ensure every valid figure is used at least once somewhere in the deck.
+    for figure in candidate_figures:
+        figure_id = figure["id"]
+        if figure_use_counts[figure_id] > 0:
+            continue
+
+        assigned = False
+        for idx, pair_figure_id, score, quality_score, combined_score in all_pairs:
+            if pair_figure_id != figure_id:
+                continue
+            if figure_id in assignments[idx]:
+                assigned = True
+                break
+            if len(assignments[idx]) >= _MAX_FIGURES_PER_SLIDE:
+                continue
+            if quality_score < -0.8:
+                continue
+            assignments[idx].append(figure_id)
+            figure_use_counts[figure_id] += 1
+            assigned = True
+            break
+
+        if assigned:
+            continue
+
+        fallback_idx = min(assignments, key=lambda slide_idx: (len(assignments[slide_idx]), slide_idx))
+        if figure_id not in assignments[fallback_idx]:
+            assignments[fallback_idx].append(figure_id)
+            figure_use_counts[figure_id] += 1
 
     return assignments
 
