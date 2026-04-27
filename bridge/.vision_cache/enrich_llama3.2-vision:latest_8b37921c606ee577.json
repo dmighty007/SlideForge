@@ -1,8 +1,0 @@
-{
-  "caption_enhanced": "The figure presents a comparison of the performance of three different classification models (liquid, fcc, hcp, and bcc) on a dataset, with each model's accuracy represented by a bar graph. The x-axis represents the actual phase of the dataset, and the y-axis represents the percentage of correctly classified samples.",
-  "key_finding": "The fcc model has the highest accuracy, with an average of around 95% correct classification across all phases.",
-  "axis_labels": [
-    "Actual Phase",
-    "Percentage of Correctly Classified Samples"
-  ]
-}

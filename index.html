@@ -116,6 +116,12 @@
                     <option value="graphite">Graphite</option>
                     <option value="horizon">Horizon</option>
                 </select>
+                <label class="toolbar-label" for="page-setup-selector">Size</label>
+                <select id="page-setup-selector" class="toolbar-select">
+                    <option value="widescreen-16-9">16:9</option>
+                    <option value="standard-4-3">4:3</option>
+                    <option value="widescreen-16-10">16:10</option>
+                </select>
             </div>
 
             <div class="toolbar-cluster">
@@ -333,13 +339,70 @@
                 <div class="reveal">
                     <div class="slides" id="slides-container"></div>
                 </div>
+                <canvas class="presentation-overlay presentation-chalkboard" id="presentation-chalkboard"></canvas>
+                <div class="presentation-overlay presentation-laser" id="presentation-laser-pointer" aria-hidden="true"></div>
 
-                <!-- Play Mode Exit Button -->
-                <div class="play-mode-ui fixed top-4 right-4 z-[300]">
-                    <button onclick="togglePlayMode()"
-                        class="px-4 py-2 rounded-lg bg-black/70 backdrop-blur text-white text-sm font-medium hover:bg-black/80 transition-all flex items-center gap-2">
-                        <i class="fa-solid fa-xmark"></i> Exit
-                    </button>
+                <div class="play-mode-ui fixed top-4 right-4 z-[300] items-start">
+                    <div id="present-chalk-tools" class="presentation-chalk-tools hidden" aria-label="Chalk tools">
+                        <div id="present-chalk-indicator" class="presentation-chalk-indicator" aria-hidden="true">
+                            <i class="fa-solid fa-pen"></i>
+                            <span>Chalk</span>
+                        </div>
+                        <label class="presentation-chalk-color-chip" for="present-chalk-color" title="Chalk color">
+                            <span class="sr-only">Chalk color</span>
+                            <input id="present-chalk-color-chip" type="color" value="#fff59d" />
+                        </label>
+                        <button id="present-chalk-eraser-btn" class="presentation-chalk-action" type="button" title="Clear chalkboard">
+                            <i class="fa-solid fa-eraser"></i>
+                            <span>Eraser</span>
+                        </button>
+                    </div>
+                    <div class="presentation-menu-shell">
+                        <button id="present-menu-toggle"
+                            class="presentation-menu-toggle"
+                            title="Presentation menu">
+                            <i class="fa-solid fa-bars"></i>
+                        </button>
+                        <div id="present-menu" class="presentation-menu hidden">
+                            <button id="present-menu-fullscreen-btn" class="presentation-menu-item" type="button">
+                                <i class="fa-solid fa-expand"></i><span>Fullscreen</span>
+                            </button>
+                            <button id="present-laser-btn" class="presentation-menu-item" type="button">
+                                <i class="fa-solid fa-location-crosshairs"></i><span>Laser</span>
+                            </button>
+                            <button id="present-chalk-btn" class="presentation-menu-item" type="button">
+                                <i class="fa-solid fa-pen"></i><span>Chalk</span>
+                            </button>
+                            <label class="presentation-menu-color" for="present-chalk-color">
+                                <span>Chalk Color</span>
+                                <input id="present-chalk-color" type="color" value="#fff59d" />
+                            </label>
+                            <button id="present-clear-chalk-btn" class="presentation-menu-item" type="button">
+                                <i class="fa-solid fa-eraser"></i><span>Clear Chalk</span>
+                            </button>
+                            <button id="present-exit-btn" class="presentation-menu-item" type="button">
+                                <i class="fa-solid fa-xmark"></i><span>Exit Present</span>
+                            </button>
+                            <div class="presentation-menu-hint">Right click for this menu. Keys: L laser, B chalk, X clear.</div>
+                        </div>
+                    </div>
+                    <div id="present-context-menu" class="presentation-menu presentation-context-menu hidden">
+                        <button id="present-context-fullscreen-btn" class="presentation-menu-item" type="button">
+                            <i class="fa-solid fa-expand"></i><span>Fullscreen</span>
+                        </button>
+                        <button id="present-context-laser-btn" class="presentation-menu-item" type="button">
+                            <i class="fa-solid fa-location-crosshairs"></i><span>Laser</span>
+                        </button>
+                        <button id="present-context-chalk-btn" class="presentation-menu-item" type="button">
+                            <i class="fa-solid fa-pen"></i><span>Chalk</span>
+                        </button>
+                        <button id="present-context-clear-btn" class="presentation-menu-item" type="button">
+                            <i class="fa-solid fa-eraser"></i><span>Clear Chalk</span>
+                        </button>
+                        <button id="present-context-exit-btn" class="presentation-menu-item" type="button">
+                            <i class="fa-solid fa-xmark"></i><span>Exit Present</span>
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Floating Text Toolbar -->
@@ -611,6 +674,7 @@
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
 
     <!-- ══════════════════════════════════════════ APP SCRIPTS -->
+    <script src="js/pageSetup.js"></script>
     <script src="js/state.js"></script>
     <script src="js/textContent.js"></script>
     <script src="js/themes.js"></script>

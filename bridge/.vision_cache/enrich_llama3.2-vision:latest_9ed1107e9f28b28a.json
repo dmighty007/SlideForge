@@ -1,9 +1,0 @@
-{
-  "caption_enhanced": "This figure presents a 3D scatter plot of a dataset, with each point representing a data point in a three-dimensional space. The x, y, and z axes are labeled with specific values, indicating the range of values for each dimension.",
-  "key_finding": "The data points are densely packed in the center of the plot, with a clear trend of increasing values along the x-axis.",
-  "axis_labels": [
-    "x",
-    "y",
-    "z"
-  ]
-}

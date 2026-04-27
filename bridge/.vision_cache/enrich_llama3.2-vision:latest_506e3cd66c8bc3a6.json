@@ -1,9 +1,0 @@
-{
-  "caption_enhanced": "This figure presents a comprehensive analysis of the phase behavior of a system, showcasing various phases such as liquid, ice-Ih, ice-Ic, ice-III, ice-V, ice-VI, hyd-SII, liquid, and hyd-SII. The phase diagram provides a detailed understanding of the phase transitions and phase boundaries of the system.",
-  "key_finding": "The phase diagram shows that the system exhibits multiple phase transitions and phase boundaries, with the liquid phase being stable at high temperatures and pressures.",
-  "axis_labels": [
-    "Temperature",
-    "Pressure"
-  ],
-  "figure_type": "diagram"
-}

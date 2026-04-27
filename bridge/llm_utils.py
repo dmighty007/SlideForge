@@ -1,4 +1,4 @@
-import json
+# import json
 import os
 import re
 import sys
@@ -74,7 +74,7 @@ def _validate_local_models() -> tuple[str, str]:
             "No compatible Ollama text model installed. Install one of: qwen2.5:7b, qwen2.5, llama3.1:8b, llama3."
         )
 
-    vision_model = os.getenv("OLLAMA_VISION_MODEL") or _available_vision_model()
+    vision_model = os.getenv("OLLAMA_VISION_MODEL") or _available_vision_model()  # type: ignore
     if not vision_model:
         raise RuntimeError(
             "No compatible Ollama vision model installed. "
@@ -131,26 +131,26 @@ def build_provider(allow_remote: bool = False):
     providers = []
     if allow_remote:
         if os.getenv("GROQ_API_KEY"):
-            providers.append(GroqProvider())
+            providers.append(GroqProvider())  # type: ignore
         if os.getenv("GOOGLE_API_KEY"):
-            providers.append(GeminiProvider())
-    providers.append(OllamaProvider(model=text_model or "llama3:latest"))
-    return SmartFallbackProvider(providers)
+            providers.append(GeminiProvider())  # type: ignore
+    providers.append(OllamaProvider(model=text_model or "llama3:latest"))  # type: ignore
+    return SmartFallbackProvider(providers)  # type: ignore
 
 
 def build_task_provider(task: str = "general", allow_remote: bool = False):
     providers = []
     if allow_remote:
         if os.getenv("GROQ_API_KEY"):
-            providers.append(GroqProvider())
+            providers.append(GroqProvider())  # type: ignore
         if os.getenv("GOOGLE_API_KEY"):
-            providers.append(GeminiProvider())
+            providers.append(GeminiProvider())  # type: ignore
     text_model = _choose_text_model()
     providers.append(
-        OllamaProvider(
+        OllamaProvider(  # type: ignore
             models=[text_model, "llama3.1:8b", "qwen2.5:7b", "llama3:latest"]
             if text_model
             else ["llama3.1:8b", "qwen2.5:7b", "llama3:latest"]
         )
     )
-    return SmartFallbackProvider(providers)
+    return SmartFallbackProvider(providers)  # type: ignore

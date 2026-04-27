@@ -1750,10 +1750,21 @@ function _looksLikeBridgeExport(data) {
 function _convertBridgeExportToEditorState(data) {
     const themeId = state.presentationTheme || "editorial";
     const theme = getPresentationTheme(themeId);
+    const targetPageSetup = getPresentationPageSetupId();
+    const bridgeBaseConfig = PRESENTATION_PAGE_SETUPS[DEFAULT_PRESENTATION_PAGE_SETUP];
+    const targetConfig = getPresentationPageSetupConfig();
     const slides = [];
 
+    const addBridgeSlide = slideState => {
+        const nextSlide =
+            targetConfig.id === bridgeBaseConfig.id
+                ? slideState
+                : scaleSlideElementsForPageSetup(slideState, bridgeBaseConfig, targetConfig);
+        slides.push(nextSlide);
+    };
+
     if (data.title || data.sub) {
-        slides.push(_createBridgeTitleSlide(data, theme));
+        addBridgeSlide(_createBridgeTitleSlide(data, theme));
     }
 
     let sectionIndex = -1;
@@ -1762,10 +1773,10 @@ function _convertBridgeExportToEditorState(data) {
     for (const slide of data.slides || []) {
         if (slide.type === "section") {
             sectionIndex += 1;
-            slides.push(_createBridgeSectionSlide(slide, theme));
+            addBridgeSlide(_createBridgeSectionSlide(slide, theme));
         } else if (slide.type === "content") {
             const normalizedSlide = _normalizeBridgeContentSlide(slide);
-            slides.push(
+            addBridgeSlide(
                 _attachBridgeEquations(
                     _createBridgeContentSlide(normalizedSlide, theme, contentIndex, sectionIndex, contentTotal),
                     normalizedSlide,
@@ -1777,6 +1788,7 @@ function _convertBridgeExportToEditorState(data) {
 
     return {
         presentationTheme: themeId,
+        pageSetup: targetPageSetup,
         slides: slides.length ? slides : [{ id: generateId("slide"), elements: [] }],
         selectedIds: [],
         clipboard: null,
@@ -1984,7 +1996,381 @@ function redo() {
 
 // ─── Play Mode ───────────────────────────────────────────────────────────────
 
-function togglePlayMode() {
+async function _syncBrowserFullscreen(shouldEnter) {
+    const target = document.getElementById("canvas-wrapper") || document.documentElement;
+    const isFullscreen = !!document.fullscreenElement;
+
+    if (shouldEnter && !isFullscreen && target?.requestFullscreen) {
+        try {
+            await target.requestFullscreen();
+            return true;
+        } catch (err) {
+            console.warn("Entering fullscreen failed:", err);
+        }
+    } else if (!shouldEnter && isFullscreen && document.exitFullscreen) {
+        try {
+            await document.exitFullscreen();
+            return true;
+        } catch (err) {
+            console.warn("Exiting fullscreen failed:", err);
+        }
+    }
+    return false;
+}
+
+const _presentationToolsState = {
+    bound: false,
+    chalkEnabled: false,
+    laserEnabled: false,
+    isDrawing: false,
+    lastDrawPoint: null,
+    chalkColor: "#fff59d",
+};
+
+function _presentationToolsElements() {
+    return {
+        wrapper: document.getElementById("canvas-wrapper"),
+        chalkboard: document.getElementById("presentation-chalkboard"),
+        laser: document.getElementById("presentation-laser-pointer"),
+        chalkTools: document.getElementById("present-chalk-tools"),
+        chalkIndicator: document.getElementById("present-chalk-indicator"),
+        chalkColorChip: document.getElementById("present-chalk-color-chip"),
+        chalkEraserBtn: document.getElementById("present-chalk-eraser-btn"),
+        chalkBtn: document.getElementById("present-chalk-btn"),
+        laserBtn: document.getElementById("present-laser-btn"),
+        clearBtn: document.getElementById("present-clear-chalk-btn"),
+        colorInput: document.getElementById("present-chalk-color"),
+        fullscreenBtn: document.getElementById("present-menu-fullscreen-btn"),
+        exitBtn: document.getElementById("present-exit-btn"),
+        menuToggle: document.getElementById("present-menu-toggle"),
+        menu: document.getElementById("present-menu"),
+        contextMenu: document.getElementById("present-context-menu"),
+        contextLaserBtn: document.getElementById("present-context-laser-btn"),
+        contextChalkBtn: document.getElementById("present-context-chalk-btn"),
+        contextClearBtn: document.getElementById("present-context-clear-btn"),
+        contextFullscreenBtn: document.getElementById("present-context-fullscreen-btn"),
+        contextExitBtn: document.getElementById("present-context-exit-btn"),
+    };
+}
+
+function _updatePresentationToolButtons() {
+    const {
+        chalkBtn,
+        laserBtn,
+        contextChalkBtn,
+        contextLaserBtn,
+        fullscreenBtn,
+        contextFullscreenBtn,
+        menuToggle,
+        chalkTools,
+        chalkColorChip,
+    } =
+        _presentationToolsElements();
+    chalkBtn?.classList.toggle("is-active", _presentationToolsState.chalkEnabled);
+    laserBtn?.classList.toggle("is-active", _presentationToolsState.laserEnabled);
+    contextChalkBtn?.classList.toggle("is-active", _presentationToolsState.chalkEnabled);
+    contextLaserBtn?.classList.toggle("is-active", _presentationToolsState.laserEnabled);
+    const fullscreen = !!document.fullscreenElement;
+    fullscreenBtn?.classList.toggle("is-active", fullscreen);
+    contextFullscreenBtn?.classList.toggle("is-active", fullscreen);
+    menuToggle?.classList.toggle("is-active", _presentationToolsState.chalkEnabled || _presentationToolsState.laserEnabled);
+    chalkTools?.classList.toggle("hidden", !_presentationToolsState.chalkEnabled);
+    if (chalkColorChip) {
+        chalkColorChip.value = _presentationToolsState.chalkColor;
+        chalkColorChip.style.boxShadow = `0 0 0 2px ${_presentationToolsState.chalkColor}`;
+    }
+}
+
+function closePresentationMenus() {
+    const { menu, contextMenu } = _presentationToolsElements();
+    menu?.classList.add("hidden");
+    contextMenu?.classList.add("hidden");
+}
+
+function togglePresentationMenu() {
+    const { menu, contextMenu } = _presentationToolsElements();
+    contextMenu?.classList.add("hidden");
+    menu?.classList.toggle("hidden");
+}
+
+function openPresentationContextMenu(clientX, clientY) {
+    const { contextMenu, menu } = _presentationToolsElements();
+    if (!contextMenu) return;
+    menu?.classList.add("hidden");
+    contextMenu.classList.remove("hidden");
+    const margin = 12;
+    const width = contextMenu.offsetWidth || 220;
+    const height = contextMenu.offsetHeight || 220;
+    const left = Math.min(window.innerWidth - width - margin, Math.max(margin, clientX));
+    const top = Math.min(window.innerHeight - height - margin, Math.max(margin, clientY));
+    contextMenu.style.left = `${left}px`;
+    contextMenu.style.top = `${top}px`;
+}
+
+function _resizePresentationChalkboard() {
+    const { wrapper, chalkboard, laser } = _presentationToolsElements();
+    if (!wrapper || !chalkboard) return;
+    const slideConfig = getPresentationPageSetupConfig();
+    const width = Number(slideConfig.width) || 1024;
+    const height = Number(slideConfig.height) || 768;
+    const scale = Math.max(0.1, Math.min(wrapper.clientWidth / width, wrapper.clientHeight / height));
+    const snapshot =
+        chalkboard.width > 0 && chalkboard.height > 0
+            ? chalkboard.getContext("2d")?.getImageData(0, 0, chalkboard.width, chalkboard.height)
+            : null;
+
+    chalkboard.width = width;
+    chalkboard.height = height;
+    chalkboard.style.transform = `scale(${scale})`;
+
+    const ctx = chalkboard.getContext("2d");
+    if (!ctx) return;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = _presentationToolsState.chalkColor;
+    ctx.lineWidth = 5;
+    if (snapshot && snapshot.width === width && snapshot.height === height) {
+        ctx.putImageData(snapshot, 0, 0);
+    }
+}
+
+function _getPresentationStagePoint(event) {
+    const { chalkboard } = _presentationToolsElements();
+    if (!chalkboard) return null;
+    const rect = chalkboard.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+    return {
+        x: Math.max(0, Math.min(chalkboard.width, ((event.clientX - rect.left) / rect.width) * chalkboard.width)),
+        y: Math.max(0, Math.min(chalkboard.height, ((event.clientY - rect.top) / rect.height) * chalkboard.height)),
+    };
+}
+
+function _drawPresentationSegment(from, to) {
+    const { chalkboard } = _presentationToolsElements();
+    const ctx = chalkboard?.getContext("2d");
+    if (!ctx || !from || !to) return;
+    ctx.strokeStyle = _presentationToolsState.chalkColor;
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(to.x, to.y);
+    ctx.stroke();
+}
+
+function _updatePresentationCursorMode() {
+    const { wrapper } = _presentationToolsElements();
+    if (!wrapper) return;
+    wrapper.classList.toggle("presentation-cursor-hidden", _presentationToolsState.laserEnabled);
+    wrapper.classList.toggle("presentation-cursor-chalk", _presentationToolsState.chalkEnabled && !_presentationToolsState.laserEnabled);
+}
+
+function setPresentationLaserActive(enabled) {
+    _presentationToolsState.laserEnabled = !!enabled;
+    const { laser } = _presentationToolsElements();
+    laser?.classList.toggle("is-active", _presentationToolsState.laserEnabled);
+    if (!_presentationToolsState.laserEnabled && laser) {
+        laser.style.left = "-100px";
+        laser.style.top = "-100px";
+    }
+    _updatePresentationToolButtons();
+    _updatePresentationCursorMode();
+}
+
+function setPresentationChalkActive(enabled) {
+    _presentationToolsState.chalkEnabled = !!enabled;
+    _presentationToolsState.isDrawing = false;
+    _presentationToolsState.lastDrawPoint = null;
+    const { chalkboard } = _presentationToolsElements();
+    chalkboard?.classList.toggle("is-active", _presentationToolsState.chalkEnabled);
+    _updatePresentationToolButtons();
+    _updatePresentationCursorMode();
+}
+
+function clearPresentationChalkboard() {
+    const { chalkboard } = _presentationToolsElements();
+    const ctx = chalkboard?.getContext("2d");
+    if (!ctx || !chalkboard) return;
+    ctx.clearRect(0, 0, chalkboard.width, chalkboard.height);
+}
+
+function resetPresentationTools() {
+    setPresentationChalkActive(false);
+    setPresentationLaserActive(false);
+    closePresentationMenus();
+}
+
+function initPresentationTools() {
+    if (_presentationToolsState.bound) return;
+    _presentationToolsState.bound = true;
+    const {
+        wrapper,
+        chalkboard,
+        chalkEraserBtn,
+        chalkColorChip,
+        chalkBtn,
+        laserBtn,
+        clearBtn,
+        colorInput,
+        fullscreenBtn,
+        exitBtn,
+        menuToggle,
+        contextLaserBtn,
+        contextChalkBtn,
+        contextClearBtn,
+        contextFullscreenBtn,
+        contextExitBtn,
+    } = _presentationToolsElements();
+    if (!wrapper || !chalkboard) return;
+
+    chalkBtn?.addEventListener("click", () => {
+        setPresentationChalkActive(!_presentationToolsState.chalkEnabled);
+        closePresentationMenus();
+    });
+    laserBtn?.addEventListener("click", () => {
+        setPresentationLaserActive(!_presentationToolsState.laserEnabled);
+        closePresentationMenus();
+    });
+    clearBtn?.addEventListener("click", () => {
+        clearPresentationChalkboard();
+        closePresentationMenus();
+    });
+    chalkEraserBtn?.addEventListener("click", () => {
+        clearPresentationChalkboard();
+    });
+    colorInput?.addEventListener("input", event => {
+        _presentationToolsState.chalkColor = event.target.value || "#fff59d";
+        closePresentationMenus();
+        _updatePresentationToolButtons();
+    });
+    chalkColorChip?.addEventListener("input", event => {
+        _presentationToolsState.chalkColor = event.target.value || "#fff59d";
+        if (colorInput) colorInput.value = _presentationToolsState.chalkColor;
+        _updatePresentationToolButtons();
+    });
+    fullscreenBtn?.addEventListener("click", async () => {
+        if (document.fullscreenElement) {
+            await _syncBrowserFullscreen(false);
+        } else {
+            await _syncBrowserFullscreen(true);
+        }
+        _updatePresentationToolButtons();
+        closePresentationMenus();
+    });
+    exitBtn?.addEventListener("click", () => {
+        closePresentationMenus();
+        togglePlayMode();
+    });
+    menuToggle?.addEventListener("click", event => {
+        event.stopPropagation();
+        togglePresentationMenu();
+    });
+
+    contextLaserBtn?.addEventListener("click", () => {
+        setPresentationLaserActive(!_presentationToolsState.laserEnabled);
+        closePresentationMenus();
+    });
+    contextChalkBtn?.addEventListener("click", () => {
+        setPresentationChalkActive(!_presentationToolsState.chalkEnabled);
+        closePresentationMenus();
+    });
+    contextClearBtn?.addEventListener("click", () => {
+        clearPresentationChalkboard();
+        closePresentationMenus();
+    });
+    contextFullscreenBtn?.addEventListener("click", async () => {
+        if (document.fullscreenElement) {
+            await _syncBrowserFullscreen(false);
+        } else {
+            await _syncBrowserFullscreen(true);
+        }
+        _updatePresentationToolButtons();
+        closePresentationMenus();
+    });
+    contextExitBtn?.addEventListener("click", () => {
+        closePresentationMenus();
+        togglePlayMode();
+    });
+
+    chalkboard.addEventListener("pointerdown", event => {
+        if (!_presentationToolsState.chalkEnabled) return;
+        const point = _getPresentationStagePoint(event);
+        if (!point) return;
+        _presentationToolsState.isDrawing = true;
+        _presentationToolsState.lastDrawPoint = point;
+        _drawPresentationSegment(point, point);
+        chalkboard.setPointerCapture?.(event.pointerId);
+        event.preventDefault();
+    });
+    chalkboard.addEventListener("pointermove", event => {
+        if (_presentationToolsState.laserEnabled) {
+            const { laser } = _presentationToolsElements();
+            const rect = wrapper.getBoundingClientRect();
+            if (laser) {
+                laser.style.left = `${event.clientX - rect.left}px`;
+                laser.style.top = `${event.clientY - rect.top}px`;
+            }
+        }
+        if (!_presentationToolsState.chalkEnabled || !_presentationToolsState.isDrawing) return;
+        const point = _getPresentationStagePoint(event);
+        if (!point || !_presentationToolsState.lastDrawPoint) return;
+        _drawPresentationSegment(_presentationToolsState.lastDrawPoint, point);
+        _presentationToolsState.lastDrawPoint = point;
+        event.preventDefault();
+    });
+    chalkboard.addEventListener("pointerup", () => {
+        _presentationToolsState.isDrawing = false;
+        _presentationToolsState.lastDrawPoint = null;
+    });
+    chalkboard.addEventListener("pointerleave", () => {
+        _presentationToolsState.isDrawing = false;
+        _presentationToolsState.lastDrawPoint = null;
+    });
+
+    wrapper.addEventListener("pointermove", event => {
+        if (!_presentationToolsState.laserEnabled) return;
+        const { laser } = _presentationToolsElements();
+        const rect = wrapper.getBoundingClientRect();
+        if (laser) {
+            laser.style.left = `${event.clientX - rect.left}px`;
+            laser.style.top = `${event.clientY - rect.top}px`;
+        }
+    });
+    wrapper.addEventListener("contextmenu", event => {
+        if (!document.body.classList.contains("play-mode-active")) return;
+        event.preventDefault();
+        openPresentationContextMenu(event.clientX, event.clientY);
+    });
+
+    document.addEventListener("mousedown", event => {
+        const { menu, contextMenu, menuToggle: toggle } = _presentationToolsElements();
+        if (menu?.contains(event.target) || contextMenu?.contains(event.target) || toggle?.contains(event.target)) return;
+        closePresentationMenus();
+    });
+
+    document.addEventListener("keydown", event => {
+        if (!document.body.classList.contains("play-mode-active")) return;
+        const key = String(event.key || "").toLowerCase();
+        if (key === "b") {
+            event.preventDefault();
+            setPresentationChalkActive(!_presentationToolsState.chalkEnabled);
+        } else if (key === "l") {
+            event.preventDefault();
+            setPresentationLaserActive(!_presentationToolsState.laserEnabled);
+        } else if (key === "x") {
+            event.preventDefault();
+            clearPresentationChalkboard();
+        } else if (key === "m") {
+            event.preventDefault();
+            togglePresentationMenu();
+        }
+    });
+}
+
+async function togglePlayMode() {
+    const willPlay = !document.body.classList.contains("play-mode-active");
+    if (willPlay) {
+        await _syncBrowserFullscreen(true);
+    }
+
     const isPlaying = document.body.classList.toggle("play-mode-active");
     const indices = Reveal.getIndices?.() || {};
     const targetH = Number.isInteger(indices.h) ? indices.h : currentSlideIndex;
@@ -2026,9 +2412,42 @@ function togglePlayMode() {
     });
     if (isPlaying) {
         clearSelection();
+        _resizePresentationChalkboard();
         _playSlideAnimations(currentSlideIndex);
     } else {
         _resetAnimations();
+        resetPresentationTools();
+        await _syncBrowserFullscreen(false);
+    }
+}
+
+function handlePresentationFullscreenChange() {
+    const isFullscreen = !!document.fullscreenElement;
+    const isPlaying = document.body.classList.contains("play-mode-active");
+    if (!isFullscreen && isPlaying) {
+        document.body.classList.remove("play-mode-active");
+        if (window.renderSlidesFromState) {
+            window.renderSlidesFromState();
+        }
+        if (typeof Reveal !== "undefined" && typeof Reveal.configure === "function") {
+            Reveal.configure({
+                controls: false,
+                progress: false,
+                keyboard: false,
+            });
+            Reveal.sync?.();
+        }
+        requestAnimationFrame(() => {
+            Reveal.layout?.();
+            Reveal.slide?.(currentSlideIndex, 0, 0);
+            const btn = document.getElementById("btn-present");
+            if (btn) {
+                btn.innerHTML = '<i class="fa-solid fa-play text-sm"></i><span class="text-xs font-medium hidden md:inline">Present</span>';
+                btn.title = "Present";
+            }
+        });
+        _resetAnimations();
+        resetPresentationTools();
     }
 }
 

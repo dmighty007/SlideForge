@@ -207,6 +207,7 @@ def presentation_create(request):
         presentation_theme=payload.get("presentationTheme") or "editorial",
         state_json=payload.get("state") or {
             "presentationTheme": payload.get("presentationTheme") or "editorial",
+            "pageSetup": "standard-4-3",
             "slides": payload.get("slides") or [],
             "selectedIds": [],
             "clipboard": None,

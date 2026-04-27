@@ -13,6 +13,7 @@ function generateId(prefix) {
 function buildDefaultPresentationState() {
     return {
         presentationTheme: "editorial",
+        pageSetup: DEFAULT_PRESENTATION_PAGE_SETUP,
         slides: [
             {
                 id: generateId("slide"),
@@ -175,6 +176,7 @@ function normalizeStateIds() {
     if (!state.presentationTheme || typeof state.presentationTheme !== "string") {
         state.presentationTheme = "editorial";
     }
+    ensurePresentationPageSetup(state);
 
     const usedSlideIds = new Set();
     const usedElementIds = new Set();
@@ -407,6 +409,7 @@ function updateElementStyleState(id, styleUpdates) {
 function getPersistableState() {
     return {
         presentationTheme: state.presentationTheme,
+        pageSetup: getPresentationPageSetupId(state),
         slides: JSON.parse(JSON.stringify(state.slides || [])),
         selectedIds: [],
         clipboard: null,
@@ -763,6 +766,7 @@ async function createNewProject() {
         clearTimeout(_autosaveTimer);
         state = buildDefaultPresentationState();
         normalizeStateIds();
+        syncPresentationPageSetup?.();
         currentSlideIndex = 0;
         setCurrentPresentationTitle("Untitled Presentation");
         setProjectSaveHint("New local project", "muted");
@@ -778,6 +782,7 @@ async function createNewProject() {
     clearTimeout(_autosaveTimer);
     state = buildDefaultPresentationState();
     normalizeStateIds();
+    syncPresentationPageSetup?.();
     currentSlideIndex = 0;
     currentPresentationId = null;
     currentPresentationAutosaveVersion = 0;
@@ -812,6 +817,7 @@ async function loadProjectById(presentationId) {
         }
         currentSlideIndex = 0;
         applyPresentationTheme(state.presentationTheme, { persist: false });
+        syncPresentationPageSetup?.();
         renderSlidesFromState?.();
         updateSlideCounter?.();
         return true;

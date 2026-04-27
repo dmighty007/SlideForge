@@ -716,9 +716,9 @@ function getShapeStyle(shapeType = "rectangle") {
 function renderSlidesFromState() {
     const container = document.getElementById("slides-container");
     const theme = getPresentationTheme();
-    const cfg = typeof Reveal !== "undefined" && Reveal.getConfig ? Reveal.getConfig() : {};
-    const slideWidth = Number(cfg.width) || 1024;
-    const slideHeight = Number(cfg.height) || 768;
+    const slideConfig = getPresentationPageSetupConfig();
+    const slideWidth = Number(slideConfig.width) || 1024;
+    const slideHeight = Number(slideConfig.height) || 768;
     container.innerHTML = "";
     state.slides.forEach(slide => {
         const section = document.createElement("section");
@@ -737,6 +737,9 @@ function renderSlidesFromState() {
         Reveal.slide(safeIndex, 0, 0);
         Reveal.layout();
     }
+    if (document.body.classList.contains("play-mode-active") && typeof _resizePresentationChalkboard === "function") {
+        requestAnimationFrame(() => _resizePresentationChalkboard());
+    }
     renderSlidePreviews();
     if (typeof schedulePresentationAutosave === "function") {
         schedulePresentationAutosave();
@@ -746,6 +749,9 @@ function renderSlidesFromState() {
 function renderSlidePreviews() {
     const container = document.getElementById("slide-previews");
     const theme = getPresentationTheme();
+    const slideConfig = getPresentationPageSetupConfig();
+    const slideWidth = Number(slideConfig.width) || 1024;
+    const slideHeight = Number(slideConfig.height) || 768;
     if (!container) return;
     container.innerHTML = "";
     container.ondragover = e => e.preventDefault();
@@ -764,6 +770,7 @@ function renderSlidePreviews() {
         const card = document.createElement("div");
         card.className = `slide-preview-card ${index === currentSlideIndex ? "active" : ""}`;
         card.dataset.slideIndex = String(index);
+        card.style.aspectRatio = `${slideWidth} / ${slideHeight}`;
         card.onclick = () => {
             if (Date.now() < _suppressSlidePreviewClickUntil) return;
             setCurrentSlideIndex(index);
@@ -812,7 +819,7 @@ function renderSlidePreviews() {
         const previewSlide = document.createElement("div");
         const previewBg =
             getComputedStyle(document.documentElement).getPropertyValue("--slide-bg").trim() || theme.cssVars["--slide-bg"];
-        previewSlide.style.cssText = `width:1024px;height:768px;position:relative;transform-origin:top left;background:${previewBg};color:${theme.defaultTextColor};font-family:${theme.bodyFont};`;
+        previewSlide.style.cssText = `width:${slideWidth}px;height:${slideHeight}px;position:relative;transform-origin:top left;background:${previewBg};color:${theme.defaultTextColor};font-family:${theme.bodyFont};`;
         slide.elements.forEach(elData => previewSlide.appendChild(_createStaticNode(elData)));
         thumbnail.appendChild(previewSlide);
         card.appendChild(thumbnail);
@@ -851,7 +858,7 @@ function renderSlidePreviews() {
         actions.appendChild(deleteBtn);
         card.appendChild(actions);
         container.appendChild(card);
-        const scale = thumbnail.clientWidth / 1024;
+        const scale = thumbnail.clientWidth / slideWidth;
         previewSlide.style.transform = `scale(${scale || 1})`;
     });
 }

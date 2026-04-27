@@ -121,15 +121,44 @@ function generateViewerHtml(stateJson, theme) {
             </div>
             <canvas class="presentation-overlay presentation-chalkboard" id="chalkboard-canvas"></canvas>
             <div class="presentation-overlay presentation-laser" id="laser-pointer" aria-hidden="true"></div>
-        </div>
-        <div class="standalone-controls">
-            <button id="btn-prev" type="button" aria-label="Previous slide">Prev</button>
-            <button id="btn-fullscreen" type="button" aria-label="Toggle fullscreen">Fullscreen</button>
-            <button id="btn-chalk" type="button" aria-label="Toggle chalkboard">Chalkboard</button>
-            <button id="btn-clear-chalk" type="button" aria-label="Clear chalkboard">Clear Board</button>
-            <button id="btn-laser" type="button" aria-label="Toggle laser pointer">Laser</button>
-            <div class="standalone-status" id="viewer-status">1 / 1</div>
-            <button id="btn-next" type="button" aria-label="Next slide">Next</button>
+            <div class="standalone-presentation-ui">
+                <div id="viewer-chalk-tools" class="presentation-chalk-tools hidden" aria-label="Chalk tools">
+                    <div id="viewer-chalk-indicator" class="presentation-chalk-indicator" aria-hidden="true">
+                        <span>Chalk</span>
+                    </div>
+                    <label class="presentation-chalk-color-chip" for="viewer-chalk-color-chip" title="Chalk color">
+                        <span class="sr-only">Chalk color</span>
+                        <input id="viewer-chalk-color-chip" type="color" value="#fff59d" />
+                    </label>
+                    <button id="viewer-chalk-eraser" class="presentation-chalk-action" type="button" title="Clear chalkboard">
+                        <span>Eraser</span>
+                    </button>
+                </div>
+                <div class="presentation-menu-shell">
+                    <button id="viewer-menu-toggle" class="presentation-menu-toggle" type="button" aria-label="Presentation menu">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                    <div id="viewer-menu" class="presentation-menu hidden">
+                        <button id="btn-prev" class="presentation-menu-item" type="button"><span>Previous</span></button>
+                        <button id="btn-next" class="presentation-menu-item" type="button"><span>Next</span></button>
+                        <button id="btn-fullscreen" class="presentation-menu-item" type="button"><span>Fullscreen</span></button>
+                        <button id="btn-chalk" class="presentation-menu-item" type="button"><span>Chalkboard</span></button>
+                        <label class="presentation-menu-color" for="viewer-chalk-color"><span>Chalk Color</span><input id="viewer-chalk-color" type="color" value="#fff59d" /></label>
+                        <button id="btn-clear-chalk" class="presentation-menu-item" type="button"><span>Clear Chalk</span></button>
+                        <button id="btn-laser" class="presentation-menu-item" type="button"><span>Laser</span></button>
+                        <div class="presentation-menu-hint">Right click for this menu. Keys: F, L, B, X.</div>
+                    </div>
+                </div>
+                <div id="viewer-context-menu" class="presentation-menu presentation-context-menu hidden">
+                    <button id="viewer-context-prev" class="presentation-menu-item" type="button"><span>Previous</span></button>
+                    <button id="viewer-context-next" class="presentation-menu-item" type="button"><span>Next</span></button>
+                    <button id="viewer-context-fullscreen" class="presentation-menu-item" type="button"><span>Fullscreen</span></button>
+                    <button id="viewer-context-chalk" class="presentation-menu-item" type="button"><span>Chalkboard</span></button>
+                    <button id="viewer-context-clear" class="presentation-menu-item" type="button"><span>Clear Chalk</span></button>
+                    <button id="viewer-context-laser" class="presentation-menu-item" type="button"><span>Laser</span></button>
+                </div>
+                <div class="standalone-status" id="viewer-status">1 / 1</div>
+            </div>
         </div>
     </div>
 
@@ -163,6 +192,8 @@ function generateViewerCss(theme) {
     return `
 :root {
     ${vars}
+    --slide-width: 1024px;
+    --slide-height: 768px;
 }
 
 body {
@@ -193,8 +224,8 @@ body {
 
 .standalone-canvas {
     position: relative;
-    width: 1024px;
-    height: 768px;
+    width: var(--slide-width);
+    height: var(--slide-height);
     transform-origin: center center;
 }
 
@@ -215,40 +246,187 @@ body {
     pointer-events: auto;
 }
 
-.standalone-controls {
+.standalone-presentation-ui {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    z-index: 30;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    padding: 12px 16px 18px;
-}
-
-.standalone-controls button {
-    border: 1px solid rgba(255,255,255,0.18);
-    background: rgba(15,23,42,0.72);
-    color: white;
-    border-radius: 999px;
-    padding: 8px 14px;
-    cursor: pointer;
-}
-
-.standalone-controls button.is-active {
-    background: rgba(14,165,233,0.22);
-    border-color: rgba(56,189,248,0.7);
+    align-items: flex-start;
+    gap: 10px;
 }
 
 .standalone-status {
     min-width: 70px;
     text-align: center;
     color: rgba(255,255,255,0.82);
+    padding: 12px 14px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(15,23,42,0.72);
+    backdrop-filter: blur(14px);
+}
+
+.presentation-menu-shell {
+    position: relative;
+}
+
+.presentation-chalk-tools {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin-right: 10px;
+    padding: 8px 10px;
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(15,23,42,0.8);
+    box-shadow: 0 18px 48px rgba(2, 6, 23, 0.35);
+    backdrop-filter: blur(16px);
+}
+
+.presentation-chalk-indicator,
+.presentation-chalk-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 38px;
+    padding: 0 12px;
+    border-radius: 12px;
+    color: rgba(255,255,255,0.94);
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.presentation-chalk-indicator {
+    background: rgba(255,255,255,0.06);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.06) inset;
+}
+
+.presentation-chalk-action {
+    border: 0;
+    background: transparent;
+}
+
+.presentation-chalk-color-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.08);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.06) inset;
+}
+
+.presentation-chalk-color-chip input[type="color"] {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    cursor: pointer;
+}
+
+.presentation-menu-toggle {
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.16);
+    background: rgba(15,23,42,0.72);
+    color: white;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(14px);
+    transition: background 0.16s ease, transform 0.16s ease;
+}
+
+.presentation-menu-toggle:hover,
+.presentation-menu-item:hover {
+    background: rgba(30,41,59,0.9);
+}
+
+.presentation-menu {
+    min-width: 200px;
+    padding: 8px;
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(15,23,42,0.86);
+    box-shadow: 0 18px 48px rgba(2, 6, 23, 0.45);
+    backdrop-filter: blur(16px);
+}
+
+.presentation-menu-shell > .presentation-menu {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+}
+
+.presentation-context-menu {
+    position: fixed;
+    z-index: 35;
+}
+
+.presentation-menu-item {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: rgba(255,255,255,0.94);
+    padding: 10px 12px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: left;
+    transition: background 0.16s ease;
+}
+
+.presentation-menu-color {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    color: rgba(255,255,255,0.94);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.presentation-menu-color input[type="color"] {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    cursor: pointer;
+}
+
+.presentation-menu-item.is-active,
+.presentation-menu-toggle.is-active {
+    background: rgba(14,165,233,0.22);
+    border-color: rgba(56,189,248,0.7);
+}
+
+.presentation-menu-hint {
+    margin-top: 6px;
+    padding: 8px 10px 4px;
+    color: rgba(226,232,240,0.76);
+    font-size: 11px;
+    line-height: 1.35;
 }
 
 .presentation-overlay {
     position: absolute;
     inset: 0;
     margin: auto;
-    width: 1024px;
-    height: 768px;
+    width: var(--slide-width);
+    height: var(--slide-height);
     transform-origin: center center;
 }
 
@@ -260,11 +438,11 @@ body {
 
 .presentation-chalkboard.is-active {
     pointer-events: auto;
-    cursor: crosshair;
 }
 
 .presentation-laser {
     z-index: 6;
+    position: absolute;
     inset: auto;
     width: 24px;
     height: 24px;
@@ -279,6 +457,28 @@ body {
 
 .presentation-laser.is-active {
     opacity: 1;
+}
+
+.presentation-cursor-chalk,
+.presentation-cursor-chalk * {
+    cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'%3E%3Cg transform='rotate(-36 20 20)'%3E%3Crect x='13' y='7' width='14' height='22' rx='4.5' fill='%23fff3b0' stroke='%23655426' stroke-width='1.5'/%3E%3Crect x='13' y='24' width='14' height='6.5' rx='2.8' fill='%23d4c48a' stroke='%23655426' stroke-width='1.2'/%3E%3Cpath d='M13 7h14l-2.6-4h-8.8z' fill='%23ffffff' stroke='%23655426' stroke-width='1.2'/%3E%3Cpath d='M16.5 3h7l-1.1-1.8h-4.8z' fill='%23f8fafc' opacity='0.85'/%3E%3C/g%3E%3C/svg%3E") 13 8, crosshair !important;
+}
+
+.presentation-cursor-hidden,
+.presentation-cursor-hidden * {
+    cursor: none !important;
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }
 
 .canvas-element {
@@ -453,9 +653,22 @@ function initViewer(data) {
     const chalkBtn = document.getElementById('btn-chalk');
     const clearChalkBtn = document.getElementById('btn-clear-chalk');
     const laserBtn = document.getElementById('btn-laser');
+    const colorInput = document.getElementById('viewer-chalk-color');
+    const colorChip = document.getElementById('viewer-chalk-color-chip');
+    const chalkTools = document.getElementById('viewer-chalk-tools');
+    const chalkEraser = document.getElementById('viewer-chalk-eraser');
     const status = document.getElementById('viewer-status');
     const chalkboard = document.getElementById('chalkboard-canvas');
     const laserPointer = document.getElementById('laser-pointer');
+    const menuToggle = document.getElementById('viewer-menu-toggle');
+    const menu = document.getElementById('viewer-menu');
+    const contextMenu = document.getElementById('viewer-context-menu');
+    const contextPrev = document.getElementById('viewer-context-prev');
+    const contextNext = document.getElementById('viewer-context-next');
+    const contextFullscreen = document.getElementById('viewer-context-fullscreen');
+    const contextChalk = document.getElementById('viewer-context-chalk');
+    const contextClear = document.getElementById('viewer-context-clear');
+    const contextLaser = document.getElementById('viewer-context-laser');
     const slides = data.slides || [];
     let activeSlideIndex = 0;
     let activeFragmentIndex = -1;
@@ -464,14 +677,65 @@ function initViewer(data) {
     let laserEnabled = false;
     let isDrawing = false;
     let lastDrawPoint = null;
+    let chalkColor = '#fff59d';
     const chalkCtx = chalkboard ? chalkboard.getContext('2d') : null;
+    const pageSetups = {
+        'standard-4-3': { width: 1024, height: 768 },
+        'widescreen-16-9': { width: 1280, height: 720 },
+        'widescreen-16-10': { width: 1280, height: 800 },
+    };
+    const pageSetupId = pageSetups[data.pageSetup] ? data.pageSetup : 'standard-4-3';
+    const page = pageSetups[pageSetupId];
+    document.documentElement.style.setProperty('--slide-width', page.width + 'px');
+    document.documentElement.style.setProperty('--slide-height', page.height + 'px');
+
+    function closeMenus() {
+        if (menu) menu.classList.add('hidden');
+        if (contextMenu) contextMenu.classList.add('hidden');
+    }
+
+    function toggleMenu() {
+        if (contextMenu) contextMenu.classList.add('hidden');
+        if (menu) menu.classList.toggle('hidden');
+    }
+
+    function openContextMenu(x, y) {
+        if (!contextMenu) return;
+        if (menu) menu.classList.add('hidden');
+        contextMenu.classList.remove('hidden');
+        const margin = 12;
+        const width = contextMenu.offsetWidth || 220;
+        const height = contextMenu.offsetHeight || 240;
+        contextMenu.style.left = Math.min(window.innerWidth - width - margin, Math.max(margin, x)) + 'px';
+        contextMenu.style.top = Math.min(window.innerHeight - height - margin, Math.max(margin, y)) + 'px';
+    }
+
+    function syncControlState() {
+        const fullscreen = !!document.fullscreenElement;
+        if (fullscreenBtn) fullscreenBtn.classList.toggle('is-active', fullscreen);
+        if (contextFullscreen) contextFullscreen.classList.toggle('is-active', fullscreen);
+        if (chalkBtn) chalkBtn.classList.toggle('is-active', chalkEnabled);
+        if (contextChalk) contextChalk.classList.toggle('is-active', chalkEnabled);
+        if (laserBtn) laserBtn.classList.toggle('is-active', laserEnabled);
+        if (contextLaser) contextLaser.classList.toggle('is-active', laserEnabled);
+        if (menuToggle) menuToggle.classList.toggle('is-active', chalkEnabled || laserEnabled);
+        if (chalkTools) chalkTools.classList.toggle('hidden', !chalkEnabled);
+        if (colorChip) {
+            colorChip.value = chalkColor;
+            colorChip.style.boxShadow = '0 0 0 2px ' + chalkColor;
+        }
+        if (stage) {
+            stage.classList.toggle('presentation-cursor-hidden', laserEnabled);
+            stage.classList.toggle('presentation-cursor-chalk', chalkEnabled && !laserEnabled);
+        }
+    }
     
     slides.forEach(slide => {
         const section = document.createElement('section');
         section.id = slide.id;
         section.className = 'presentation-slide';
-        section.style.width = '1024px';
-        section.style.height = '768px';
+        section.style.width = page.width + 'px';
+        section.style.height = page.height + 'px';
         
         (slide.elements || []).forEach(elData => {
             const node = createViewerElement(elData);
@@ -487,7 +751,7 @@ function initViewer(data) {
             .sort((a, b) => (Number(a.getAttribute('data-fragment-index')) || 0) - (Number(b.getAttribute('data-fragment-index')) || 0));
 
     function updateScale() {
-        const scale = Math.min(stage.clientWidth / 1024, stage.clientHeight / 768);
+        const scale = Math.min(stage.clientWidth / page.width, stage.clientHeight / page.height);
         viewerScale = Math.max(0.1, scale);
         container.style.transform = 'scale(' + viewerScale + ')';
         if (chalkboard) chalkboard.style.transform = 'scale(' + viewerScale + ')';
@@ -496,11 +760,11 @@ function initViewer(data) {
     function resizeChalkboard() {
         if (!chalkboard || !chalkCtx) return;
         const snapshot = chalkboard.width > 0 ? chalkCtx.getImageData(0, 0, chalkboard.width, chalkboard.height) : null;
-        chalkboard.width = 1024;
-        chalkboard.height = 768;
+        chalkboard.width = page.width;
+        chalkboard.height = page.height;
         chalkCtx.lineCap = 'round';
         chalkCtx.lineJoin = 'round';
-        chalkCtx.strokeStyle = 'rgba(255, 245, 157, 0.92)';
+        chalkCtx.strokeStyle = chalkColor;
         chalkCtx.lineWidth = 5;
         if (snapshot) chalkCtx.putImageData(snapshot, 0, 0);
     }
@@ -508,7 +772,7 @@ function initViewer(data) {
     function setChalkActive(enabled) {
         chalkEnabled = !!enabled;
         if (chalkboard) chalkboard.classList.toggle('is-active', chalkEnabled);
-        if (chalkBtn) chalkBtn.classList.toggle('is-active', chalkEnabled);
+        syncControlState();
         if (!chalkEnabled) {
             isDrawing = false;
             lastDrawPoint = null;
@@ -517,7 +781,6 @@ function initViewer(data) {
 
     function setLaserActive(enabled) {
         laserEnabled = !!enabled;
-        if (laserBtn) laserBtn.classList.toggle('is-active', laserEnabled);
         if (laserPointer) {
             laserPointer.classList.toggle('is-active', laserEnabled);
             if (!laserEnabled) {
@@ -525,6 +788,7 @@ function initViewer(data) {
                 laserPointer.style.top = '-100px';
             }
         }
+        syncControlState();
     }
 
     function clearChalkboard() {
@@ -536,24 +800,24 @@ function initViewer(data) {
         if (!chalkboard) return null;
         const rect = chalkboard.getBoundingClientRect();
         if (!rect.width || !rect.height) return null;
-        const x = ((event.clientX - rect.left) / rect.width) * 1024;
-        const y = ((event.clientY - rect.top) / rect.height) * 768;
+        const x = ((event.clientX - rect.left) / rect.width) * page.width;
+        const y = ((event.clientY - rect.top) / rect.height) * page.height;
         return {
-            x: Math.max(0, Math.min(1024, x)),
-            y: Math.max(0, Math.min(768, y))
+            x: Math.max(0, Math.min(page.width, x)),
+            y: Math.max(0, Math.min(page.height, y))
         };
     }
 
     function updateLaserPosition(event) {
-        if (!laserEnabled || !laserPointer || !chalkboard) return;
-        const point = getStagePoint(event);
-        if (!point) return;
-        laserPointer.style.left = point.x + 'px';
-        laserPointer.style.top = point.y + 'px';
+        if (!laserEnabled || !laserPointer || !stage) return;
+        const rect = stage.getBoundingClientRect();
+        laserPointer.style.left = (event.clientX - rect.left) + 'px';
+        laserPointer.style.top = (event.clientY - rect.top) + 'px';
     }
 
     function drawSegment(from, to) {
         if (!chalkCtx || !from || !to) return;
+        chalkCtx.strokeStyle = chalkColor;
         chalkCtx.beginPath();
         chalkCtx.moveTo(from.x, from.y);
         chalkCtx.lineTo(to.x, to.y);
@@ -611,6 +875,10 @@ function initViewer(data) {
 
     prevBtn && prevBtn.addEventListener('click', prevStep);
     nextBtn && nextBtn.addEventListener('click', nextStep);
+    menuToggle && menuToggle.addEventListener('click', event => {
+        event.stopPropagation();
+        toggleMenu();
+    });
     fullscreenBtn && fullscreenBtn.addEventListener('click', async () => {
         const target = document.documentElement;
         try {
@@ -619,10 +887,25 @@ function initViewer(data) {
         } catch (err) {
             console.error('Fullscreen toggle failed.', err);
         }
+        syncControlState();
+        closeMenus();
     });
-    chalkBtn && chalkBtn.addEventListener('click', () => setChalkActive(!chalkEnabled));
-    clearChalkBtn && clearChalkBtn.addEventListener('click', clearChalkboard);
-    laserBtn && laserBtn.addEventListener('click', () => setLaserActive(!laserEnabled));
+    chalkBtn && chalkBtn.addEventListener('click', () => { setChalkActive(!chalkEnabled); closeMenus(); });
+    colorInput && colorInput.addEventListener('input', event => { chalkColor = event.target.value || '#fff59d'; closeMenus(); });
+    colorChip && colorChip.addEventListener('input', event => {
+        chalkColor = event.target.value || '#fff59d';
+        if (colorInput) colorInput.value = chalkColor;
+        syncControlState();
+    });
+    clearChalkBtn && clearChalkBtn.addEventListener('click', () => { clearChalkboard(); closeMenus(); });
+    chalkEraser && chalkEraser.addEventListener('click', () => { clearChalkboard(); });
+    laserBtn && laserBtn.addEventListener('click', () => { setLaserActive(!laserEnabled); closeMenus(); });
+    contextPrev && contextPrev.addEventListener('click', () => { prevStep(); closeMenus(); });
+    contextNext && contextNext.addEventListener('click', () => { nextStep(); closeMenus(); });
+    contextFullscreen && contextFullscreen.addEventListener('click', () => { fullscreenBtn && fullscreenBtn.click(); });
+    contextChalk && contextChalk.addEventListener('click', () => { chalkBtn && chalkBtn.click(); });
+    contextClear && contextClear.addEventListener('click', () => { clearChalkBtn && clearChalkBtn.click(); });
+    contextLaser && contextLaser.addEventListener('click', () => { laserBtn && laserBtn.click(); });
     chalkboard && chalkboard.addEventListener('pointerdown', event => {
         if (!chalkEnabled) return;
         const point = getStagePoint(event);
@@ -654,9 +937,16 @@ function initViewer(data) {
     stage && stage.addEventListener('pointermove', event => {
         if (laserEnabled) updateLaserPosition(event);
     });
+    stage && stage.addEventListener('contextmenu', event => {
+        event.preventDefault();
+        openContextMenu(event.clientX, event.clientY);
+    });
+    document.addEventListener('mousedown', event => {
+        if (menu?.contains(event.target) || contextMenu?.contains(event.target) || menuToggle?.contains(event.target)) return;
+        closeMenus();
+    });
     document.addEventListener('fullscreenchange', () => {
-        const active = !!document.fullscreenElement;
-        if (fullscreenBtn) fullscreenBtn.classList.toggle('is-active', active);
+        syncControlState();
         updateScale();
     });
     window.addEventListener('resize', () => {
@@ -668,6 +958,11 @@ function initViewer(data) {
         if (key === 'f') {
             event.preventDefault();
             fullscreenBtn && fullscreenBtn.click();
+            return;
+        }
+        if (key === 'm') {
+            event.preventDefault();
+            toggleMenu();
             return;
         }
         if (key === 'b') {
@@ -711,6 +1006,7 @@ function initViewer(data) {
     }
     resizeChalkboard();
     updateScale();
+    syncControlState();
 }
 
 function createViewerElement(elData) {

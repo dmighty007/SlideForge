@@ -1,9 +1,0 @@
-{
-  "caption_enhanced": "The figure shows a bar chart with five categories (liq, lam, lxs, hex, and gyr) on the x-axis and percent classified on the y-axis. The categories are represented by different colors and their corresponding values are shown on the y-axis.",
-  "key_finding": "The most important result shown is that the category 'hex' has the highest percentage of being classified as 'gyr' with over 90%.",
-  "axis_labels": [
-    "Percent classified",
-    "Categories"
-  ],
-  "figure_type": "chart"
-}

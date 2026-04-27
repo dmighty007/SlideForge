@@ -14,18 +14,22 @@ window.onload = async () => {
         }
     }
     applyPresentationTheme(state.presentationTheme, { persist: false });
+    syncPresentationPageSetup();
     window.addElement = addElement;
     window.renderSlidesFromState = renderSlidesFromState;
     window.renderSlidePreviews = renderSlidePreviews;
     window.syncConnectorDom = syncConnectorDom;
+    window.changePresentationPageSetup = changePresentationPageSetup;
+
+    const slideConfig = getPresentationPageSetupConfig();
 
     Reveal.initialize({
         embedded: true,
         center: false,
         hash: false,
         transition: "slide",
-        width: 1024,
-        height: 768,
+        width: slideConfig.width,
+        height: slideConfig.height,
         margin: 0,
         disableLayout: false,
         controls: false,
@@ -83,11 +87,15 @@ window.onload = async () => {
         applyPresentationTheme(e.target.value, { persist: false });
         renderSlidesFromState();
     });
+    document.getElementById("page-setup-selector").addEventListener("change", e => {
+        changePresentationPageSetup(e.target.value);
+    });
 
     if (!PRESENTATION_THEMES[state.presentationTheme]) {
         state.presentationTheme = "editorial";
     }
     document.getElementById("theme-selector").value = state.presentationTheme || "editorial";
+    syncPresentationPageSetup();
     const shapePickerModal = document.getElementById("shape-picker-modal");
     if (shapePickerModal) {
         shapePickerModal.addEventListener("mousedown", e => {
@@ -100,7 +108,16 @@ window.onload = async () => {
             updateFloatingTextToolbar();
         }),
     );
+    document.addEventListener("fullscreenchange", () => {
+        if (typeof handlePresentationFullscreenChange === "function") {
+            handlePresentationFullscreenChange();
+        }
+        if (typeof _resizePresentationChalkboard === "function") {
+            requestAnimationFrame(() => _resizePresentationChalkboard());
+        }
+    });
 
+    initPresentationTools?.();
     initInteract();
     initKeyboard();
     updateSlideCounter();
