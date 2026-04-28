@@ -662,8 +662,8 @@ body {
     inset: 0;
 }
 
+
 .editor-mode .reveal .slides section {
-    position: relative;
     background: var(--slide-bg);
     color: var(--slide-fg);
     border: none;
