@@ -65,6 +65,33 @@ async function processStateAssets(originalState) {
     };
 
     for (const slide of newState.slides) {
+        if (slide.background?.content) {
+            const bg = slide.background;
+            if ((bg.type === "image" || bg.type === "video") && String(bg.content).startsWith("data:")) {
+                const parts = bg.content.split(",");
+                if (parts.length >= 2) {
+                    const meta = parts[0];
+                    const base64Data = parts[1];
+                    const mimeMatch = meta.match(/data:(.*?);/);
+                    const mime = mimeMatch ? mimeMatch[1] : bg.type === "image" ? "image/png" : "video/mp4";
+                    const ext = mime.split("/")[1] || (bg.type === "image" ? "png" : "mp4");
+                    const fileName = `asset_${assetCounter++}.${ext}`;
+                    assets[fileName] = base64Data;
+                    slide.background.content = `assets/${fileName}`;
+                }
+            } else if ((bg.type === "image" || bg.type === "video") && (isBundlableLocalAsset(bg.content) || String(bg.content || "").startsWith("blob:"))) {
+                const sourceUrl = new URL(bg.content, window.location.href);
+                const response = await fetch(sourceUrl.toString());
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const mime = blob.type || (bg.type === "image" ? "image/png" : "video/mp4");
+                    const ext = mime.split("/")[1] || (bg.type === "image" ? "png" : "mp4");
+                    const fileName = `asset_${assetCounter++}.${ext}`;
+                    assets[fileName] = await toBase64(blob);
+                    slide.background.content = `assets/${fileName}`;
+                }
+            }
+        }
         for (const el of slide.elements) {
             // Extract image/video/pdf content if it's a data URL
             if ((el.type === "image" || el.type === "video" || el.type === "pdf") && el.content?.startsWith("data:")) {
@@ -244,6 +271,28 @@ body {
     visibility: visible;
     opacity: 1;
     pointer-events: auto;
+}
+
+.slide-background-media {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.slide-background-media > .slide-background-image,
+.slide-background-media > .slide-background-video {
+    position: absolute;
+    inset: 0;
+    width: 100% !important;
+    height: 100% !important;
+    min-width: 100%;
+    min-height: 100%;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    display: block;
 }
 
 .standalone-presentation-ui {
@@ -565,6 +614,7 @@ body {
 .canvas-element {
     position: absolute;
     box-sizing: border-box;
+    z-index: 1;
 }
 
 .connector-svg {
@@ -633,6 +683,31 @@ body {
     height: 100%;
     display: block;
     border: none;
+}
+
+.table-element-shell,
+.table-element-scroll {
+    width: 100%;
+    height: 100%;
+}
+
+.table-element-scroll {
+    overflow: auto;
+}
+
+.table-element-grid {
+    width: 100%;
+    height: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    background: white;
+}
+
+.table-element-cell {
+    min-width: 56px;
+    line-height: 1.35;
+    word-break: break-word;
+    outline: none;
 }
 
 .rounded-inherit {
@@ -934,6 +1009,8 @@ function initViewer(data) {
         section.className = 'presentation-slide';
         section.style.width = page.width + 'px';
         section.style.height = page.height + 'px';
+        const bgNode = createViewerSlideBackgroundNode(slide.background);
+        if (bgNode) section.appendChild(bgNode);
         
         (slide.elements || []).forEach(elData => {
             const node = createViewerElement(elData);
@@ -1217,13 +1294,58 @@ function initViewer(data) {
 }
 
 function createViewerElement(elData) {
+    const normalizeTableDataLocal = tableData => {
+        const rows = Math.max(1, Number(tableData?.rows) || 3);
+        const cols = Math.max(1, Number(tableData?.cols) || 4);
+        const rawCells = Array.isArray(tableData?.cells) ? tableData.cells : [];
+        return {
+            rows,
+            cols,
+            headerRow: tableData?.headerRow !== false,
+            zebra: Boolean(tableData?.zebra),
+            borderColor: tableData?.borderColor || '#cbd5e1',
+            borderWidth: Math.max(0, Number(tableData?.borderWidth) || 1),
+            cellPadding: Math.max(2, Number(tableData?.cellPadding) || 10),
+            headerFill: tableData?.headerFill || '#e2e8f0',
+            bodyFill: tableData?.bodyFill || '#ffffff',
+            altFill: tableData?.altFill || '#f8fafc',
+            textColor: tableData?.textColor || '#172033',
+            headerTextColor: tableData?.headerTextColor || '#172033',
+            cells: Array.from({ length: rows }, (_, rowIndex) =>
+                Array.from({ length: cols }, (_, colIndex) => {
+                    const rawCell = rawCells[rowIndex]?.[colIndex];
+                    return {
+                        text: typeof rawCell?.text === 'string' ? rawCell.text : rowIndex === 0 ? 'Header ' + (colIndex + 1) : '',
+                        styles: rawCell?.styles && typeof rawCell.styles === 'object' ? rawCell.styles : {},
+                    };
+                }),
+            ),
+        };
+    };
     const el = document.createElement('div');
     const animation = normalizeAnimation(elData);
     el.className = 'canvas-element';
     el.style.transform = 'translate(' + elData.x + 'px, ' + elData.y + 'px)';
     if (elData.width) el.style.width = elData.width;
     if (elData.height) el.style.height = elData.height;
-    Object.assign(el.style, elData.styles);
+    Object.entries(elData.styles || {}).forEach(([prop, value]) => {
+        if (value === undefined || value === null) return;
+        if (prop === 'textStrokeWidth') {
+            if (String(value) === '0' || String(value) === '0px') el.style.removeProperty('-webkit-text-stroke-width');
+            else el.style.setProperty('-webkit-text-stroke-width', value, 'important');
+            return;
+        }
+        if (prop === 'textStrokeColor') {
+            if (!value || value === 'transparent') el.style.removeProperty('-webkit-text-stroke-color');
+            else el.style.setProperty('-webkit-text-stroke-color', value, 'important');
+            return;
+        }
+        const cssProp = prop.replace(/([A-Z])/g, '-$1').toLowerCase();
+        const priority = ['color', 'fontSize', 'fontFamily', 'fontWeight', 'fontStyle', 'textAlign', 'lineHeight', 'textShadow'].includes(prop)
+            ? 'important'
+            : '';
+        el.style.setProperty(cssProp, value, priority);
+    });
     if (elData.fragmentAnimation && elData.fragmentAnimation !== 'none') {
         el.classList.add('fragment', elData.fragmentAnimation);
         if (elData.fragmentIndex != null) {
@@ -1239,6 +1361,45 @@ function createViewerElement(elData) {
         content.className = 'text-element-content';
         content.innerHTML = renderTextContent(elData);
         el.appendChild(content);
+    } else if (elData.type === 'table') {
+        const tableData = normalizeTableDataLocal(elData.tableData);
+        const shell = document.createElement('div');
+        shell.className = 'table-element-shell';
+        const scroll = document.createElement('div');
+        scroll.className = 'table-element-scroll';
+        const table = document.createElement('table');
+        table.className = 'table-element-grid';
+        table.style.borderCollapse = 'collapse';
+        table.style.width = '100%';
+        table.style.height = '100%';
+        table.style.tableLayout = 'fixed';
+        const tbody = document.createElement('tbody');
+        for (let rowIndex = 0; rowIndex < tableData.rows; rowIndex += 1) {
+            const tr = document.createElement('tr');
+            for (let colIndex = 0; colIndex < tableData.cols; colIndex += 1) {
+                const cellData = tableData.cells[rowIndex]?.[colIndex] || { text: '', styles: {} };
+                const cell = document.createElement(rowIndex === 0 && tableData.headerRow ? 'th' : 'td');
+                const isHeader = tableData.headerRow && rowIndex === 0;
+                const zebraFill = tableData.zebra && !isHeader && rowIndex % 2 === 1 ? tableData.altFill : tableData.bodyFill;
+                const styles = cellData.styles || {};
+                cell.className = 'table-element-cell';
+                cell.style.border = tableData.borderWidth + 'px solid ' + tableData.borderColor;
+                cell.style.padding = tableData.cellPadding + 'px';
+                cell.style.backgroundColor = styles.backgroundColor || (isHeader ? tableData.headerFill : zebraFill);
+                cell.style.color = styles.color || (isHeader ? tableData.headerTextColor : tableData.textColor);
+                cell.style.textAlign = styles.textAlign || 'left';
+                cell.style.fontWeight = styles.fontWeight || (isHeader ? '700' : '400');
+                cell.style.verticalAlign = 'top';
+                cell.style.whiteSpace = 'pre-wrap';
+                cell.textContent = cellData.text || '';
+                tr.appendChild(cell);
+            }
+            tbody.appendChild(tr);
+        }
+        table.appendChild(tbody);
+        scroll.appendChild(table);
+        shell.appendChild(scroll);
+        el.appendChild(shell);
     } else if (elData.type === 'image') {
         if (elData.cropTransform) {
             const wrapper = document.createElement("div");
@@ -1347,6 +1508,36 @@ function createViewerElement(elData) {
     }
     
     return el;
+}
+
+function createViewerSlideBackgroundNode(background) {
+    if (!background || !background.content) return null;
+    const wrapper = document.createElement('div');
+    wrapper.className = 'slide-background-media';
+    if (background.type === 'video') {
+        const video = document.createElement('video');
+        video.className = 'slide-background-video';
+        video.src = background.content;
+        video.style.setProperty('object-fit', background.fit || 'cover', 'important');
+        video.muted = true;
+        video.loop = true;
+        video.autoplay = true;
+        video.playsInline = true;
+        video.setAttribute('playsinline', 'true');
+        const play = () => video.play().catch(() => {});
+        video.addEventListener('loadeddata', play, { once: true });
+        requestAnimationFrame(play);
+        wrapper.appendChild(video);
+    } else {
+        const image = document.createElement('img');
+        image.className = 'slide-background-image';
+        image.src = background.content;
+        image.style.setProperty('object-fit', background.fit || 'cover', 'important');
+        image.alt = '';
+        image.draggable = false;
+        wrapper.appendChild(image);
+    }
+    return wrapper;
 }
 
 function _parseVideoUrl(url) {

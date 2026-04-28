@@ -14,7 +14,7 @@ function getActiveSlideIndex() {
 function ensureActiveSlideSync() {
     const idx = getActiveSlideIndex();
     if (idx !== currentSlideIndex) setCurrentSlideIndex(idx);
-    if (!state.slides[idx]) state.slides[idx] = { id: generateId("slide"), notes: "", elements: [] };
+    if (!state.slides[idx]) state.slides[idx] = { id: generateId("slide"), layoutId: "blank-titled", notes: "", elements: [] };
     return idx;
 }
 
@@ -28,7 +28,7 @@ function _normalizeSlideIndex(index) {
 function addSlide(targetIndex = null) {
     const activeIndex = _normalizeSlideIndex(targetIndex) ?? ensureActiveSlideSync();
     saveStateToUndo();
-    state.slides.splice(activeIndex + 1, 0, { id: generateId("slide"), notes: "", elements: [] });
+    state.slides.splice(activeIndex + 1, 0, { id: generateId("slide"), layoutId: "blank-titled", notes: "", elements: [] });
     setCurrentSlideIndex(activeIndex + 1);
     renderSlidesFromState();
     Reveal.slide(activeIndex + 1);
@@ -94,6 +94,7 @@ function addElement(type, options = {}) {
         id,
         type,
         ...(type === "text" ? { bulletStyle: "default", autoHeight: true } : {}),
+        ...(type === "table" ? { tableData: createDefaultTableData(3, 4) } : {}),
         ...(type === "shape" ? { shapeType } : {}),
         ...(type === "video" ? { videoType: "youtube", muted: true, autoplay: false, loop: false } : {}),
         ...(type === "pdf"
@@ -116,6 +117,8 @@ function addElement(type, options = {}) {
                   ? "300px"
                   : type === "text"
                     ? "360px"
+                    : type === "table"
+                      ? "520px"
                     : type === "video"
                       ? "480px"
                       : type === "pdf"
@@ -128,6 +131,8 @@ function addElement(type, options = {}) {
                     : "150px"
                 : type === "image"
                   ? "200px"
+                  : type === "table"
+                    ? "240px"
                   : type === "video"
                     ? "270px"
                     : type === "pdf"
@@ -136,6 +141,8 @@ function addElement(type, options = {}) {
         content:
             type === "text"
                 ? "Double click to edit text"
+                : type === "table"
+                  ? ""
                 : type === "image"
                   ? "https://picsum.photos/400/300"
                   : type === "video"
@@ -145,10 +152,10 @@ function addElement(type, options = {}) {
                     : "",
         styles: {
             backgroundColor: type === "shape" ? theme.defaultShapeColor : "transparent",
-            color: type === "text" ? theme.defaultTextColor : "transparent",
-            fontSize: type === "text" ? "32px" : "0px",
+            color: type === "text" || type === "table" ? theme.defaultTextColor : "transparent",
+            fontSize: type === "text" ? "32px" : type === "table" ? "16px" : "0px",
             fontFamily: theme.bodyFont,
-            textAlign: type === "text" ? "left" : undefined,
+            textAlign: type === "text" || type === "table" ? "left" : undefined,
             zIndex: 1,
             borderRadius: type === "shape" ? shapeBorderRadius : type === "video" || type === "pdf" ? "8px" : "0px",
         },
@@ -857,6 +864,97 @@ function _createSessionObjectUrl(file) {
     const url = URL.createObjectURL(file);
     _sessionObjectUrls.add(url);
     return url;
+}
+
+async function _resolveSlideBackgroundAsset(file) {
+    try {
+        const upload = await _uploadAssetFile(file);
+        return { url: upload.url, mimeType: file.type || "" };
+    } catch (err) {
+        const backendMissing =
+            err?.message === "Backend API unavailable" ||
+            /404|NetworkError|Failed to fetch|fetch resource/i.test(err?.message || "");
+        if (!backendMissing) throw err;
+        return { url: _createSessionObjectUrl(file), mimeType: file.type || "" };
+    }
+}
+
+function setCurrentSlideBackground(background) {
+    const activeIndex = ensureActiveSlideSync();
+    const slide = state.slides[activeIndex];
+    if (!slide) return;
+    slide.background = background ? normalizeSlideBackground(background) : null;
+    renderSlidesFromState?.();
+    buildPropertiesPanel?.();
+    schedulePresentationAutosave?.(150);
+}
+
+function setCurrentSlideBackgroundFit(fit) {
+    const activeIndex = ensureActiveSlideSync();
+    const slide = state.slides[activeIndex];
+    if (!slide?.background) return;
+    const nextFit = ["cover", "contain", "fill"].includes(fit) ? fit : "cover";
+    saveStateToUndo();
+    slide.background = {
+        ...normalizeSlideBackground(slide.background),
+        fit: nextFit,
+    };
+    renderSlidesFromState?.();
+    buildPropertiesPanel?.();
+    schedulePresentationAutosave?.(150);
+}
+
+async function setCurrentSlideBackgroundFromFile(file) {
+    if (!file) return;
+    const isImage = file.type.startsWith("image/");
+    const isVideo = file.type.startsWith("video/");
+    if (!isImage && !isVideo) {
+        setProjectSaveHint?.("Choose an image, GIF, or video background", "danger");
+        return;
+    }
+    const resolved = await _resolveSlideBackgroundAsset(file);
+    saveStateToUndo();
+    setCurrentSlideBackground({
+        type: isVideo ? "video" : "image",
+        content: resolved.url,
+        mimeType: resolved.mimeType,
+        fit: "cover",
+    });
+}
+
+function pickCurrentSlideBackgroundFile() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*,video/mp4,video/webm,video/ogg";
+    input.onchange = async event => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        try {
+            await setCurrentSlideBackgroundFromFile(file);
+        } catch (err) {
+            console.error("Slide background upload failed:", err);
+            setProjectSaveHint?.(err?.message || "Failed to set slide background", "danger");
+        }
+    };
+    input.click();
+}
+
+function setCurrentSlideBackgroundFromUrl(url) {
+    const value = String(url || "").trim();
+    if (!value) return;
+    const isVideo = /\.(mp4|webm|ogg)(\?.*)?$/i.test(value) || /^data:video\//i.test(value);
+    saveStateToUndo();
+    setCurrentSlideBackground({
+        type: isVideo ? "video" : "image",
+        content: value,
+        mimeType: "",
+        fit: normalizeSlideBackground(state.slides?.[ensureActiveSlideSync()]?.background)?.fit || "cover",
+    });
+}
+
+function clearCurrentSlideBackground() {
+    saveStateToUndo();
+    setCurrentSlideBackground(null);
 }
 
 async function _insertUploadedVideo(file) {

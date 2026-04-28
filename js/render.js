@@ -322,6 +322,40 @@ function _applyBulletFragmentAnimation(contentHost, elData) {
     });
 }
 
+function createSlideBackgroundNode(background, { forPreview = false } = {}) {
+    const normalized = normalizeSlideBackground(background);
+    if (!normalized) return null;
+    const wrapper = document.createElement("div");
+    wrapper.className = "slide-background-media";
+    if (normalized.type === "video") {
+        const video = document.createElement("video");
+        video.className = "slide-background-video";
+        video.src = normalized.content;
+        video.style.setProperty("object-fit", normalized.fit || "cover", "important");
+        video.muted = true;
+        video.loop = true;
+        video.autoplay = !forPreview;
+        video.playsInline = true;
+        video.preload = forPreview ? "metadata" : "auto";
+        video.setAttribute("playsinline", "true");
+        if (!forPreview) {
+            const play = () => video.play().catch(() => {});
+            video.addEventListener("loadeddata", play, { once: true });
+            requestAnimationFrame(play);
+        }
+        wrapper.appendChild(video);
+    } else {
+        const image = document.createElement("img");
+        image.className = "slide-background-image";
+        image.src = normalized.content;
+        image.style.setProperty("object-fit", normalized.fit || "cover", "important");
+        image.alt = "";
+        image.draggable = false;
+        wrapper.appendChild(image);
+    }
+    return wrapper;
+}
+
 function reorderSlides(fromIndex, toIndex) {
     const slides = state.slides || [];
     if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex)) return;
@@ -728,6 +762,8 @@ function renderSlidesFromState() {
         section.style.height = `${slideHeight}px`;
         section.style.color = theme.defaultTextColor;
         section.style.fontFamily = theme.bodyFont;
+        const bgNode = createSlideBackgroundNode(slide.background);
+        if (bgNode) section.appendChild(bgNode);
         slide.elements.forEach(elData => section.appendChild(createElementNode(elData)));
         container.appendChild(section);
     });
@@ -820,6 +856,8 @@ function renderSlidePreviews() {
         const previewBg =
             getComputedStyle(document.documentElement).getPropertyValue("--slide-bg").trim() || theme.cssVars["--slide-bg"];
         previewSlide.style.cssText = `width:${slideWidth}px;height:${slideHeight}px;position:relative;transform-origin:top left;background:${previewBg};color:${theme.defaultTextColor};font-family:${theme.bodyFont};`;
+        const previewBgNode = createSlideBackgroundNode(slide.background, { forPreview: true });
+        if (previewBgNode) previewSlide.appendChild(previewBgNode);
         slide.elements.forEach(elData => previewSlide.appendChild(_createStaticNode(elData)));
         thumbnail.appendChild(previewSlide);
         card.appendChild(thumbnail);
@@ -865,13 +903,136 @@ function renderSlidePreviews() {
 
 function _applyStylesToElement(el, styles) {
     if (!styles) return;
-    const textProps = ["color", "fontSize", "fontFamily", "fontWeight", "fontStyle", "textAlign", "lineHeight"];
+    const textProps = ["color", "fontSize", "fontFamily", "fontWeight", "fontStyle", "textAlign", "lineHeight", "textShadow"];
     Object.entries(styles).forEach(([prop, value]) => {
         if (value === undefined || value === null) return;
+        if (prop === "textStrokeWidth") {
+            if (String(value) === "0" || String(value) === "0px") {
+                el.style.removeProperty("-webkit-text-stroke-width");
+            } else {
+                el.style.setProperty("-webkit-text-stroke-width", value, "important");
+            }
+            return;
+        }
+        if (prop === "textStrokeColor") {
+            if (!value || value === "transparent") {
+                el.style.removeProperty("-webkit-text-stroke-color");
+            } else {
+                el.style.setProperty("-webkit-text-stroke-color", value, "important");
+            }
+            return;
+        }
         const cssProp = prop.replace(/([A-Z])/g, "-$1").toLowerCase();
         const priority = textProps.includes(prop) ? "important" : "";
         el.style.setProperty(cssProp, value, priority);
     });
+}
+
+function _getTableCellDisplayStyles(tableData, rowIndex, colIndex, cellStyles = {}) {
+    const isHeader = tableData.headerRow && rowIndex === 0;
+    const zebraFill = tableData.zebra && !isHeader && rowIndex % 2 === 1 ? tableData.altFill : tableData.bodyFill;
+    return {
+        backgroundColor: cellStyles.backgroundColor || (isHeader ? tableData.headerFill : zebraFill),
+        color: cellStyles.color || (isHeader ? tableData.headerTextColor : tableData.textColor),
+        textAlign: cellStyles.textAlign || "left",
+        fontWeight: cellStyles.fontWeight || (isHeader ? "700" : "400"),
+    };
+}
+
+function _renderTableDom(container, elData, { interactive = true } = {}) {
+    const tableData = normalizeTableData(elData.tableData);
+    container.innerHTML = "";
+
+    const shell = document.createElement("div");
+    shell.className = "table-element-shell";
+    const scroll = document.createElement("div");
+    scroll.className = "table-element-scroll";
+    const table = document.createElement("table");
+    table.className = "table-element-grid";
+    table.style.borderCollapse = "collapse";
+    table.style.width = "100%";
+    table.style.height = "100%";
+    table.style.tableLayout = "fixed";
+
+    const tbody = document.createElement("tbody");
+    for (let rowIndex = 0; rowIndex < tableData.rows; rowIndex += 1) {
+        const tr = document.createElement("tr");
+        for (let colIndex = 0; colIndex < tableData.cols; colIndex += 1) {
+            const cellData = tableData.cells[rowIndex]?.[colIndex] || { text: "", styles: {} };
+            const cell = document.createElement(rowIndex === 0 && tableData.headerRow ? "th" : "td");
+            cell.className = "table-element-cell";
+            cell.dataset.row = String(rowIndex);
+            cell.dataset.col = String(colIndex);
+            const cellStyles = _getTableCellDisplayStyles(tableData, rowIndex, colIndex, cellData.styles || {});
+            cell.style.border = `${tableData.borderWidth}px solid ${tableData.borderColor}`;
+            cell.style.padding = `${tableData.cellPadding}px`;
+            cell.style.backgroundColor = cellStyles.backgroundColor;
+            cell.style.color = cellStyles.color;
+            cell.style.textAlign = cellStyles.textAlign;
+            cell.style.fontWeight = cellStyles.fontWeight;
+            cell.style.verticalAlign = "top";
+            cell.style.whiteSpace = "pre-wrap";
+            cell.textContent = cellData.text || "";
+
+            if (interactive) {
+                cell.addEventListener("click", e => {
+                    if (document.body.classList.contains("play-mode-active")) return;
+                    e.stopPropagation();
+                    selectElement(elData.id, "replace");
+                    container.querySelectorAll(".table-element-cell.is-active").forEach(node => node.classList.remove("is-active"));
+                    cell.classList.add("is-active");
+                });
+                cell.addEventListener("dblclick", e => {
+                    if (document.body.classList.contains("play-mode-active")) return;
+                    e.stopPropagation();
+                    const host = container.closest(".canvas-element");
+                    cell.contentEditable = "true";
+                    cell.spellcheck = false;
+                    host?.classList.add("editing-table");
+                    if (host) {
+                        interact(host).draggable(false);
+                        interact(host).resizable(false);
+                    }
+                    requestAnimationFrame(() => {
+                        const range = document.createRange();
+                        range.selectNodeContents(cell);
+                        range.collapse(false);
+                        const selection = window.getSelection();
+                        selection?.removeAllRanges();
+                        selection?.addRange(range);
+                        cell.focus();
+                    });
+                });
+                cell.addEventListener("blur", () => {
+                    if (!cell.isContentEditable) return;
+                    const host = container.closest(".canvas-element");
+                    const nextTableData = normalizeTableData(elData.tableData);
+                    nextTableData.cells[rowIndex][colIndex].text = cell.innerText.replace(/\r/g, "");
+                    updateElementState(elData.id, { tableData: nextTableData });
+                    elData.tableData = nextTableData;
+                    cell.contentEditable = "false";
+                    host?.classList.remove("editing-table");
+                    if (host) {
+                        interact(host).draggable(true);
+                        interact(host).resizable(true);
+                    }
+                    if (typeof schedulePresentationAutosave === "function") {
+                        schedulePresentationAutosave();
+                    }
+                    if (window.refreshPreviews) {
+                        window.refreshPreviews();
+                    }
+                });
+            }
+
+            tr.appendChild(cell);
+        }
+        tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    scroll.appendChild(table);
+    shell.appendChild(scroll);
+    container.appendChild(shell);
 }
 
 function _createStaticNode(elData) {
@@ -891,6 +1052,8 @@ function _createStaticNode(elData) {
         img.src = elData.content;
         img.className = "w-full h-full object-fill rounded-[inherit]";
         el.appendChild(img);
+    } else if (elData.type === "table") {
+        _renderTableDom(el, elData, { interactive: false });
     } else if (elData.type === "html") {
         const chip = document.createElement("div");
         chip.innerText = normalizeHtmlMode(elData) === "autofit" ? "HTML AUTOFIT" : "HTML LIVE";
@@ -1099,6 +1262,8 @@ function _applyTypeContent(el, elData) {
                 schedulePresentationAutosave();
             }
         });
+    } else if (elData.type === "table") {
+        _renderTableDom(el, elData, { interactive: true });
     } else if (elData.type === "image") {
         if (elData.cropTransform) {
             const wrapper = document.createElement("div");

@@ -17,6 +17,7 @@ function buildDefaultPresentationState() {
         slides: [
             {
                 id: generateId("slide"),
+                layoutId: "blank-titled",
                 notes: "",
                 elements: [
                     {
@@ -87,6 +88,78 @@ const PRESENTATION_ENTRANCE_EFFECTS = new Set([
 ]);
 const PRESENTATION_EMPHASIS_EFFECTS = new Set(["pulse", "glow"]);
 
+function createDefaultTableData(rows = 3, cols = 4) {
+    const safeRows = Math.max(1, Number(rows) || 3);
+    const safeCols = Math.max(1, Number(cols) || 4);
+    const cells = Array.from({ length: safeRows }, (_, rowIndex) =>
+        Array.from({ length: safeCols }, (_, colIndex) => ({
+            text:
+                rowIndex === 0
+                    ? `Header ${colIndex + 1}`
+                    : rowIndex === 1 && colIndex === 0
+                      ? "Item"
+                      : rowIndex === 1 && colIndex === 1
+                        ? "Value"
+                        : "",
+            styles: {},
+        })),
+    );
+    return {
+        rows: safeRows,
+        cols: safeCols,
+        headerRow: true,
+        zebra: false,
+        borderColor: "#cbd5e1",
+        borderWidth: 1,
+        cellPadding: 10,
+        headerFill: "#e2e8f0",
+        bodyFill: "#ffffff",
+        altFill: "#f8fafc",
+        textColor: "#172033",
+        headerTextColor: "#172033",
+        cells,
+    };
+}
+
+function normalizeTableData(tableData) {
+    const fallback = createDefaultTableData();
+    if (!tableData || typeof tableData !== "object") return fallback;
+    const rows = Math.max(1, Number(tableData.rows) || fallback.rows);
+    const cols = Math.max(1, Number(tableData.cols) || fallback.cols);
+    const rawCells = Array.isArray(tableData.cells) ? tableData.cells : [];
+    const cells = Array.from({ length: rows }, (_, rowIndex) =>
+        Array.from({ length: cols }, (_, colIndex) => {
+            const rawCell = rawCells[rowIndex]?.[colIndex];
+            if (rawCell && typeof rawCell === "object") {
+                return {
+                    text: typeof rawCell.text === "string" ? rawCell.text : "",
+                    styles: rawCell.styles && typeof rawCell.styles === "object" ? { ...rawCell.styles } : {},
+                };
+            }
+            return {
+                text: rowIndex === 0 ? `Header ${colIndex + 1}` : "",
+                styles: {},
+            };
+        }),
+    );
+    return {
+        rows,
+        cols,
+        headerRow: tableData.headerRow !== false,
+        zebra: Boolean(tableData.zebra),
+        borderColor: typeof tableData.borderColor === "string" ? tableData.borderColor : fallback.borderColor,
+        borderWidth: Math.max(0, Number(tableData.borderWidth) || fallback.borderWidth),
+        cellPadding: Math.max(2, Number(tableData.cellPadding) || fallback.cellPadding),
+        headerFill: typeof tableData.headerFill === "string" ? tableData.headerFill : fallback.headerFill,
+        bodyFill: typeof tableData.bodyFill === "string" ? tableData.bodyFill : fallback.bodyFill,
+        altFill: typeof tableData.altFill === "string" ? tableData.altFill : fallback.altFill,
+        textColor: typeof tableData.textColor === "string" ? tableData.textColor : fallback.textColor,
+        headerTextColor:
+            typeof tableData.headerTextColor === "string" ? tableData.headerTextColor : fallback.headerTextColor,
+        cells,
+    };
+}
+
 function isStructuredAnimationEffect(effect) {
     return PRESENTATION_ANIMATION_EFFECTS.includes(effect);
 }
@@ -142,6 +215,31 @@ function normalizeElementAnimation(el = {}) {
 
 function isElementAnimationConfigured(el = {}) {
     return Boolean(normalizeElementAnimation(el));
+}
+
+function normalizeSlideBackground(background) {
+    if (!background) return null;
+    if (typeof background === "string") {
+        const trimmed = background.trim();
+        if (!trimmed) return null;
+        return {
+            type: /\.(mp4|webm|ogg)(\?.*)?$/i.test(trimmed) || /^data:video\//i.test(trimmed) ? "video" : "image",
+            content: trimmed,
+            mimeType: "",
+            fit: "cover",
+        };
+    }
+    if (typeof background !== "object") return null;
+    const content = String(background.content || "").trim();
+    if (!content) return null;
+    const type = background.type === "video" ? "video" : "image";
+    const fit = ["cover", "contain", "fill"].includes(background.fit) ? background.fit : "cover";
+    return {
+        type,
+        content,
+        mimeType: typeof background.mimeType === "string" ? background.mimeType : "",
+        fit,
+    };
 }
 
 function updateProjectTitleUi() {
@@ -285,6 +383,14 @@ function normalizeStateIds() {
                           backgroundColor: "transparent",
                           textAlign: "left",
                       }
+                    : fallbackType === "table"
+                      ? {
+                            color: "#172033",
+                            fontSize: "16px",
+                            fontFamily: '"Manrope", sans-serif',
+                            backgroundColor: "transparent",
+                            textAlign: "left",
+                        }
                     : {}),
                 ...(fallbackType === "shape" ? { backgroundColor: "#6366f1" } : {}),
                 ...(fallbackType === "connector"
@@ -346,6 +452,10 @@ function normalizeStateIds() {
                           autoHeight: safeEl.autoHeight !== false,
                           themeManaged: safeEl.themeManaged ?? true,
                       }
+                    : fallbackType === "table"
+                      ? {
+                            tableData: normalizeTableData(safeEl.tableData),
+                        }
                     : fallbackType === "shape"
                       ? {
                             themeManaged: safeEl.themeManaged ?? true,
@@ -372,6 +482,8 @@ function normalizeStateIds() {
                         ? "150px"
                         : fallbackType === "connector"
                           ? "280px"
+                        : fallbackType === "table"
+                          ? "520px"
                         : fallbackType === "image"
                           ? "300px"
                           : fallbackType === "pdf"
@@ -385,6 +497,8 @@ function normalizeStateIds() {
                         ? "150px"
                         : fallbackType === "connector"
                           ? "140px"
+                        : fallbackType === "table"
+                          ? "240px"
                         : fallbackType === "image"
                           ? "200px"
                           : fallbackType === "pdf"
@@ -409,13 +523,15 @@ function normalizeStateIds() {
         return {
             ...safeSlide,
             id: nextSlideId,
+            layoutId: typeof safeSlide.layoutId === "string" && safeSlide.layoutId ? safeSlide.layoutId : "blank-titled",
             notes: typeof safeSlide.notes === "string" ? safeSlide.notes : "",
+            background: normalizeSlideBackground(safeSlide.background),
             elements: normalizedElements,
         };
     });
 
     if (!state.slides.length) {
-        state.slides = [{ id: generateId("slide"), notes: "", elements: [] }];
+        state.slides = [{ id: generateId("slide"), layoutId: "blank-titled", notes: "", background: null, elements: [] }];
     }
 
     if (currentSlideIndex > state.slides.length - 1) {

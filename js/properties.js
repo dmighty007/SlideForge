@@ -33,8 +33,163 @@ function markTextElementStyleAsLocal(data, prop) {
     if (!data || data.type !== "text") return;
     if (!["color"].includes(prop)) return;
     if (data.themeManaged === false) return;
+    const theme = typeof getPresentationTheme === "function" ? getPresentationTheme() : null;
+    const currentColor = String(data.styles?.color || "").trim().toLowerCase();
+    const normalizedThemeColors = new Set(
+        [
+            theme?.defaultTextColor,
+            theme?.defaultMutedColor,
+            theme?.accentStrong,
+            theme?.defaultShapeColor,
+            theme?.cssVars?.["--slide-accent"],
+            theme?.cssVars?.["--slide-accent-2"],
+        ]
+            .filter(Boolean)
+            .map(value => String(value).trim().toLowerCase()),
+    );
+    if (normalizedThemeColors.has(currentColor)) return;
     updateElementState(data.id, { themeManaged: false });
     data.themeManaged = false;
+}
+
+function _normalizeStrokeWidthValue(value, fallback = "0px") {
+    const raw = String(value ?? "").trim();
+    if (!raw) return fallback;
+    const num = Number.parseFloat(raw.replace("px", ""));
+    return Number.isFinite(num) && num >= 0 ? `${num}px` : fallback;
+}
+
+function _parseTextShadowValue(value) {
+    const fallback = { offsetX: 0, offsetY: 0, blur: 0, color: "#000000" };
+    if (!value || value === "none") return fallback;
+    const match = String(value)
+        .trim()
+        .match(/^(-?\d+(?:\.\d+)?)px\s+(-?\d+(?:\.\d+)?)px\s+(-?\d+(?:\.\d+)?)px\s+(.+)$/i);
+    if (!match) return fallback;
+    return {
+        offsetX: Number(match[1]) || 0,
+        offsetY: Number(match[2]) || 0,
+        blur: Math.max(0, Number(match[3]) || 0),
+        color: _normalizeColorForInput(match[4], "#000000"),
+    };
+}
+
+function _buildTextShadowValue(offsetX, offsetY, blur, color) {
+    const x = Number(offsetX) || 0;
+    const y = Number(offsetY) || 0;
+    const b = Math.max(0, Number(blur) || 0);
+    const c = _normalizeColorForInput(color, "#000000");
+    if (x === 0 && y === 0 && b === 0) return "none";
+    return `${x}px ${y}px ${b}px ${c}`;
+}
+
+function _buildTextEffectPresetMap(data) {
+    const theme = typeof getPresentationTheme === "function" ? getPresentationTheme() : null;
+    const themeId = typeof state !== "undefined" ? state.presentationTheme : "";
+    const accent = _normalizeColorForInput(theme?.accentStrong, "#2563eb");
+    const textColor = _normalizeColorForInput(data?.styles?.color, "#172033");
+    const fontSize = parseFloat(String(data?.styles?.fontSize || "32").replace("px", "")) || 32;
+    const isTitleLike = fontSize >= 40;
+    return {
+        none: {
+            textShadow: "none",
+            textStrokeWidth: "0px",
+            textStrokeColor: "#000000",
+        },
+        soft: {
+            textShadow: _buildTextShadowValue(0, 2, 10, "#00000044"),
+            textStrokeWidth: "0px",
+            textStrokeColor: "#000000",
+        },
+        dramatic: {
+            textShadow: _buildTextShadowValue(0, 5, 18, "#00000088"),
+            textStrokeWidth: "0px",
+            textStrokeColor: "#000000",
+        },
+        glow: {
+            textShadow: _buildTextShadowValue(0, 0, isTitleLike ? 18 : 12, `${accent}cc`),
+            textStrokeWidth: "0px",
+            textStrokeColor: accent,
+        },
+        outline: {
+            textShadow: "none",
+            textStrokeWidth: isTitleLike ? "2px" : "1px",
+            textStrokeColor: textColor === "#ffffff" ? "#111827" : "#ffffff",
+        },
+        auto: {
+            textShadow: isTitleLike
+                ? _buildTextShadowValue(0, 4, 16, themeId === "chalkboard" ? "#00000066" : "#00000055")
+                : _buildTextShadowValue(0, 2, 8, "#00000033"),
+            textStrokeWidth: themeId === "chalkboard" && isTitleLike ? "1px" : "0px",
+            textStrokeColor: themeId === "chalkboard" ? "#f6f1d1" : accent,
+        },
+    };
+}
+
+function _applyTextEffectPreset(data, presetName) {
+    if (!data || data.type !== "text") return;
+    const preset = _buildTextEffectPresetMap(data)[presetName];
+    if (!preset) return;
+    applyStyle("textShadow", preset.textShadow);
+    applyStyle("textStrokeWidth", preset.textStrokeWidth);
+    applyStyle("textStrokeColor", preset.textStrokeColor);
+}
+
+function applySelectedTextEffectPreset(presetName) {
+    const data = getSelectedElementData();
+    if (!data || data.type !== "text") return;
+    _applyTextEffectPreset(data, presetName);
+    buildPropertiesPanel();
+}
+
+function mutateSelectedTableData(mutator) {
+    const data = getSelectedElementData();
+    if (!data || data.type !== "table") return;
+    saveStateToUndo();
+    const nextTableData = normalizeTableData(data.tableData);
+    mutator(nextTableData);
+    const normalized = normalizeTableData(nextTableData);
+    updateElementState(data.id, { tableData: normalized });
+    data.tableData = normalized;
+    if (window.renderSlidesFromState) window.renderSlidesFromState();
+    buildPropertiesPanel();
+}
+
+function _renderTextEffectPresetButton(data, presetName, label) {
+    const preset = _buildTextEffectPresetMap(data)[presetName];
+    const baseColor = _normalizeColorForInput(data?.styles?.color, "#172033");
+    const strokeWidth = _normalizeStrokeWidthValue(preset?.textStrokeWidth, "0px");
+    const strokeColor = _normalizeColorForInput(preset?.textStrokeColor, "#000000");
+    const shadow = preset?.textShadow || "none";
+    const swatchStyle = [
+        `color:${baseColor}`,
+        `text-shadow:${shadow === "none" ? "none" : shadow}`,
+        `-webkit-text-stroke-width:${strokeWidth}`,
+        `-webkit-text-stroke-color:${strokeColor}`,
+    ].join(";");
+    return `
+        <button type="button" id="prop-effect-${presetName}" class="prop-effect-btn" title="${label}" onclick="applySelectedTextEffectPreset('${presetName}')">
+            <span class="prop-effect-swatch" style="${swatchStyle}">Aa</span>
+            <span class="prop-effect-label">${label}</span>
+        </button>
+    `;
+}
+
+function _setElementDomStyleProperty(dom, prop, value, priority = "") {
+    if (!dom) return;
+    if (prop === "textStrokeWidth") {
+        if (!value || value === "0px" || value === "0") dom.style.removeProperty("-webkit-text-stroke-width");
+        else dom.style.setProperty("-webkit-text-stroke-width", value, priority);
+        return;
+    }
+    if (prop === "textStrokeColor") {
+        if (!value || value === "transparent") dom.style.removeProperty("-webkit-text-stroke-color");
+        else dom.style.setProperty("-webkit-text-stroke-color", value, priority);
+        return;
+    }
+    const cssProp = prop.replace(/([A-Z])/g, "-$1").toLowerCase();
+    if (value === undefined || value === null || value === "") dom.style.removeProperty(cssProp);
+    else dom.style.setProperty(cssProp, value, priority);
 }
 
 const PROPERTY_PANEL_REVEAL_FRAGMENT_CLASSES = [
@@ -456,6 +611,116 @@ function updateCurrentSlideNotes(value) {
     schedulePresentationAutosave?.(150);
 }
 
+function _buildSlideWorkspacePanel(panel) {
+    const createGroup = title => {
+        const wrap = document.createElement("div");
+        wrap.className = "prop-group space-y-3";
+        wrap.innerHTML = `<h3 class="prop-group-title">${title}</h3>`;
+        return wrap;
+    };
+
+    const slide = state.slides[currentSlideIndex] || { layoutId: "blank-titled", notes: "" };
+    const background = normalizeSlideBackground(slide.background);
+    const layoutGrp = createGroup("Slide Layout");
+    const presetOptions = Object.entries(window.SLIDE_PRESETS || {})
+        .map(([id, preset]) => `<option value="${id}" ${slide.layoutId === id ? "selected" : ""}>${preset.name}</option>`)
+        .join("");
+    layoutGrp.innerHTML += `
+        <div class="space-y-2">
+            <select id="prop-slide-layout" class="w-full text-xs">${presetOptions}</select>
+            <div class="grid grid-cols-2 gap-2">
+                <button id="prop-apply-layout" class="py-2 rounded-lg bg-primary text-white text-xs font-semibold">Apply Layout</button>
+                <button id="prop-insert-layout-slide" class="py-2 rounded-lg border border-slate-300 bg-white text-slate-700 text-xs font-semibold">New Slide</button>
+            </div>
+            <div class="text-[10px] text-slate-500">Applying a layout replaces the current slide contents but keeps its notes and slide identity.</div>
+        </div>
+    `;
+    panel.appendChild(layoutGrp);
+
+    const bgGrp = createGroup("Slide Background");
+    bgGrp.innerHTML += `
+        <div class="space-y-2">
+            <input id="prop-slide-bg-url" class="w-full text-xs" type="text" value="${background?.content || ""}" placeholder="Paste image/GIF/MP4 URL">
+            <select id="prop-slide-bg-fit" class="w-full text-xs">
+                <option value="cover" ${(background?.fit || "cover") === "cover" ? "selected" : ""}>Fit: Cover</option>
+                <option value="contain" ${background?.fit === "contain" ? "selected" : ""}>Fit: Contain</option>
+                <option value="fill" ${background?.fit === "fill" ? "selected" : ""}>Fit: Stretch</option>
+            </select>
+            <div class="grid grid-cols-3 gap-2">
+                <button id="prop-slide-bg-apply" class="py-2 rounded-lg bg-primary text-white text-xs font-semibold">Apply URL</button>
+                <button id="prop-slide-bg-upload" class="py-2 rounded-lg border border-slate-300 bg-white text-slate-700 text-xs font-semibold">Upload</button>
+                <button id="prop-slide-bg-clear" class="py-2 rounded-lg border border-slate-300 bg-white text-slate-700 text-xs font-semibold">Clear</button>
+            </div>
+            <div class="text-[10px] text-slate-500">Supports PNG, GIF, and MP4/WebM backgrounds. Media is rendered behind slide content.</div>
+        </div>
+    `;
+    panel.appendChild(bgGrp);
+
+    const notesGrp = createGroup("Slide Notes");
+    notesGrp.innerHTML += `
+        <div class="space-y-2">
+            <textarea id="prop-slide-notes" class="w-full min-h-[140px] text-xs leading-5" placeholder="Presenter notes for this slide...">${slide.notes || ""}</textarea>
+            <div class="text-[10px] text-slate-500">Notes are visible in presenter view and hidden from the audience.</div>
+        </div>
+    `;
+    panel.appendChild(notesGrp);
+
+    setTimeout(() => {
+        const layoutSelect = document.getElementById("prop-slide-layout");
+        const applyBtn = document.getElementById("prop-apply-layout");
+        const insertBtn = document.getElementById("prop-insert-layout-slide");
+        const bgUrlInput = document.getElementById("prop-slide-bg-url");
+        const bgFitInput = document.getElementById("prop-slide-bg-fit");
+        const bgApplyBtn = document.getElementById("prop-slide-bg-apply");
+        const bgUploadBtn = document.getElementById("prop-slide-bg-upload");
+        const bgClearBtn = document.getElementById("prop-slide-bg-clear");
+        const notesInput = document.getElementById("prop-slide-notes");
+
+        if (applyBtn) {
+            applyBtn.onclick = () => {
+                const layoutId = layoutSelect?.value || "blank-titled";
+                applyPresetLayoutToCurrentSlide?.(layoutId);
+            };
+        }
+        if (insertBtn) {
+            insertBtn.onclick = () => {
+                const layoutId = layoutSelect?.value || "blank-titled";
+                insertPresetSlide?.(layoutId);
+            };
+        }
+        if (bgApplyBtn) {
+            bgApplyBtn.onclick = () => {
+                setCurrentSlideBackgroundFromUrl?.(bgUrlInput?.value || "");
+            };
+        }
+        if (bgFitInput) {
+            bgFitInput.onchange = e => {
+                setCurrentSlideBackgroundFit?.(e.target.value || "cover");
+            };
+        }
+        if (bgUploadBtn) {
+            bgUploadBtn.onclick = () => {
+                pickCurrentSlideBackgroundFile?.();
+            };
+        }
+        if (bgClearBtn) {
+            bgClearBtn.onclick = () => {
+                clearCurrentSlideBackground?.();
+            };
+        }
+        if (notesInput) {
+            let lastValue = notesInput.value;
+            notesInput.oninput = e => updateCurrentSlideNotes(e.target.value);
+            notesInput.onchange = e => {
+                if (e.target.value === lastValue) return;
+                saveStateToUndo();
+                updateCurrentSlideNotes(e.target.value);
+                lastValue = e.target.value;
+            };
+        }
+    });
+}
+
 function shiftTextBulletLevels(data, delta) {
     if (!isStructuredBulletContent(data.content)) return;
     const nextContent = data.content.map(item => ({
@@ -570,11 +835,7 @@ function buildPropertiesPanel() {
     updateFloatingTextToolbar();
 
     if (state.selectedIds.length === 0) {
-        panel.innerHTML = `
-            <div class="flex flex-col items-center justify-center h-full text-gray-500 gap-3 opacity-50 pt-20">
-                <i class="fa-solid fa-object-ungroup text-3xl"></i>
-                <p class="text-sm">Select an element</p>
-            </div>`;
+        _buildSlideWorkspacePanel(panel);
         return;
     }
 
@@ -749,6 +1010,70 @@ function buildPropertiesPanel() {
             textToolsRow.appendChild(formatCol);
             grp.appendChild(textToolsRow);
 
+            const shadowState = _parseTextShadowValue(data.styles?.textShadow);
+            const strokeWidth = parseFloat(_normalizeStrokeWidthValue(data.styles?.textStrokeWidth, "0px")) || 0;
+            const strokeColor = _normalizeColorForInput(data.styles?.textStrokeColor, "#000000");
+
+            grp.appendChild(
+                createField(
+                    "Text Shadow",
+                    `
+                <div class="grid grid-cols-4 gap-2 items-end">
+                    <div>
+                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">X</label>
+                        <input type="number" id="prop-ts-x" class="w-full text-xs p-1" value="${shadowState.offsetX}" step="1">
+                    </div>
+                    <div>
+                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Y</label>
+                        <input type="number" id="prop-ts-y" class="w-full text-xs p-1" value="${shadowState.offsetY}" step="1">
+                    </div>
+                    <div>
+                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Blur</label>
+                        <input type="number" id="prop-ts-blur" class="w-full text-xs p-1" value="${shadowState.blur}" min="0" step="1">
+                    </div>
+                    <div>
+                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Color</label>
+                        <input type="color" id="prop-ts-color" class="w-full h-7 cursor-pointer rounded-md p-0" value="${shadowState.color}">
+                    </div>
+                </div>
+            `,
+                ),
+            );
+
+            grp.appendChild(
+                createField(
+                    "Text Stroke",
+                    `
+                <div class="grid grid-cols-2 gap-2 items-end">
+                    <div>
+                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Width</label>
+                        <input type="number" id="prop-stroke-width" class="w-full text-xs p-1" value="${strokeWidth}" min="0" max="24" step="0.5">
+                    </div>
+                    <div>
+                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Color</label>
+                        <input type="color" id="prop-stroke-color" class="w-full h-7 cursor-pointer rounded-md p-0" value="${strokeColor}">
+                    </div>
+                </div>
+            `,
+                ),
+            );
+
+            grp.appendChild(
+                createField(
+                    "Effects",
+                    `
+                <div class="grid grid-cols-2 gap-2">
+                    ${_renderTextEffectPresetButton(data, "auto", "Auto Theme")}
+                    ${_renderTextEffectPresetButton(data, "soft", "Soft")}
+                    ${_renderTextEffectPresetButton(data, "dramatic", "Dramatic")}
+                    ${_renderTextEffectPresetButton(data, "glow", "Glow")}
+                    ${_renderTextEffectPresetButton(data, "outline", "Outline")}
+                    ${_renderTextEffectPresetButton(data, "none", "Clear")}
+                </div>
+            `,
+                ),
+            );
+
             // Alignment
             grp.appendChild(
                 createField(
@@ -835,6 +1160,77 @@ function buildPropertiesPanel() {
                 ),
             );
             panel.appendChild(shapeGrp);
+        }
+
+        if (data.type === "table") {
+            const tableData = normalizeTableData(data.tableData);
+            const tableGrp = createGroup("Table");
+            tableGrp.innerHTML += `
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Rows</label>
+                        <div class="flex gap-2">
+                            <button id="prop-table-add-row" class="flex-1 py-2 rounded-lg bg-white border border-slate-300 text-slate-600 text-xs font-semibold hover:bg-slate-50">Add</button>
+                            <button id="prop-table-remove-row" class="flex-1 py-2 rounded-lg bg-white border border-slate-300 text-slate-600 text-xs font-semibold hover:bg-slate-50" ${tableData.rows <= 1 ? "disabled" : ""}>Remove</button>
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Columns</label>
+                        <div class="flex gap-2">
+                            <button id="prop-table-add-col" class="flex-1 py-2 rounded-lg bg-white border border-slate-300 text-slate-600 text-xs font-semibold hover:bg-slate-50">Add</button>
+                            <button id="prop-table-remove-col" class="flex-1 py-2 rounded-lg bg-white border border-slate-300 text-slate-600 text-xs font-semibold hover:bg-slate-50" ${tableData.cols <= 1 ? "disabled" : ""}>Remove</button>
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Border</label>
+                        <input type="color" id="prop-table-border-color" class="w-full h-8 cursor-pointer rounded-md p-0" value="${_normalizeColorForInput(tableData.borderColor, "#cbd5e1")}">
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Border W</label>
+                        <input type="number" id="prop-table-border-width" class="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm" min="0" max="8" value="${tableData.borderWidth}">
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Header Fill</label>
+                        <input type="color" id="prop-table-header-fill" class="w-full h-8 cursor-pointer rounded-md p-0" value="${_normalizeColorForInput(tableData.headerFill, "#e2e8f0")}">
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Body Fill</label>
+                        <input type="color" id="prop-table-body-fill" class="w-full h-8 cursor-pointer rounded-md p-0" value="${_normalizeColorForInput(tableData.bodyFill, "#ffffff")}">
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Alt Fill</label>
+                        <input type="color" id="prop-table-alt-fill" class="w-full h-8 cursor-pointer rounded-md p-0" value="${_normalizeColorForInput(tableData.altFill, "#f8fafc")}">
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Padding</label>
+                        <input type="number" id="prop-table-padding" class="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm" min="2" max="24" value="${tableData.cellPadding}">
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Text</label>
+                        <input type="color" id="prop-table-text-color" class="w-full h-8 cursor-pointer rounded-md p-0" value="${_normalizeColorForInput(tableData.textColor, "#172033")}">
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Header Text</label>
+                        <input type="color" id="prop-table-header-text-color" class="w-full h-8 cursor-pointer rounded-md p-0" value="${_normalizeColorForInput(tableData.headerTextColor, "#172033")}">
+                    </div>
+                </div>
+                <label class="flex items-center gap-2 cursor-pointer group/chk mt-3">
+                    <input type="checkbox" id="prop-table-header-row" ${tableData.headerRow ? "checked" : ""} class="hidden">
+                    <div class="w-4 h-4 rounded border border-gray-600 flex items-center justify-center group-hover/chk:border-accent transition-colors">
+                        <div class="w-2.5 h-2.5 rounded-sm bg-accent transition-opacity ${tableData.headerRow ? "opacity-100" : "opacity-0"}"></div>
+                    </div>
+                    <span class="text-xs text-gray-400">Header Row</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer group/chk mt-2">
+                    <input type="checkbox" id="prop-table-zebra" ${tableData.zebra ? "checked" : ""} class="hidden">
+                    <div class="w-4 h-4 rounded border border-gray-600 flex items-center justify-center group-hover/chk:border-accent transition-colors">
+                        <div class="w-2.5 h-2.5 rounded-sm bg-accent transition-opacity ${tableData.zebra ? "opacity-100" : "opacity-0"}"></div>
+                    </div>
+                    <span class="text-xs text-gray-400">Zebra Rows</span>
+                </label>
+                <p class="text-[10px] text-slate-500 leading-snug mt-2">Double click a cell on the slide to edit it.</p>
+            `;
+            panel.appendChild(tableGrp);
         }
 
         if (data.type === "connector") {
@@ -1351,6 +1747,59 @@ function buildPropertiesPanel() {
                     };
                 }
 
+                const bindWholeTextStyleControl = (el, handler) => {
+                    if (!el) return;
+                    bindInlineFormattingGuard(el);
+                    el.addEventListener("input", beginFormattingInteraction);
+                    const commit = () => {
+                        handler();
+                        endFormattingInteraction();
+                    };
+                    el.onchange = commit;
+                    el.onblur = commit;
+                };
+
+                const shadowX = document.getElementById("prop-ts-x");
+                const shadowY = document.getElementById("prop-ts-y");
+                const shadowBlur = document.getElementById("prop-ts-blur");
+                const shadowColor = document.getElementById("prop-ts-color");
+                const commitTextShadow = () => {
+                    applyStyle("textShadow", _buildTextShadowValue(shadowX?.value, shadowY?.value, shadowBlur?.value, shadowColor?.value));
+                    buildPropertiesPanel();
+                };
+                bindWholeTextStyleControl(shadowX, commitTextShadow);
+                bindWholeTextStyleControl(shadowY, commitTextShadow);
+                bindWholeTextStyleControl(shadowBlur, commitTextShadow);
+                bindWholeTextStyleControl(shadowColor, commitTextShadow);
+
+                const strokeWidthInput = document.getElementById("prop-stroke-width");
+                const strokeColorInput = document.getElementById("prop-stroke-color");
+                const commitTextStroke = () => {
+                    const nextWidth = _normalizeStrokeWidthValue(strokeWidthInput?.value, "0px");
+                    const nextColor = _normalizeColorForInput(strokeColorInput?.value, "#000000");
+                    applyStyle("textStrokeWidth", nextWidth);
+                    applyStyle("textStrokeColor", nextColor);
+                    buildPropertiesPanel();
+                };
+                bindWholeTextStyleControl(strokeWidthInput, commitTextStroke);
+                bindWholeTextStyleControl(strokeColorInput, commitTextStroke);
+
+                const bindTextEffectPresetButton = (id, presetName) => {
+                    const btn = document.getElementById(id);
+                    if (!btn) return;
+                    bindInlineFormattingGuard(btn);
+                    btn.onclick = () => {
+                        _applyTextEffectPreset(data, presetName);
+                        buildPropertiesPanel();
+                    };
+                };
+                bindTextEffectPresetButton("prop-effect-auto", "auto");
+                bindTextEffectPresetButton("prop-effect-soft", "soft");
+                bindTextEffectPresetButton("prop-effect-dramatic", "dramatic");
+                bindTextEffectPresetButton("prop-effect-glow", "glow");
+                bindTextEffectPresetButton("prop-effect-outline", "outline");
+                bindTextEffectPresetButton("prop-effect-none", "none");
+
                 // Alignment Button Group
                 ['left', 'center', 'right', 'justify'].forEach(align => {
                     const btn = document.getElementById(`prop-align-${align}`);
@@ -1479,6 +1928,70 @@ function buildPropertiesPanel() {
                         });
                     };
                 }
+            }
+
+            if (data.type === "table") {
+                document.getElementById("prop-table-add-row")?.addEventListener("click", () => {
+                    mutateSelectedTableData(tableData => {
+                        tableData.rows += 1;
+                        tableData.cells.push(
+                            Array.from({ length: tableData.cols }, () => ({
+                                text: "",
+                                styles: {},
+                            })),
+                        );
+                    });
+                });
+                document.getElementById("prop-table-remove-row")?.addEventListener("click", () => {
+                    mutateSelectedTableData(tableData => {
+                        if (tableData.rows <= 1) return;
+                        tableData.rows -= 1;
+                        tableData.cells = tableData.cells.slice(0, tableData.rows);
+                    });
+                });
+                document.getElementById("prop-table-add-col")?.addEventListener("click", () => {
+                    mutateSelectedTableData(tableData => {
+                        tableData.cols += 1;
+                        tableData.cells.forEach((row, rowIndex) => {
+                            row.push({
+                                text: rowIndex === 0 ? `Header ${tableData.cols}` : "",
+                                styles: {},
+                            });
+                        });
+                    });
+                });
+                document.getElementById("prop-table-remove-col")?.addEventListener("click", () => {
+                    mutateSelectedTableData(tableData => {
+                        if (tableData.cols <= 1) return;
+                        tableData.cols -= 1;
+                        tableData.cells = tableData.cells.map(row => row.slice(0, tableData.cols));
+                    });
+                });
+                const bindTableValue = (id, key, normalize = value => value) => {
+                    const input = document.getElementById(id);
+                    if (!input) return;
+                    const commit = () => mutateSelectedTableData(tableData => { tableData[key] = normalize(input.value); });
+                    input.addEventListener("change", commit);
+                    input.addEventListener("blur", commit);
+                };
+                bindTableValue("prop-table-border-color", "borderColor", value => _normalizeColorForInput(value, "#cbd5e1"));
+                bindTableValue("prop-table-border-width", "borderWidth", value => Math.max(0, Number(value) || 0));
+                bindTableValue("prop-table-header-fill", "headerFill", value => _normalizeColorForInput(value, "#e2e8f0"));
+                bindTableValue("prop-table-body-fill", "bodyFill", value => _normalizeColorForInput(value, "#ffffff"));
+                bindTableValue("prop-table-alt-fill", "altFill", value => _normalizeColorForInput(value, "#f8fafc"));
+                bindTableValue("prop-table-padding", "cellPadding", value => Math.max(2, Number(value) || 2));
+                bindTableValue("prop-table-text-color", "textColor", value => _normalizeColorForInput(value, "#172033"));
+                bindTableValue("prop-table-header-text-color", "headerTextColor", value => _normalizeColorForInput(value, "#172033"));
+                document.getElementById("prop-table-header-row")?.addEventListener("click", () => {
+                    mutateSelectedTableData(tableData => {
+                        tableData.headerRow = !tableData.headerRow;
+                    });
+                });
+                document.getElementById("prop-table-zebra")?.addEventListener("click", () => {
+                    mutateSelectedTableData(tableData => {
+                        tableData.zebra = !tableData.zebra;
+                    });
+                });
             }
 
             if (data.type === "connector") {
@@ -2068,14 +2581,14 @@ function applyStyle(prop, value) {
 
         const cssProp = prop.replace(/([A-Z])/g, "-$1").toLowerCase();
         // Force important for text styles to override Reveal.js and theme defaults
-        const textProps = ["color", "fontSize", "fontFamily", "fontWeight", "fontStyle", "textAlign", "lineHeight"];
+        const textProps = ["color", "fontSize", "fontFamily", "fontWeight", "fontStyle", "textAlign", "lineHeight", "textShadow"];
         const priority = textProps.includes(prop) ? "important" : "";
         
-        dom.style.setProperty(cssProp, value, priority);
+        _setElementDomStyleProperty(dom, prop, value, priority);
 
         if (data.type === "text") {
             if (contentHost) {
-                contentHost.style.setProperty(cssProp, value, priority);
+                _setElementDomStyleProperty(contentHost, prop, value, priority);
                 if (prop === "color" && contentHost.dataset.structuredEdit !== "true") {
                     contentHost.innerHTML = renderTextContent(data);
                 }

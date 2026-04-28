@@ -438,6 +438,45 @@ const SLIDE_PRESETS = {
 
 /* ─── Insert Preset as New Slide ────────────────────────────────────────── */
 
+function buildPresetSlideState(presetId, theme, { slideId = generateId('slide'), notes = '', background = '' } = {}) {
+    const preset = SLIDE_PRESETS[presetId];
+    if (!preset) return null;
+    const resolvedTheme = theme || (typeof getPresentationTheme === 'function' ? getPresentationTheme() : null);
+    const elements = preset.build(resolvedTheme).map(el => ({
+        ...el,
+        id: generateId('el'),
+        themeManaged: true,
+    }));
+    return {
+        id: slideId,
+        layoutId: presetId,
+        background: normalizeSlideBackground(background),
+        notes,
+        elements,
+    };
+}
+
+function applyPresetLayoutToCurrentSlide(presetId) {
+    const preset = SLIDE_PRESETS[presetId];
+    if (!preset) {
+        console.warn('Unknown preset:', presetId);
+        return;
+    }
+    const activeIndex = typeof ensureActiveSlideSync === 'function' ? ensureActiveSlideSync() : currentSlideIndex;
+    const existing = state.slides[activeIndex];
+    if (!existing) return;
+    const theme = typeof getPresentationTheme === 'function' ? getPresentationTheme() : null;
+    saveStateToUndo();
+    state.slides[activeIndex] = buildPresetSlideState(presetId, theme, {
+        slideId: existing.id,
+        notes: existing.notes || '',
+        background: existing.background || '',
+    });
+    clearSelection?.();
+    renderSlidesFromState?.();
+    buildPropertiesPanel?.();
+}
+
 function insertPresetSlide(presetId) {
     const preset = SLIDE_PRESETS[presetId];
     if (!preset) { console.warn('Unknown preset:', presetId); return; }
@@ -457,14 +496,7 @@ function insertPresetSlide(presetId) {
 
     saveStateToUndo();
 
-    const slideId = generateId('slide');
-    const elements = preset.build(theme).map(el => ({
-        ...el,
-        id: generateId('el'),
-        themeManaged: true,   // participates in theme retinting
-    }));
-
-    const newSlide = { id: slideId, background: '', elements };
+    const newSlide = buildPresetSlideState(presetId, theme, { background: '', notes: '' });
     const insertAt = typeof currentSlideIndex !== 'undefined' ? currentSlideIndex + 1 : state.slides.length;
     state.slides.splice(insertAt, 0, newSlide);
 
@@ -473,4 +505,6 @@ function insertPresetSlide(presetId) {
 }
 
 window.insertPresetSlide = insertPresetSlide;
+window.applyPresetLayoutToCurrentSlide = applyPresetLayoutToCurrentSlide;
+window.buildPresetSlideState = buildPresetSlideState;
 window.SLIDE_PRESETS = SLIDE_PRESETS;

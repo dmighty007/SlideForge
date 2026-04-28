@@ -663,6 +663,7 @@ body {
 }
 
 .editor-mode .reveal .slides section {
+    position: relative;
     background: var(--slide-bg);
     color: var(--slide-fg);
     border: none;
@@ -671,6 +672,28 @@ body {
 
 .editor-mode .reveal .slides section.present {
     outline: none;
+}
+
+.slide-background-media {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.slide-background-media > .slide-background-image,
+.slide-background-media > .slide-background-video {
+    position: absolute;
+    inset: 0;
+    width: 100% !important;
+    height: 100% !important;
+    min-width: 100%;
+    min-height: 100%;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    display: block;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -685,6 +708,7 @@ body {
     transition: outline 0.1s ease, box-shadow 0.1s ease;
     line-height: 1.2;
     will-change: transform, width, height;
+    z-index: 1;
 }
 
 .canvas-element[data-type="connector"] {
@@ -773,6 +797,53 @@ body {
     overflow: visible;
 }
 
+.canvas-element[data-type="table"] {
+    overflow: visible;
+    background: #ffffff;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 12px;
+}
+
+.table-element-shell,
+.table-element-scroll {
+    width: 100%;
+    height: 100%;
+}
+
+.table-element-shell {
+    overflow: hidden;
+    border-radius: inherit;
+    background: inherit;
+}
+
+.table-element-scroll {
+    overflow: auto;
+}
+
+.table-element-grid {
+    width: 100%;
+    height: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    background: white;
+}
+
+.table-element-cell {
+    min-width: 56px;
+    line-height: 1.35;
+    word-break: break-word;
+    outline: none;
+    user-select: none;
+}
+
+.table-element-cell.is-active {
+    box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.75);
+}
+
+.table-element-cell[contenteditable="true"] {
+    user-select: text;
+}
+
 .html-embed-frame {
     pointer-events: none;
 }
@@ -805,6 +876,15 @@ body {
     outline: 1px solid rgba(37, 99, 235, 0.4);
     outline-offset: 1px;
     box-shadow: none;
+}
+
+.canvas-element.editing-table {
+    outline: 2px solid rgba(37, 99, 235, 0.45);
+    box-shadow: 0 0 0 6px rgba(37, 99, 235, 0.08);
+}
+
+.canvas-element.editing-table > .resize-handle {
+    display: none !important;
 }
 
 /* ── Hover ── */
@@ -975,6 +1055,48 @@ body {
 .prop-btn:hover { border-color: var(--primary); color: var(--primary); background: #EFF6FF; }
 .prop-btn-danger { color: #EF4444; }
 .prop-btn-danger:hover { border-color: #EF4444; background: #FEF2F2; color: #EF4444; }
+
+.prop-effect-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 38px;
+    padding: 7px 9px;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    color: #334155;
+    transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.prop-effect-btn:hover {
+    border-color: var(--primary);
+    background: #f8fbff;
+    color: var(--primary);
+}
+
+.prop-effect-swatch {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 34px;
+    height: 22px;
+    border-radius: 6px;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.prop-effect-label {
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.1;
+    text-align: left;
+}
 
 /* ═══════════════════════════════════════════════════════
    PLAY MODE

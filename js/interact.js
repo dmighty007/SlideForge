@@ -25,6 +25,12 @@ function isElementInTextEditMode(target) {
     return Boolean(editor && editor.contentEditable === "true");
 }
 
+function getInteractCanvasTarget(eventTarget) {
+    if (!eventTarget) return null;
+    if (eventTarget.classList?.contains("canvas-element")) return eventTarget;
+    return eventTarget.closest?.(".canvas-element") || null;
+}
+
 // ─── Interact.js Setup ───────────────────────────────────────────────────────
 
 function initInteract() {
@@ -38,14 +44,16 @@ function initInteract() {
 function _setupElementInteract() {
     interact(".canvas-element")
         .draggable({
-            ignoreFrom: ".resize-handle, .crop-handle, .connector-point-handle, .pdf-annotation-layer, .pdf-annotation-layer *, .canvas-element.cropping img, .editing-text, .editing-text *",
+            ignoreFrom: ".resize-handle, .crop-handle, .connector-point-handle, .pdf-annotation-layer, .pdf-annotation-layer *, .canvas-element.cropping img, .editing-text, .editing-text *, .editing-table, .editing-table *",
             listeners: {
                 start(event) {
                     if (document.body.classList.contains("play-mode-active")) return;
+                    const canvasTarget = getInteractCanvasTarget(event.target);
+                    if (!canvasTarget) return false;
                     if (event.target.isContentEditable || isElementInTextEditMode(event.target)) return false;
                     // Ensure the dragged element (and its group) are selected
-                    if (!state.selectedIds.includes(event.target.id)) {
-                        selectElement(event.target.id, "replace");
+                    if (!state.selectedIds.includes(canvasTarget.id)) {
+                        selectElement(canvasTarget.id, "replace");
                     }
                     saveStateToUndo();
                     state.selectedIds.forEach(id =>
@@ -53,6 +61,8 @@ function _setupElementInteract() {
                     );
                 },
                 move(event) {
+                    const canvasTarget = getInteractCanvasTarget(event.target);
+                    if (!canvasTarget) return;
                     const scale = getCanvasScale();
                     const shiftHeld = event.shiftKey;
                     const dx = event.dx / scale;
@@ -127,14 +137,17 @@ function _setupElementInteract() {
             listeners: {
                 start(event) {
                     if (document.body.classList.contains("play-mode-active")) return;
+                    const canvasTarget = getInteractCanvasTarget(event.target);
+                    if (!canvasTarget) return false;
                     if (isElementInTextEditMode(event.target)) return false;
-                    selectElement(event.target.id, "replace");
+                    selectElement(canvasTarget.id, "replace");
                     saveStateToUndo();
                 },
                 move(event) {
                     const scale = getCanvasScale();
                     const shiftHeld = event.shiftKey;
-                    const target = event.target;
+                    const target = getInteractCanvasTarget(event.target);
+                    if (!target) return;
                     const elementData = state.slides[currentSlideIndex].elements.find(item => item.id === target.id);
                     if (!elementData) return;
                     if (elementData.type === "connector") return;
