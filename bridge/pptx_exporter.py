@@ -66,27 +66,39 @@ class PPTXExporter:
         return default
 
     def _get_image_stream(self, content: str) -> Optional[io.BytesIO]:
+        if not content:
+            return None
+            
         if content.startswith("data:"):
             try:
                 base64_data = content.split(",")[1]
                 return io.BytesIO(base64.b64decode(base64_data))
             except Exception:
                 return None
-        elif content.startswith("/") or content.startswith("http"):
-            # If it's a local path, try to read it
-            # In a production Django app, we'd handle MEDIA_ROOT here
-            try:
-                # Basic local path resolution (very simplified)
-                # We expect the frontend to have migrated assets to data URLs or we handle them via absolute paths
-                if content.startswith("/"):
-                    # Assuming the workspace is the root for local paths starting with /
-                    # In SlideForge, /media/ and /extracted_figures/ are common
-                    full_path = Path(content.lstrip("/"))
-                    if full_path.exists():
-                        with open(full_path, "rb") as f:
-                            return io.BytesIO(f.read())
-            except Exception:
-                pass
+        
+        # Resolve local paths
+        try:
+            # Common prefixes in this project
+            # Base directory for resolution
+            project_root = Path("/home/dm/Dibyendu/GitProjects/pptmaker_ai")
+            
+            potential_paths = []
+            if content.startswith("/media/"):
+                potential_paths.append(project_root / content.lstrip("/"))
+            elif content.startswith("/static/"):
+                potential_paths.append(project_root / content.lstrip("/"))
+            elif content.startswith("/"):
+                potential_paths.append(project_root / content.lstrip("/"))
+            else:
+                potential_paths.append(project_root / content)
+
+            for path in potential_paths:
+                if path.exists() and path.is_file():
+                    with open(path, "rb") as f:
+                        return io.BytesIO(f.read())
+        except Exception as e:
+            print(f"Error resolving image path {content}: {e}")
+            
         return None
 
     def export(self) -> io.BytesIO:
@@ -198,12 +210,16 @@ class PPTXExporter:
         
         # Alignment
         align = styles.get("textAlign", "left").lower()
+        pp_align = PP_ALIGN.LEFT
         if align == "center":
-            tf.paragraphs[0].alignment = PP_ALIGN.CENTER
+            pp_align = PP_ALIGN.CENTER
         elif align == "right":
-            tf.paragraphs[0].alignment = PP_ALIGN.RIGHT
+            pp_align = PP_ALIGN.RIGHT
         elif align == "justify":
-            tf.paragraphs[0].alignment = PP_ALIGN.JUSTIFY
+            pp_align = PP_ALIGN.JUSTIFY
+            
+        for p in tf.paragraphs:
+            p.alignment = pp_align
 
     def _add_image_element(self, slide: Any, el: Dict[str, Any], x: Inches, y: Inches, w: Inches, h: Inches):
         content = el.get("content", "")

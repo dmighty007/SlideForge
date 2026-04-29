@@ -295,6 +295,8 @@ def export_pptx_view(request):
         pptx_stream = exporter.export()
         
         filename = payload.get("filename", "presentation.pptx")
+        # Sanitize filename
+        filename = re.sub(r'[^\w\s.-]', '', filename).strip().replace(' ', '_')
         if not filename.endswith(".pptx"):
             filename += ".pptx"
 

@@ -96,6 +96,49 @@ async function exportPDF() {
     }
 }
 
+async function exportPNG() {
+    try {
+        setProjectSaveHint?.("Generating Image...", "success");
+        const container = document.getElementById("slides-container");
+        
+        // Hide UI
+        const handles = document.querySelectorAll('.resize-handle, .crop-handle, .connector-point-handle, #group-bound, .anim-badge');
+        handles.forEach(el => el.style.display = 'none');
+        document.querySelectorAll('.canvas-element').forEach(el => el.classList.remove('selected', 'group-member-selected'));
+
+        const canvas = await html2canvas(container, {
+            scale: 4, // Very high res
+            useCORS: true,
+            allowTaint: true,
+            backgroundColor: "#ffffff",
+            logging: false,
+            width: 1024,
+            height: 768
+        });
+
+        // Restore UI
+        handles.forEach(el => el.style.display = '');
+        if (state.selectedIds.length) {
+            state.selectedIds.forEach(id => {
+                document.getElementById(id)?.classList.add('selected');
+            });
+            if (typeof updateGroupBound === 'function') updateGroupBound();
+        }
+
+        const link = document.createElement('a');
+        link.download = `slide_${currentSlideIndex + 1}.png`;
+        link.href = canvas.toDataURL("image/png");
+        link.click();
+        
+        setProjectSaveHint?.("PNG Exported!", "success");
+    } catch (err) {
+        console.error(err);
+        setProjectSaveHint?.("Image export failed", "danger");
+    }
+}
+
+window.exportPresentationPNG = exportPNG;
+
 /**
  * GET CSRF TOKEN helper
  */
@@ -1850,3 +1893,17 @@ function playSlideAnimations(slideDom) {
 }
 `;
 }
+
+// --- Global Aliases for UI Bindings ---
+window.exportPresentationZip = exportZip;
+window.exportPresentationPDF = exportPDF;
+window.exportPresentationPPTX = exportPPTX;
+window.exportPresentationJson = function() {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state));
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href",     dataStr);
+    downloadAnchorNode.setAttribute("download", "presentation.json");
+    document.body.appendChild(downloadAnchorNode);
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
+};

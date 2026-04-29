@@ -169,6 +169,108 @@ function addShape(shapeType = "rectangle") {
     addElement("shape", { shapeType });
 }
 
+function addChart(chartType = "bar") {
+    const activeIndex = ensureActiveSlideSync();
+    saveStateToUndo();
+    const id = generateId("el");
+    const theme = getPresentationTheme();
+    state.slides[activeIndex].elements.push({
+        id,
+        type: "chart",
+        chartType,
+        chartData: {
+            labels: ["Jan", "Feb", "Mar", "Apr", "May"],
+            datasets: [{
+                label: "Sales",
+                data: [12, 19, 3, 5, 2],
+                backgroundColor: [theme.accentStrong, theme.accentStrong + "CC"],
+                borderColor: theme.accentStrong,
+                borderWidth: 1
+            }]
+        },
+        chartOptions: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: true, position: 'top' }
+            }
+        },
+        x: 100,
+        y: 100,
+        width: "500px",
+        height: "350px",
+        styles: {
+            zIndex: getNextZIndex(),
+            backgroundColor: "#ffffff",
+            padding: "16px",
+            borderRadius: "12px",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.05)"
+        }
+    });
+    renderSlidesFromState();
+    selectElement(id);
+}
+
+function aiCleanUpSlide() {
+    const activeIndex = ensureActiveSlideSync();
+    const slide = state.slides[activeIndex];
+    const elements = slide?.elements || [];
+    const targetIds = state.selectedIds?.length ? new Set(state.selectedIds) : null;
+    const targetElements = targetIds ? elements.filter(el => targetIds.has(el.id)) : elements;
+    if (!targetElements.length) {
+        if (typeof setProjectSaveHint === "function") {
+            setProjectSaveHint("Nothing to clean up", "muted");
+        }
+        return;
+    }
+
+    const slideConfig = getPresentationPageSetupConfig();
+    const slideW = Number(slideConfig.width) || 1024;
+    const slideH = Number(slideConfig.height) || 768;
+    const centerX = slideW / 2;
+    const centerY = slideH / 2;
+    const snapThreshold = 36;
+    const grid = 10;
+    let changedCount = 0;
+
+    saveStateToUndo();
+
+    targetElements.forEach(el => {
+        const beforeX = Number(el.x) || 0;
+        const beforeY = Number(el.y) || 0;
+        const elW = Math.max(1, parseFloat(el.width) || 1);
+        const elH = Math.max(1, parseFloat(el.height) || 1);
+        let nx = Math.round(beforeX / grid) * grid;
+        let ny = Math.round(beforeY / grid) * grid;
+
+        if (Math.abs((nx + elW / 2) - centerX) < snapThreshold) {
+            nx = Math.round((centerX - elW / 2) / grid) * grid;
+        }
+        if (Math.abs((ny + elH / 2) - centerY) < snapThreshold) {
+            ny = Math.round((centerY - elH / 2) / grid) * grid;
+        }
+
+        nx = Math.max(0, Math.min(nx, Math.max(0, slideW - elW)));
+        ny = Math.max(0, Math.min(ny, Math.max(0, slideH - elH)));
+
+        if (nx !== beforeX || ny !== beforeY) changedCount += 1;
+        el.x = nx;
+        el.y = ny;
+    });
+
+    renderSlidesFromState();
+    if (typeof refreshPreviews === "function") refreshPreviews();
+    if (typeof buildPropertiesPanel === "function") buildPropertiesPanel();
+    if (typeof setProjectSaveHint === "function") {
+        setProjectSaveHint(
+            changedCount
+                ? `Cleaned up ${changedCount} ${changedCount === 1 ? "element" : "elements"}`
+                : "Layout already aligned",
+            changedCount ? "success" : "muted",
+        );
+    }
+}
+
 function addConnector(connectorType = "line") {
     const activeIndex = ensureActiveSlideSync();
     saveStateToUndo();
@@ -348,7 +450,7 @@ function nudgeSelectedElements(dx, dy) {
         }
     });
     updateGroupBound();
-    renderSlidePreviews();
+    renderSlidePreviews(currentSlideIndex);
     if (typeof schedulePresentationAutosave === "function") {
         schedulePresentationAutosave();
     }
@@ -1857,20 +1959,38 @@ async function handleAIImportUpload(event) {
 // ─── Undo ─────────────────────────────────────────────────────────────────────
 
 function undo() {
+    if (undoStack.length === 0) {
+        if (typeof setProjectSaveHint === "function") {
+            setProjectSaveHint("Nothing to undo", "muted");
+        }
+        return;
+    }
     if (restoreUndoState()) {
         renderSlidesFromState();
         clearSelection();
         Reveal.slide(Math.min(currentSlideIndex, state.slides.length - 1));
         updateSlideCounter();
+        if (typeof setProjectSaveHint === "function") {
+            setProjectSaveHint("Action undone", "success");
+        }
     }
 }
 
 function redo() {
+    if (redoStack.length === 0) {
+        if (typeof setProjectSaveHint === "function") {
+            setProjectSaveHint("Nothing to redo", "muted");
+        }
+        return;
+    }
     if (restoreRedoState()) {
         renderSlidesFromState();
         clearSelection();
         Reveal.slide(Math.min(currentSlideIndex, state.slides.length - 1));
         updateSlideCounter();
+        if (typeof setProjectSaveHint === "function") {
+            setProjectSaveHint("Action redone", "success");
+        }
     }
 }
 
@@ -2641,6 +2761,7 @@ function presentationPrevStep() {
 async function togglePlayMode() {
     const willPlay = !document.body.classList.contains("play-mode-active");
     if (willPlay) {
+        if (typeof suspendEditorZoom === "function") suspendEditorZoom();
         await _syncBrowserFullscreen(true);
     }
 
@@ -2663,8 +2784,12 @@ async function togglePlayMode() {
         Reveal.sync?.();
     }
     requestAnimationFrame(() => {
+        if (isPlaying && typeof suspendEditorZoom === "function") suspendEditorZoom();
         Reveal.layout?.();
         Reveal.slide?.(targetH, targetV, targetF);
+        if (isPlaying && typeof _resizePresentationChalkboard === "function") {
+            requestAnimationFrame(() => _resizePresentationChalkboard());
+        }
         
         // Update button UI
         const btn = document.getElementById("btn-present");
@@ -2688,6 +2813,9 @@ async function togglePlayMode() {
         _resetAnimations();
         resetPresentationTools();
         await _syncBrowserFullscreen(false);
+        requestAnimationFrame(() => {
+            if (typeof restoreEditorZoom === "function") restoreEditorZoom();
+        });
     }
 }
 
@@ -2718,6 +2846,9 @@ function handlePresentationFullscreenChange() {
         });
         _resetAnimations();
         resetPresentationTools();
+        requestAnimationFrame(() => {
+            if (typeof restoreEditorZoom === "function") restoreEditorZoom();
+        });
         try {
             _presentationRuntimeState.presenterWindow?.close?.();
         } catch (_err) {

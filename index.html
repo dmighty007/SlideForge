@@ -30,6 +30,7 @@
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -138,6 +139,13 @@
                 <button onclick="undo()" title="Undo (Ctrl+Z)" class="toolbar-btn" id="btn-undo">
                     <i class="fa-solid fa-rotate-left text-sm"></i>
                 </button>
+                <button onclick="redo()" title="Redo (Ctrl+Y)" class="toolbar-btn" id="btn-redo">
+                    <i class="fa-solid fa-rotate-right text-sm"></i>
+                </button>
+                <div class="w-px h-4 bg-gray-200 mx-1"></div>
+                <button onclick="aiCleanUpSlide()" title="AI Clean Up (Auto-align)" class="toolbar-btn text-indigo-500 hover:text-indigo-600 bg-indigo-50/50 hover:bg-indigo-50 border-indigo-100/50">
+                    <i class="fa-solid fa-wand-magic-sparkles text-sm"></i>
+                </button>
                 <label class="toolbar-label" for="theme-selector">Theme</label>
                 <select id="theme-selector" class="toolbar-select">
                     <option value="editorial">Editorial</option>
@@ -188,6 +196,9 @@
                         </button>
                         <button onclick="closeExportMenu(); exportPresentationPDF()" class="toolbar-user-menu-item">
                             <i class="fa-solid fa-file-pdf w-4 text-center"></i> PDF Document
+                        </button>
+                        <button onclick="closeExportMenu(); exportPresentationPNG()" class="toolbar-user-menu-item">
+                            <i class="fa-regular fa-image w-4 text-center"></i> Slide Image (PNG)
                         </button>
                         <button onclick="closeExportMenu(); exportPresentationPPTX()" class="toolbar-user-menu-item">
                             <i class="fa-solid fa-file-powerpoint w-4 text-center"></i> PowerPoint (PPTX)
@@ -270,6 +281,20 @@
                             <i class="fa-solid fa-table w-5 text-emerald-500"></i>
                             <span>Table</span>
                         </button>
+                        <div class="h-px bg-border my-1 mx-2"></div>
+                        <button onclick="addChart('bar')" class="element-btn">
+                            <i class="fa-solid fa-chart-bar w-5 text-indigo-500"></i>
+                            <span>Bar Chart</span>
+                        </button>
+                        <button onclick="addChart('line')" class="element-btn">
+                            <i class="fa-solid fa-chart-line w-5 text-indigo-500"></i>
+                            <span>Line Chart</span>
+                        </button>
+                        <button onclick="addChart('pie')" class="element-btn">
+                            <i class="fa-solid fa-chart-pie w-5 text-indigo-500"></i>
+                            <span>Pie Chart</span>
+                        </button>
+                        <div class="h-px bg-border my-1 mx-2"></div>
                         <button onclick="document.getElementById('image-file-upload').click()" class="element-btn">
                             <i class="fa-regular fa-image w-5 text-primary"></i>
                             <span>Image</span>
@@ -390,9 +415,11 @@
         <!-- ══════════════════════════════════════ CANVAS AREA -->
         <main class="flex-1 flex flex-col min-w-0 bg-surface relative">
             <!-- Canvas wrapper (Reveal.js lives here) -->
-            <div class="flex-1 relative editor-mode overflow-hidden" id="canvas-wrapper">
-                <div class="reveal">
-                    <div class="slides" id="slides-container"></div>
+            <div class="flex-1 relative editor-mode overflow-auto" id="canvas-wrapper">
+                <div id="zoom-engine" class="relative transition-all duration-200 ease-out">
+                    <div class="reveal">
+                        <div class="slides" id="slides-container"></div>
+                    </div>
                 </div>
                 <canvas class="presentation-overlay presentation-chalkboard" id="presentation-chalkboard"></canvas>
                 <div class="presentation-overlay presentation-laser" id="presentation-laser-pointer" aria-hidden="true"></div>
@@ -484,7 +511,10 @@
                         <option value='"Newsreader", serif'>Newsreader</option>
                     </select>
                     <input type="text" id="floating-text-size" class="floating-text-select text-center" style="width:64px;" title="Font Size" placeholder="Size">
-                    <input type="color" id="floating-text-color" class="floating-text-button p-0 border-0" style="width:28px;height:28px;cursor:pointer;border-radius:6px;overflow:hidden;" title="Text Color">
+                    <div class="flex items-center gap-1.5 ml-2 mr-1">
+                        <div id="floating-text-palette" class="flex items-center gap-1"></div>
+                        <input type="color" id="floating-text-color" class="floating-text-button p-0 border-0" style="width:24px;height:24px;cursor:pointer;border-radius:6px;overflow:hidden;" title="Custom Color">
+                    </div>
                     <div class="floating-toolbar-divider"></div>
                     <button id="floating-text-sub" class="floating-text-button" title="Subscript">
                         <i class="fa-solid fa-subscript"></i>
@@ -521,6 +551,57 @@
                     <span class="resize-handle lc"></span>
                     <span class="resize-handle rc"></span>
                 </div>
+            </div>
+
+            <!-- Zoom Control -->
+            <div id="zoom-control" class="absolute bottom-6 right-6 z-[200] flex items-center gap-3 px-3 py-2 bg-white rounded-2xl shadow-xl border border-border animate-slideInUp">
+                <button onclick="changeZoom(-0.1)" class="w-8 h-8 rounded-xl hover:bg-surface flex items-center justify-center transition-colors">
+                    <i class="fa-solid fa-minus text-xs"></i>
+                </button>
+                <div class="flex flex-col items-center min-w-[60px]">
+                    <span id="zoom-label" class="text-xs font-bold text-text-main">100%</span>
+                    <input type="range" id="zoom-slider" min="0.25" max="3" step="0.05" value="1" 
+                           class="w-24 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-primary" oninput="handleZoomSlider(this.value)">
+                </div>
+                <button onclick="changeZoom(0.1)" class="w-8 h-8 rounded-xl hover:bg-surface flex items-center justify-center transition-colors">
+                    <i class="fa-solid fa-plus text-xs"></i>
+                </button>
+                <div class="w-px h-4 bg-border mx-1"></div>
+                <button onclick="resetZoom()" class="px-3 py-1 text-[10px] font-bold text-primary bg-primary/10 rounded-lg hover:bg-primary/20 transition-colors">
+                    Fit
+                </button>
+            </div>
+
+            <!-- Context Menu -->
+            <div id="canvas-context-menu" class="fixed hidden z-[1000] w-56 bg-white border border-border rounded-xl shadow-2xl py-2 animate-scaleIn">
+                <div class="px-3 py-1.5 mb-1 border-b border-border">
+                    <span id="ctx-element-type" class="text-[10px] font-bold text-text-sub uppercase tracking-widest">Element</span>
+                </div>
+                <button onclick="ctxAction('bring-forward')" class="w-full flex items-center gap-3 px-4 py-2 text-sm text-text-main hover:bg-surface transition-colors">
+                    <i class="fa-solid fa-layer-group text-blue-500 w-4"></i> Bring Forward
+                </button>
+                <button onclick="ctxAction('send-backward')" class="w-full flex items-center gap-3 px-4 py-2 text-sm text-text-main hover:bg-surface transition-colors">
+                    <i class="fa-solid fa-layer-group rotate-180 text-blue-500 w-4"></i> Send Backward
+                </button>
+                <div class="h-px bg-border my-1"></div>
+                <button onclick="ctxAction('duplicate')" class="w-full flex items-center gap-3 px-4 py-2 text-sm text-text-main hover:bg-surface transition-colors">
+                    <i class="fa-regular fa-copy text-amber-500 w-4"></i> Duplicate
+                </button>
+                <div class="h-px bg-border my-1"></div>
+                <button id="ctx-group-btn" onclick="ctxAction('group')" class="w-full flex items-center gap-3 px-4 py-2 text-sm text-text-main hover:bg-surface transition-colors">
+                    <i class="fa-solid fa-object-group text-indigo-500 w-4"></i> Group Elements
+                </button>
+                <button id="ctx-ungroup-btn" onclick="ctxAction('ungroup')" class="w-full flex items-center gap-3 px-4 py-2 text-sm text-text-main hover:bg-surface transition-colors">
+                    <i class="fa-solid fa-object-ungroup text-indigo-500 w-4"></i> Ungroup Elements
+                </button>
+                <div class="h-px bg-border my-1"></div>
+                <button onclick="ctxAction('lock')" class="w-full flex items-center gap-3 px-4 py-2 text-sm text-text-main hover:bg-surface transition-colors">
+                    <i class="fa-solid fa-lock text-slate-400 w-4"></i> Lock Element
+                </button>
+                <div class="h-px bg-border my-1"></div>
+                <button onclick="ctxAction('delete')" class="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors">
+                    <i class="fa-regular fa-trash-can w-4"></i> Delete
+                </button>
             </div>
         </main>
 
@@ -720,6 +801,103 @@
                 <button onclick="insertEquation()" class="flex-1 py-2 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary-hover transition-colors">Insert Equation</button>
             </div>
         </div>
+    <!-- ══════════════════════════════════════════ KEYBOARD SHORTCUTS MODAL -->
+    <div id="shortcuts-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] hidden items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-scaleIn">
+            <div class="px-6 py-4 border-b border-border flex items-center justify-between bg-surface/50">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                        <i class="fa-solid fa-keyboard text-lg"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-lg font-bold text-text-main">Keyboard Shortcuts</h2>
+                        <p class="text-xs text-text-sub">Power user cheat sheet</p>
+                    </div>
+                </div>
+                <button onclick="closeShortcutsModal()" class="w-8 h-8 rounded-lg hover:bg-surface flex items-center justify-center transition-colors">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="p-6 grid grid-cols-2 gap-x-12 gap-y-6 overflow-y-auto max-h-[70vh]">
+                <section>
+                    <h3 class="text-xs font-bold text-text-sub uppercase tracking-wider mb-4">General</h3>
+                    <div class="space-y-3">
+                        <div class="flex items-center justify-between group">
+                            <span class="text-sm text-text-main">Save Project</span>
+                            <span class="px-2 py-1 bg-surface border border-border rounded-md text-[10px] font-mono text-text-sub group-hover:border-primary/30 transition-colors">Ctrl + S</span>
+                        </div>
+                        <div class="flex items-center justify-between group">
+                            <span class="text-sm text-text-main">Undo / Redo</span>
+                            <span class="px-2 py-1 bg-surface border border-border rounded-md text-[10px] font-mono text-text-sub group-hover:border-primary/30 transition-colors">Ctrl + Z / Y</span>
+                        </div>
+                        <div class="flex items-center justify-between group">
+                            <span class="text-sm text-text-main">New Slide</span>
+                            <span class="px-2 py-1 bg-surface border border-border rounded-md text-[10px] font-mono text-text-sub group-hover:border-primary/30 transition-colors">Ctrl + M</span>
+                        </div>
+                    </div>
+                </section>
+                <section>
+                    <h3 class="text-xs font-bold text-text-sub uppercase tracking-wider mb-4">Editing</h3>
+                    <div class="space-y-3">
+                        <div class="flex items-center justify-between group">
+                            <span class="text-sm text-text-main">Copy / Paste</span>
+                            <span class="px-2 py-1 bg-surface border border-border rounded-md text-[10px] font-mono text-text-sub group-hover:border-primary/30 transition-colors">Ctrl + C / V</span>
+                        </div>
+                        <div class="flex items-center justify-between group">
+                            <span class="text-sm text-text-main">Duplicate Slide</span>
+                            <span class="px-2 py-1 bg-surface border border-border rounded-md text-[10px] font-mono text-text-sub group-hover:border-primary/30 transition-colors">Ctrl + D</span>
+                        </div>
+                        <div class="flex items-center justify-between group">
+                            <span class="text-sm text-text-main">Duplicate Elements</span>
+                            <span class="px-2 py-1 bg-surface border border-border rounded-md text-[10px] font-mono text-text-sub group-hover:border-primary/30 transition-colors">Ctrl + Shift + D</span>
+                        </div>
+                    </div>
+                </section>
+                <section>
+                    <h3 class="text-xs font-bold text-text-sub uppercase tracking-wider mb-4">Layout</h3>
+                    <div class="space-y-3">
+                        <div class="flex items-center justify-between group">
+                            <span class="text-sm text-text-main">Select All</span>
+                            <span class="px-2 py-1 bg-surface border border-border rounded-md text-[10px] font-mono text-text-sub group-hover:border-primary/30 transition-colors">Ctrl + A</span>
+                        </div>
+                        <div class="flex items-center justify-between group">
+                            <span class="text-sm text-text-main">Group Elements</span>
+                            <span class="px-2 py-1 bg-surface border border-border rounded-md text-[10px] font-mono text-text-sub group-hover:border-primary/30 transition-colors">Alt + G</span>
+                        </div>
+                        <div class="flex items-center justify-between group">
+                            <span class="text-sm text-text-main">Ungroup</span>
+                            <span class="px-2 py-1 bg-surface border border-border rounded-md text-[10px] font-mono text-text-sub group-hover:border-primary/30 transition-colors">Alt + Shift + G</span>
+                        </div>
+                        <div class="flex items-center justify-between group">
+                            <span class="text-sm text-text-main">Nudge Elements</span>
+                            <span class="px-2 py-1 bg-surface border border-border rounded-md text-[10px] font-mono text-text-sub group-hover:border-primary/30 transition-colors">Arrows</span>
+                        </div>
+                        <div class="flex items-center justify-between group">
+                            <span class="text-sm text-text-main">Fast Nudge</span>
+                            <span class="px-2 py-1 bg-surface border border-border rounded-md text-[10px] font-mono text-text-sub group-hover:border-primary/30 transition-colors">Shift + Arrows</span>
+                        </div>
+                    </div>
+                </section>
+                <section>
+                    <h3 class="text-xs font-bold text-text-sub uppercase tracking-wider mb-4">Support</h3>
+                    <div class="space-y-3">
+                        <div class="flex items-center justify-between group">
+                            <span class="text-sm text-text-main">Show this Help</span>
+                            <span class="px-2 py-1 bg-surface border border-border rounded-md text-[10px] font-mono text-text-sub group-hover:border-primary/30 transition-colors">F1</span>
+                        </div>
+                        <div class="flex items-center justify-between group">
+                            <span class="text-sm text-text-main">Deselect / Close</span>
+                            <span class="px-2 py-1 bg-surface border border-border rounded-md text-[10px] font-mono text-text-sub group-hover:border-primary/30 transition-colors">Esc</span>
+                        </div>
+                    </div>
+                </section>
+            </div>
+            <div class="px-6 py-4 bg-surface/30 border-t border-border flex justify-end">
+                <button onclick="closeShortcutsModal()" class="px-4 py-2 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary-hover transition-all shadow-lg shadow-primary/20">
+                    Got it
+                </button>
+            </div>
+        </div>
     </div>
 
     <!-- ══════════════════════════════════════════ EXTERNAL LIBS -->
@@ -754,6 +932,8 @@
     <script src="js/components.js"></script>
     <script src="js/commands.js"></script>
     <script src="js/keyboard.js"></script>
+    <script src="js/zoom.js"></script>
+    <script src="js/contextMenu.js"></script>
     <script src="js/main.js"></script>
 
     <!-- ══════════════════════════════════════════ UI HELPERS -->

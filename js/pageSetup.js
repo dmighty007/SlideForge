@@ -65,6 +65,8 @@ function scaleSlideElementsForPageSetup(slide, fromConfig, toConfig) {
 
 function syncPresentationPageSetup() {
     const config = getPresentationPageSetupConfig();
+    document.documentElement.style.setProperty("--slide-width", `${config.width}px`);
+    document.documentElement.style.setProperty("--slide-height", `${config.height}px`);
     document.documentElement.style.setProperty("--slide-preview-aspect", `${config.width} / ${config.height}`);
     const selector = document.getElementById("page-setup-selector");
     if (selector) selector.value = config.id;
@@ -80,6 +82,7 @@ function changePresentationPageSetup(nextId) {
     if (normalized === getPresentationPageSetupId()) {
         syncPresentationPageSetup();
         if (typeof renderSlidesFromState === "function") renderSlidesFromState();
+        if (typeof resetZoom === "function") requestAnimationFrame(() => resetZoom());
         return false;
     }
 
@@ -89,6 +92,7 @@ function changePresentationPageSetup(nextId) {
     state.pageSetup = normalized;
     syncPresentationPageSetup();
     if (typeof renderSlidesFromState === "function") renderSlidesFromState();
+    if (typeof resetZoom === "function") requestAnimationFrame(() => resetZoom());
     if (typeof updateSlideCounter === "function") updateSlideCounter();
     return true;
 }

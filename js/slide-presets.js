@@ -238,6 +238,7 @@ const SLIDE_PRESETS = {
         color: 'text-purple-400',
         build(theme) {
             const { a, fg, mu, sf, sb, hf, bf } = _t(theme);
+            const { card } = _presetMeta(theme);
             return [
                 _box(0, 0, 1024, 96, sf, undefined, undefined),
                 _bar(54, 20, 5, 56, a, undefined, '3px'),
@@ -434,6 +435,61 @@ const SLIDE_PRESETS = {
             ];
         }
     },
+
+    'quote-slide': {
+        name: 'Quote Slide',
+        icon: 'fa-solid fa-quote-left',
+        color: 'text-rose-400',
+        build(theme) {
+            const { a, fg, mu, sf, hf, bf } = _t(theme);
+            const { wash } = _presetMeta(theme);
+            return [
+                _box(100, 200, 824, 368, wash, undefined, '32px'),
+                _text(130, 220, 100, '“', {
+                    color: a, fontSize: '120px', fontFamily: hf, fontWeight: '800', opacity: '0.2'
+                }),
+                _text(150, 260, 724, 'The best way to predict the future is to create it.', {
+                    color: fg, fontSize: '42px', fontFamily: hf, fontWeight: '600', fontStyle: 'italic', textAlign: 'center', lineHeight: '1.2'
+                }),
+                _bar(462, 420, 100, 4, a, undefined, '2px'),
+                _text(150, 450, 724, '— PETER DRUCKER', {
+                    color: mu, fontSize: '18px', fontFamily: bf, fontWeight: '700', textAlign: 'center', letterSpacing: '0.2em'
+                }),
+            ];
+        }
+    },
+
+    'timeline-slide': {
+        name: 'Timeline',
+        icon: 'fa-solid fa-timeline',
+        color: 'text-amber-400',
+        build(theme) {
+            const { a, fg, mu, sf, hf, bf } = _t(theme);
+            const { wash, line } = _presetMeta(theme);
+            return [
+                _text(54, 40, 916, 'Project Roadmap', {
+                    color: fg, fontSize: '38px', fontFamily: hf, fontWeight: '700'
+                }),
+                _bar(54, 384, 916, 4, line, undefined, '2px'), // Timeline line
+                // Node 1
+                _box(100, 376, 20, 20, a, undefined, '50%'),
+                _text(60, 310, 100, 'Q1 2025', { color: a, fontSize: '14px', fontWeight: '700', textAlign: 'center' }),
+                _text(60, 410, 100, 'Foundation', { color: fg, fontSize: '14px', fontWeight: '600', textAlign: 'center' }),
+                // Node 2
+                _box(300, 376, 20, 20, a, undefined, '50%'),
+                _text(260, 310, 100, 'Q2 2025', { color: a, fontSize: '14px', fontWeight: '700', textAlign: 'center' }),
+                _text(260, 410, 100, 'Development', { color: fg, fontSize: '14px', fontWeight: '600', textAlign: 'center' }),
+                // Node 3
+                _box(512, 376, 20, 20, a, undefined, '50%'),
+                _text(462, 310, 100, 'Q3 2025', { color: a, fontSize: '14px', fontWeight: '700', textAlign: 'center' }),
+                _text(462, 410, 100, 'Beta Testing', { color: fg, fontSize: '14px', fontWeight: '600', textAlign: 'center' }),
+                // Node 4
+                _box(724, 376, 20, 20, a, undefined, '50%'),
+                _text(674, 310, 100, 'Q4 2025', { color: a, fontSize: '14px', fontWeight: '700', textAlign: 'center' }),
+                _text(674, 410, 100, 'Launch', { color: fg, fontSize: '14px', fontWeight: '600', textAlign: 'center' }),
+            ];
+        }
+    }
 };
 
 /* ─── Insert Preset as New Slide ────────────────────────────────────────── */

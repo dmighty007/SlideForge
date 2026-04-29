@@ -56,7 +56,12 @@ function initKeyboard() {
         }
 
         // Do not trigger other shortcuts if user is typing in an input, textarea, or contenteditable element
-        if (isEditingField) return;
+        // EXCEPT for Undo/Redo which we handle specifically
+        if (isEditingField) {
+            if (!((e.ctrlKey || e.metaKey) && (key === "z" || key === "y"))) {
+                return;
+            }
+        }
 
         // Ctrl+A: Select all elements
         if ((e.ctrlKey || e.metaKey) && key === "a") {
@@ -118,14 +123,14 @@ function initKeyboard() {
             addSlide();
         }
 
-        // Ctrl+G: Group selected
-        if ((e.ctrlKey || e.metaKey) && !e.shiftKey && key === "g") {
+        // Alt+G: Group selected
+        if (e.altKey && !e.shiftKey && key === "g") {
             e.preventDefault();
             if (typeof groupSelected === "function") groupSelected();
         }
 
-        // Ctrl+Shift+G: Ungroup selected
-        if ((e.ctrlKey || e.metaKey) && e.shiftKey && key === "g") {
+        // Alt+Shift+G: Ungroup selected
+        if (e.altKey && e.shiftKey && key === "g") {
             e.preventDefault();
             if (typeof ungroupSelected === "function") ungroupSelected();
         }
@@ -164,10 +169,22 @@ function initKeyboard() {
             }
         }
 
-        // Escape: Clear selection
-        if (e.key === "Escape" && state.selectedIds.length) {
+        // Escape: Clear selection or close modal
+        if (e.key === "Escape") {
+            if (!document.getElementById("shortcuts-modal").classList.contains("hidden")) {
+                closeShortcutsModal();
+                return;
+            }
+            if (state.selectedIds.length) {
+                e.preventDefault();
+                clearSelection();
+            }
+        }
+
+        // F1: Show shortcuts modal
+        if (e.key === "F1") {
             e.preventDefault();
-            clearSelection();
+            openShortcutsModal();
         }
     });
 
@@ -184,3 +201,22 @@ function initKeyboard() {
 
 // Ensure it is globally available
 window.initKeyboard = initKeyboard;
+
+function openShortcutsModal() {
+    const modal = document.getElementById("shortcuts-modal");
+    if (modal) {
+        modal.classList.remove("hidden");
+        modal.classList.add("flex");
+    }
+}
+
+function closeShortcutsModal() {
+    const modal = document.getElementById("shortcuts-modal");
+    if (modal) {
+        modal.classList.add("hidden");
+        modal.classList.remove("flex");
+    }
+}
+
+window.openShortcutsModal = openShortcutsModal;
+window.closeShortcutsModal = closeShortcutsModal;

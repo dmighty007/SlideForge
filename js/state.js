@@ -14,6 +14,7 @@ function buildDefaultPresentationState() {
     return {
         presentationTheme: "editorial",
         pageSetup: DEFAULT_PRESENTATION_PAGE_SETUP,
+        colorPalette: ["#172033", "#2563EB", "#7C3AED", "#DB2777", "#DC2626", "#D97706", "#059669", "#FFFFFF"],
         slides: [
             {
                 id: generateId("slide"),

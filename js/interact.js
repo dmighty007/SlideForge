@@ -52,12 +52,16 @@ function _setupElementInteract() {
                     if (!canvasTarget) return false;
                     if (event.target.isContentEditable || isElementInTextEditMode(event.target)) return false;
                     
-                    // Native selection is handled by mousedown in render.js.
-                    // But if interact triggers start via touch/drag and it's not selected:
                     const sourceEvent = event.sourceEvent || event;
                     const isMultiSelect = sourceEvent.shiftKey || sourceEvent.metaKey || sourceEvent.ctrlKey;
-                    if (!state.selectedIds.includes(canvasTarget.id) && !isMultiSelect) {
-                        selectElement(canvasTarget.id, "replace");
+                    
+                    // If element is NOT selected, select it but STOP the current drag.
+                    // This enables "Select then Drag" and prevents accidental moves during marquee selection.
+                    if (!state.selectedIds.includes(canvasTarget.id)) {
+                        selectElement(canvasTarget.id, isMultiSelect ? "add" : "replace");
+                        // Cancel this drag interaction
+                        event.interaction.stop();
+                        return;
                     }
                     
                     saveStateToUndo();
@@ -73,59 +77,103 @@ function _setupElementInteract() {
                     const dx = event.dx / scale;
                     const dy = event.dy / scale;
 
-                    // Guide draw is throttled via rAF to avoid DOM thrashing
-                    if (!window._snapGuideRaf) {
-                        window._snapGuideRaf = requestAnimationFrame(() => {
-                            window._snapGuideRaf = null;
-                            _clearGuides();
-                            if (!shiftHeld && window._lastSnapState) {
-                                const { snappedX, snappedY, rawX, rawY } = window._lastSnapState;
-                                if (Math.abs(snappedX - rawX) < SNAP_GRID) _drawGuide(snappedX, null, true);
-                                if (Math.abs(snappedY - rawY) < SNAP_GRID) _drawGuide(null, snappedY, false);
+                    state.selectedIds.forEach(id => {
+                        const el = document.getElementById(id);
+                        if (!el) return;
+                        
+                        const rawX = (parseFloat(el.getAttribute("data-x")) || 0) + dx;
+                        const rawY = (parseFloat(el.getAttribute("data-y")) || 0) + dy;
+                        
+                        let snapX = rawX;
+                        let snapY = rawY;
+                        
+                        _clearGuides();
+                        
+                        if (!shiftHeld) {
+                            const slideConfig = getPresentationPageSetupConfig();
+                            const slideW = Number(slideConfig.width) || 1024;
+                            const slideH = Number(slideConfig.height) || 768;
+                            
+                            const elW = parseFloat(el.style.width) || 0;
+                            const elH = parseFloat(el.style.height) || 0;
+                            
+                            // 1. Grid Snap (Fallback)
+                            snapX = _snapVal(rawX, false);
+                            snapY = _snapVal(rawY, false);
+                            
+                            // 2. Smart Snap (Alignment with other elements and slide)
+                            const snapThreshold = 10;
+                            const slide = state.slides[currentSlideIndex];
+                            
+                            // X-axis targets
+                            const xTargets = [0, slideW / 2 - elW / 2, slideW - elW];
+                            slide.elements.forEach(other => {
+                                if (state.selectedIds.includes(other.id)) return;
+                                const otherX = parseFloat(other.x) || 0;
+                                const otherW = parseFloat(other.width) || 0;
+                                xTargets.push(otherX, otherX + otherW, otherX + (otherW / 2) - (elW / 2));
+                            });
+                            
+                            for (const target of xTargets) {
+                                if (Math.abs(rawX - target) < snapThreshold) {
+                                    snapX = target;
+                                    _drawGuide(snapX, null, true);
+                                    break;
+                                }
+                            }
+                            
+                            // Y-axis targets
+                            const yTargets = [0, slideH / 2 - elH / 2, slideH - elH];
+                            slide.elements.forEach(other => {
+                                if (state.selectedIds.includes(other.id)) return;
+                                const otherY = parseFloat(other.y) || 0;
+                                const otherH = parseFloat(other.height) || 0;
+                                yTargets.push(otherY, otherY + otherH, otherY + (otherH / 2) - (elH / 2));
+                            });
+                            
+                            for (const target of yTargets) {
+                                if (Math.abs(rawY - target) < snapThreshold) {
+                                    snapY = target;
+                                    _drawGuide(null, snapY, false);
+                                    break;
+                                }
+                            }
+                        }
+
+                        el.style.transform = `translate(${snapX}px, ${snapY}px)`;
+                        el.setAttribute("data-x", rawX);
+                        el.setAttribute("data-y", rawY);
+                        updateElementState(id, { x: snapX, y: snapY });
+                    });
+
+                    // Real-time thumbnail update (throttled via requestAnimationFrame)
+                    if (!window._thumbnailRaf) {
+                        window._thumbnailRaf = requestAnimationFrame(() => {
+                            window._thumbnailRaf = null;
+                            if (typeof renderSlidePreviews === "function") {
+                                renderSlidePreviews(currentSlideIndex);
                             }
                         });
                     }
 
-                    state.selectedIds.forEach(id => {
-                        const el = document.getElementById(id);
-                        if (!el) return;
-                        // KEY FIX: accumulate raw position for smooth 1:1 mouse tracking
-                        const rawX = (parseFloat(el.getAttribute("data-x")) || 0) + dx;
-                        const rawY = (parseFloat(el.getAttribute("data-y")) || 0) + dy;
-                        const [snapX, snapY] = _snapXY(rawX, rawY, shiftHeld);
-
-                        el.style.transform = `translate(${snapX}px, ${snapY}px)`;
-                        // Store RAW in data attrs so delta stays smooth across frames
-                        el.setAttribute("data-x", rawX);
-                        el.setAttribute("data-y", rawY);
-                        updateElementState(id, { x: snapX, y: snapY });
-                        window._lastSnapState = { snappedX: snapX, snappedY: snapY, rawX, rawY };
-                    });
                     updateGroupBound();
                 },
                 end(event) {
-                    window._lastSnapState = null;
-                    if (window._snapGuideRaf) {
-                        cancelAnimationFrame(window._snapGuideRaf);
-                        window._snapGuideRaf = null;
-                    }
+                    _clearGuides();
                     state.selectedIds.forEach(id => {
-                        const el = document.getElementById(id)?.classList.remove("shadow-2xl", "scale-[1.01]", "z-50");
-                        // Commit final snapped position from raw data attrs
                         const dom = document.getElementById(id);
                         if (dom) {
-                            const rawX = parseFloat(dom.getAttribute("data-x")) || 0;
-                            const rawY = parseFloat(dom.getAttribute("data-y")) || 0;
-                            const [snapX, snapY] = _snapXY(rawX, rawY, event.shiftKey);
-                            dom.style.transform = `translate(${snapX}px, ${snapY}px)`;
-                            dom.setAttribute("data-x", snapX);
-                            dom.setAttribute("data-y", snapY);
-                            updateElementState(id, { x: snapX, y: snapY });
+                            const transform = dom.style.transform;
+                            const match = transform.match(/translate\((.*?)px,\s*(.*?)px\)/);
+                            if (match) {
+                                dom.setAttribute("data-x", match[1]);
+                                dom.setAttribute("data-y", match[2]);
+                            }
+                            dom.classList.remove("shadow-2xl", "scale-[1.01]", "z-50");
                         }
                     });
-                    _clearGuides();
                     updateGroupBound();
-                    renderSlidePreviews();
+                    if (typeof renderSlidePreviews === "function") renderSlidePreviews(currentSlideIndex);
                     if (typeof schedulePresentationAutosave === "function") {
                         schedulePresentationAutosave();
                     }
@@ -228,11 +276,22 @@ function _setupElementInteract() {
                             ...(isText ? { autoHeight: false } : {}),
                         });
                     }
+
+                    // Real-time thumbnail update (throttled via requestAnimationFrame)
+                    if (!window._thumbnailRaf) {
+                        window._thumbnailRaf = requestAnimationFrame(() => {
+                            window._thumbnailRaf = null;
+                            if (typeof renderSlidePreviews === "function") {
+                                renderSlidePreviews(currentSlideIndex);
+                            }
+                        });
+                    }
+
                     updateGroupBound();
                 },
                 end() {
                     updateGroupBound();
-                    renderSlidePreviews();
+                    renderSlidePreviews(currentSlideIndex);
                     if (typeof schedulePresentationAutosave === "function") {
                         schedulePresentationAutosave();
                     }
@@ -293,7 +352,7 @@ function _setupGroupBoundInteract() {
                     document.getElementById(id)?.classList.remove("shadow-2xl", "scale-[1.01]", "z-50"),
                 );
                 updateGroupBound();
-                renderSlidePreviews();
+                renderSlidePreviews(currentSlideIndex);
                 if (typeof schedulePresentationAutosave === "function") {
                     schedulePresentationAutosave();
                 }
@@ -362,7 +421,7 @@ function _setupGroupBoundInteract() {
         active = null;
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
-        renderSlidePreviews();
+        renderSlidePreviews(currentSlideIndex);
         updateGroupBound();
         if (typeof schedulePresentationAutosave === "function") {
             schedulePresentationAutosave();

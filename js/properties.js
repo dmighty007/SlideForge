@@ -804,6 +804,22 @@ function updateFloatingTextToolbar() {
         colorInput.value = _normalizeColorForInput(data.styles.color, "#000000");
     }
 
+    const paletteContainer = document.getElementById("floating-text-palette");
+    if (paletteContainer) {
+        paletteContainer.innerHTML = "";
+        (state.colorPalette || []).forEach(color => {
+            const swatch = document.createElement("button");
+            swatch.className = "w-4 h-4 rounded-full border border-slate-200 hover:scale-110 transition-transform shadow-sm";
+            swatch.style.backgroundColor = color;
+            swatch.title = color;
+            swatch.onclick = () => {
+                applyTextFormatting("color", color, { inlineAction: "color" });
+                if (colorInput) colorInput.value = color;
+            };
+            paletteContainer.appendChild(swatch);
+        });
+    }
+
     if (subBtn) {
         bindInlineFormattingGuard(subBtn);
         subBtn.onclick = () => applyTextFormatting("subscript", null, { inlineAction: "subscript" });

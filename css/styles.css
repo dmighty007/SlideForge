@@ -13,9 +13,9 @@
     --text-main:     #2E2E2E;
     --text-sub:      #6B7280;
     --border:        #D1D5DB;
-    --sidebar-bg:    #E9ECF1;
-    --panel-bg:      #E9ECF1;
-    --surface:       #F5F6F8;
+    --sidebar-bg:    #F1F3F6;
+    --panel-bg:      #F1F3F6;
+    --surface:       #E5E7EB; /* Darker workspace for better slide pop */
 
     /* Slide theme vars (overridden by JS) */
     --slide-bg:      linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
@@ -35,6 +35,15 @@ body {
     font-family: "Inter", system-ui, sans-serif;
     background-color: var(--bg);
     color: var(--text-main);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+}
+
+/* Ensure text stays sharp when scaled via transform */
+.reveal, .reveal *, .canvas-element, .canvas-element * {
+    backface-visibility: visible !important;
+    transform-style: flat !important;
 }
 
 /* ── App toolbar ── */
@@ -43,12 +52,11 @@ body {
     align-items: center;
     justify-content: space-between;
     gap: 18px;
-    min-height: 64px;
-    padding: 8px 18px;
-    border-bottom: 1px solid var(--border);
-    background: rgba(255, 255, 255, 0.85);
-    backdrop-filter: blur(12px);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    min-height: 68px;
+    padding: 0 24px;
+    border-bottom: 1px solid rgba(0,0,0,0.06);
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
 }
 
 .toolbar-brand,
@@ -56,9 +64,7 @@ body {
 .toolbar-actions {
     display: flex;
     align-items: center;
-    gap: 14px;
-    min-width: 0;
-    flex-wrap: nowrap;
+    gap: 16px;
 }
 
 .toolbar-brand {
@@ -67,13 +73,12 @@ body {
 
 .toolbar-project {
     flex: 1 1 auto;
-    min-width: 0;
-    gap: 10px;
+    justify-content: center;
+    max-width: 600px;
 }
 
 .toolbar-actions {
     flex: 0 0 auto;
-    gap: 10px;
 }
 
 #app-toolbar {
@@ -644,26 +649,62 @@ body {
     border-radius: 4px;
 }
 
+/* Disable all animations/transitions in preview thumbnails to prevent "reset" flicker */
+.slide-thumbnail, .slide-thumbnail * {
+    animation: none !important;
+    transition: none !important;
+    pointer-events: none !important;
+}
+
+/* ── Optimized Slide Previews ── */
+.slide-thumbnail {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #fff;
+}
+
+/* Hard-disable animations in preview mode to stop "reset" jumps */
+.slide-thumbnail *, 
+.slide-thumbnail .canvas-element,
+.slide-thumbnail .canvas-element * {
+    animation: none !important;
+    transition: none !important;
+    pointer-events: none !important;
+}
+
 /* ═══════════════════════════════════════════════════════
    CANVAS & REVEAL.JS INTEGRATION
    ═══════════════════════════════════════════════════════ */
 #canvas-wrapper {
-    background-color: var(--bg);
-    background-image: radial-gradient(circle, #CBD5E1 1px, transparent 1px);
-    background-size: 24px 24px;
+    background-color: var(--surface);
+    background-image: radial-gradient(circle, rgba(0,0,0,0.04) 1px, transparent 1px);
+    background-size: 32px 32px;
+    display: block; /* Use block to allow predictable margin-based centering */
+    position: relative;
+    box-shadow: inset 0 0 40px rgba(0,0,0,0.03);
+}
+
+#zoom-engine {
+    flex-shrink: 0;
+    position: absolute;
 }
 
 .editor-mode .reveal {
-    position: absolute;
-    inset: 0;
+    width: 100% !important;
+    height: 100% !important;
+    overflow: visible !important;
 }
-
 
 .editor-mode .reveal .slides section {
     background: var(--slide-bg);
     color: var(--slide-fg);
-    border: none;
-    box-shadow: 0 20px 50px rgba(0,0,0,0.08);
+    border: 1px solid rgba(0,0,0,0.05);
+    box-shadow: 
+        0 10px 30px rgba(0,0,0,0.04),
+        0 30px 80px rgba(0,0,0,0.12);
+    border-radius: 4px;
 }
 
 .editor-mode .reveal .slides section.present {
@@ -1283,9 +1324,14 @@ body {
 .play-mode-active .play-mode-events-auto { pointer-events: auto !important; }
 
 /* ── Present Mode UI Overrides ── */
+.play-mode-active {
+    overflow: hidden !important;
+}
+
 .play-mode-active #app-toolbar,
 .play-mode-active aside,
 .play-mode-active #properties-panel,
+.play-mode-active #zoom-control,
 .play-mode-active .editor-ui {
     display: none !important;
 }
@@ -1307,6 +1353,16 @@ body {
     z-index: 9999 !important;
     background: #000 !important;
     border: none !important;
+    overflow: hidden !important;
+}
+
+.play-mode-active #zoom-engine {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    margin: 0 !important;
+    transform: none !important;
 }
 
 .play-mode-active .reveal {
@@ -1945,3 +2001,33 @@ body {
 .toolbar-shell { animation: fadeIn 0.5s ease; }
 aside { animation: fadeIn 0.6s ease; }
 #canvas-wrapper { animation: scaleIn 0.6s ease; }
+
+/* --- Snap Guides --- */
+.snap-guide {
+    position: absolute;
+    z-index: 1000;
+    pointer-events: none;
+    background-color: #3B82F6;
+    box-shadow: 0 0 4px rgba(59, 130, 246, 0.4);
+}
+.snap-guide-v {
+    width: 1px;
+    height: 100%;
+    top: 0;
+}
+.snap-guide-h {
+    height: 1px;
+    width: 100%;
+    left: 0;
+}
+
+/* --- Locked Elements --- */
+.element-locked {
+    cursor: not-allowed !important;
+    pointer-events: none !important;
+    opacity: 0.85;
+    outline: 1px dashed #CBD5E1 !important;
+}
+.element-locked * {
+    pointer-events: none !important;
+}

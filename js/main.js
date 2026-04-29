@@ -15,11 +15,8 @@ window.onload = async () => {
     }
     applyPresentationTheme(state.presentationTheme, { persist: false });
     syncPresentationPageSetup();
-    window.addElement = addElement;
-    window.renderSlidesFromState = renderSlidesFromState;
-    window.renderSlidePreviews = renderSlidePreviews;
-    window.syncConnectorDom = syncConnectorDom;
-    window.changePresentationPageSetup = changePresentationPageSetup;
+    if (typeof initZoom === "function") initZoom();
+    if (typeof initContextMenu === "function") initContextMenu();
 
     const slideConfig = getPresentationPageSetupConfig();
 
@@ -56,7 +53,11 @@ window.onload = async () => {
         renderSlidesFromState();
         requestAnimationFrame(() => {
             relayoutReveal();
-            requestAnimationFrame(relayoutReveal);
+            if (typeof resetZoom === "function") resetZoom();
+            requestAnimationFrame(() => {
+                relayoutReveal();
+                if (typeof applyZoom === "function") applyZoom();
+            });
         });
     });
 
@@ -64,12 +65,20 @@ window.onload = async () => {
         setCurrentSlideIndex(event.indexh);
         updateSlideCounter();
         clearSelection();
+
+        // Ensure the new slide is centered, especially if zoomed in
+        if (typeof centerSlide === "function") centerSlide();
+
         if (document.body.classList.contains("play-mode-active")) {
             if (typeof _playSlideAnimations === "function") {
                 _playSlideAnimations(event.indexh);
             }
         }
-        renderSlidePreviews();
+        if (typeof updateActiveSlidePreview === "function") {
+            updateActiveSlidePreview(event.indexh);
+        } else {
+            renderSlidePreviews();
+        }
     });
 
     // Deselect on empty-canvas click (main.js checks isGroupBound; marquee is in interact.js)
@@ -115,6 +124,9 @@ window.onload = async () => {
     window.addEventListener("resize", () =>
         window.requestAnimationFrame(() => {
             relayoutReveal();
+            if (typeof handleEditorViewportResize === "function") {
+                handleEditorViewportResize();
+            }
             updateFloatingTextToolbar();
         }),
     );
@@ -137,64 +149,6 @@ window.onload = async () => {
 // ─── Debounced preview refresh (used by properties.js via window) ─────────────
 
 let _previewTimer;
-window.refreshPreviews = () => {
-    clearTimeout(_previewTimer);
-    _previewTimer = setTimeout(renderSlidePreviews, 300);
-};
-
-// ─── Global window bindings (used by inline onclick in HTML) ─────────────────
-
-window.addSlide = addSlide;
-window.duplicateCurrentSlide = duplicateCurrentSlide;
-window.deleteCurrentSlide = deleteCurrentSlide;
-window.addElement = addElement;
-window.addShape = addShape;
-window.addConnector = addConnector;
-window.addComponent = addComponent;
-window.syncConnectorDom = syncConnectorDom;
-window.deleteElement = deleteElement;
-window.duplicateElement = duplicateElement;
-window.duplicateSelectedElements = duplicateSelectedElements;
-window.copyElement = copyElement;
-window.pasteElement = pasteElement;
-window.copySelectionToClipboard = copySelectionToClipboard;
-window.pasteFromClipboard = pasteFromClipboard;
-window.togglePlayMode = togglePlayMode;
-window.exportJSON = exportJSON;
-window.exportPresentationZip = exportPresentationZip;
-window.exportPresentationPDF = exportPresentationPDF;
-window.exportPresentationPPTX = exportPresentationPPTX;
-window.exportPresentationJson = exportPresentationJson;
-window.handleAIImportUpload = handleAIImportUpload;
-window.handleAIJsonUpload = handleAIJsonUpload;
-window.hideAIImportProgress = hideAIImportProgress;
-window.handleImageFileInsert = handleImageFileInsert;
-window.handleHtmlFileInsert = handleHtmlFileInsert;
-window.handleVideoFileInsert = handleVideoFileInsert;
-window.handlePdfFileInsert = handlePdfFileInsert;
-window.undo = undo;
-window.nudgeSelectedElements = nudgeSelectedElements;
-window.schedulePresentationAutosave = schedulePresentationAutosave;
-window.adoptPresentationRecord = adoptPresentationRecord;
-window.saveCurrentProject = saveCurrentProject;
-window.createNewProject = createNewProject;
-window.openProjectsModal = openProjectsModal;
-window.closeProjectsModal = closeProjectsModal;
-window.loadProjectById = loadProjectById;
-window.importPresentationJson = importPresentationJson;
-window.setCurrentPresentationTitle = setCurrentPresentationTitle;
-window.bindProjectTitleInput = bindProjectTitleInput;
-window.openAuthModal = openAuthModal;
-window.closeAuthModal = closeAuthModal;
-window.switchAuthMode = switchAuthMode;
-window.toggleAuthMode = toggleAuthMode;
-window.toggleUserMenu = toggleUserMenu;
-window.toggleExportMenu = toggleExportMenu;
-window.closeExportMenu = closeExportMenu;
-window.closeUserMenu = closeUserMenu;
-window.submitAuthForm = submitAuthForm;
-window.logoutCurrentUser = logoutCurrentUser;
-window.triggerAIImportPicker = triggerAIImportPicker;
 
 async function runAutosaveSmokeTest() {
     if (new URLSearchParams(window.location.search).get("autosave_smoke") !== "1") return;
@@ -338,6 +292,47 @@ function _insertSymbol(sym) {
     closeSymbolPicker();
 }
 
+// ─── Grouping Logic ──────────────────────────────────────────────────────────
+
+function groupSelected() {
+    if (state.selectedIds.length < 2) return;
+    saveStateToUndo();
+    const groupId = generateId('group');
+    state.selectedIds.forEach(id => {
+        updateElementState(id, { groupId });
+    });
+    // Show a small toast or visual feedback if desired
+    console.log(`Grouped ${state.selectedIds.length} elements under ${groupId}`);
+    buildPropertiesPanel();
+}
+
+function ungroupSelected() {
+    if (state.selectedIds.length === 0) return;
+    saveStateToUndo();
+    
+    // Collect all groupIds present in selection
+    const groupIdsToClear = new Set();
+    state.selectedIds.forEach(id => {
+        const el = state.slides[currentSlideIndex].elements.find(e => e.id === id);
+        if (el?.groupId) groupIdsToClear.add(el.groupId);
+    });
+
+    if (groupIdsToClear.size === 0) return;
+
+    // Clear these groupIds from ALL elements on the slide
+    state.slides[currentSlideIndex].elements.forEach(el => {
+        if (el.groupId && groupIdsToClear.has(el.groupId)) {
+            updateElementState(el.id, { groupId: null });
+        }
+    });
+
+    console.log(`Ungrouped ${groupIdsToClear.size} groups`);
+    buildPropertiesPanel();
+}
+
+window.groupSelected = groupSelected;
+window.ungroupSelected = ungroupSelected;
+
 // ─── Equation Element ─────────────────────────────────────────────────────────
 
 function addEquationElement(latexSrc) {
@@ -392,36 +387,78 @@ function switchSidebarTab(tabName) {
     });
 }
 
-// ─── Window Bindings ──────────────────────────────────────────────────────────
+// ─── Window Bindings (Exposed for inline HTML onclick) ───────────────────────
 window.addSlide = addSlide;
 window.duplicateCurrentSlide = duplicateCurrentSlide;
 window.deleteCurrentSlide = deleteCurrentSlide;
 window.addElement = addElement;
 window.addShape = addShape;
+window.addChart = addChart;
 window.addConnector = addConnector;
 window.addComponent = addComponent;
+window.aiCleanUpSlide = aiCleanUpSlide;
 window.syncConnectorDom = syncConnectorDom;
-window.openShapePicker = openShapePicker;
-window.closeShapePicker = closeShapePicker;
-window.insertShapeFromPicker = insertShapeFromPicker;
-window.undo = undo;
-window.redo = redo;
+window.deleteElement = deleteElement;
+window.duplicateElement = duplicateElement;
+window.duplicateSelectedElements = duplicateSelectedElements;
 window.copyElement = copyElement;
 window.pasteElement = pasteElement;
 window.copySelectionToClipboard = copySelectionToClipboard;
 window.pasteFromClipboard = pasteFromClipboard;
-window.duplicateSelectedElements = duplicateSelectedElements;
-window.deleteSelectedElements = deleteSelectedElements;
 window.togglePlayMode = togglePlayMode;
+window.undo = undo;
+window.redo = redo;
 window.exportPresentationZip = exportPresentationZip;
 window.exportPresentationPDF = exportPresentationPDF;
 window.exportPresentationPPTX = exportPresentationPPTX;
 window.exportPresentationJson = exportPresentationJson;
 window.importPresentationJson = importPresentationJson;
 window.handleAIImportUpload = handleAIImportUpload;
+window.handleAIJsonUpload = handleAIJsonUpload;
 window.hideAIImportProgress = hideAIImportProgress;
-
+window.handleImageFileInsert = handleImageFileInsert;
+window.handleHtmlFileInsert = handleHtmlFileInsert;
+window.handleVideoFileInsert = handleVideoFileInsert;
+window.handlePdfFileInsert = handlePdfFileInsert;
+window.nudgeSelectedElements = nudgeSelectedElements;
+window.schedulePresentationAutosave = schedulePresentationAutosave;
+window.adoptPresentationRecord = adoptPresentationRecord;
+window.saveCurrentProject = saveCurrentProject;
+window.createNewProject = createNewProject;
+window.openProjectsModal = openProjectsModal;
+window.closeProjectsModal = closeProjectsModal;
+window.loadProjectById = loadProjectById;
+window.setCurrentPresentationTitle = setCurrentPresentationTitle;
+window.bindProjectTitleInput = bindProjectTitleInput;
+window.openAuthModal = openAuthModal;
+window.closeAuthModal = closeAuthModal;
+window.switchAuthMode = switchAuthMode;
+window.toggleAuthMode = toggleAuthMode;
+window.toggleUserMenu = toggleUserMenu;
+window.toggleExportMenu = toggleExportMenu;
+window.closeExportMenu = closeExportMenu;
+window.closeUserMenu = closeUserMenu;
+window.submitAuthForm = submitAuthForm;
+window.logoutCurrentUser = logoutCurrentUser;
+window.triggerAIImportPicker = triggerAIImportPicker;
 window.addEquationElement = addEquationElement;
 window.openSymbolPicker = openSymbolPicker;
 window.closeSymbolPicker = closeSymbolPicker;
+window.openShapePicker = openShapePicker;
+window.closeShapePicker = closeShapePicker;
+window.insertShapeFromPicker = insertShapeFromPicker;
 window.switchSidebarTab = switchSidebarTab;
+window.renderSlidesFromState = renderSlidesFromState;
+window.renderSlidePreviews = renderSlidePreviews;
+window.refreshActiveSlidePreview = refreshActiveSlidePreview;
+window.changePresentationPageSetup = changePresentationPageSetup;
+window.refreshPreviews = () => {
+    if (typeof _previewTimer !== 'undefined') clearTimeout(_previewTimer);
+    _previewTimer = setTimeout(() => {
+        if (typeof refreshActiveSlidePreview === "function") {
+            refreshActiveSlidePreview();
+        } else {
+            renderSlidePreviews(currentSlideIndex);
+        }
+    }, 300);
+};
