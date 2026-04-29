@@ -40,11 +40,38 @@ except (ImportError, ModuleNotFoundError):
     )
 
 class PDF2PPTxBridge(PDF2PPTx):
+    def _clean_generated_text(self, value, fallback=""):
+        text = re.sub(r"\s+", " ", str(value or "").strip())
+        if not text:
+            return fallback
+        if re.fullmatch(r"(imported|untitled|content|slide|section|figure|image|chart|table)(\s+\w+){0,4}", text, re.I):
+            return fallback
+        return text
+
+    def _infer_document_title(self, text, frame=None):
+        frame = frame or {}
+        for key in ("title", "paper_title", "name"):
+            candidate = self._clean_generated_text(frame.get(key))
+            if candidate:
+                return _truncate_words(candidate, 18)
+
+        lines = [re.sub(r"\s+", " ", line).strip() for line in str(text or "").splitlines()]
+        lines = [
+            line
+            for line in lines[:80]
+            if 12 <= len(line) <= 180
+            and not re.search(r"\b(abstract|introduction|copyright|journal|doi:|received|accepted)\b", line, re.I)
+        ]
+        if not lines:
+            return "Imported Presentation"
+        scored = sorted(lines[:12], key=lambda line: (len(re.findall(r"[A-Za-z]{4,}", line)), -len(line)), reverse=True)
+        return _truncate_words(scored[0], 18)
+
     def _normalize_slide_payload(self, payload, orig_slide):
-        fallback_title = str(orig_slide.get("title") or "Untitled").strip() or "Untitled"
+        fallback_title = self._clean_generated_text(orig_slide.get("title"), "Content")
         normalized = payload if isinstance(payload, dict) else {}
 
-        title = str(normalized.get("title") or fallback_title).strip() or fallback_title
+        title = self._clean_generated_text(normalized.get("title"), fallback_title) or fallback_title
 
         normalized_points = []
         raw_points = normalized.get("points", [])
@@ -55,13 +82,21 @@ class PDF2PPTxBridge(PDF2PPTx):
                 heading = str(raw_point.get("heading") or "").strip()
                 raw_content = raw_point.get("content", [])
                 if isinstance(raw_content, list):
-                    content = [str(item).strip() for item in raw_content if str(item).strip()]
+                    content = [self._clean_generated_text(item) for item in raw_content if self._clean_generated_text(item)]
                 elif isinstance(raw_content, str) and raw_content.strip():
-                    content = [raw_content.strip()]
+                    cleaned = self._clean_generated_text(raw_content)
+                    content = [cleaned] if cleaned else []
                 else:
                     content = []
+                heading = self._clean_generated_text(heading)
                 if heading or content:
                     normalized_points.append({"heading": heading, "content": content})
+
+        if not normalized_points and orig_slide.get("claim"):
+            normalized_points.append({
+                "heading": "Takeaway",
+                "content": [_truncate_words(self._clean_generated_text(orig_slide.get("claim"), fallback_title), 18)],
+            })
 
         fig_ids = []
         model_fig_id = normalized.get("fig_id")
@@ -118,6 +153,12 @@ class PDF2PPTxBridge(PDF2PPTx):
         storyboard = self._plan_storyboard(planning_llm, paper_frame, enriched_catalog, emit)
         if isinstance(storyboard, list): storyboard = {"slides": storyboard}
         if not isinstance(storyboard, dict): storyboard = {"slides": []}
+        if not self._clean_generated_text(storyboard.get("title")):
+            storyboard["title"] = self._infer_document_title(full_text, paper_frame)
+        if not self._clean_generated_text(storyboard.get("sub")):
+            core = self._clean_generated_text(paper_frame.get("core_innovation") or paper_frame.get("problem") or paper_frame.get("thesis"))
+            if core:
+                storyboard["sub"] = _truncate_words(core, 22)
         
         # 4. Generate
         slide_llm = build_task_provider(task="slide_writing", allow_remote=True)
@@ -188,10 +229,12 @@ class PDF2PPTxBridge(PDF2PPTx):
     def _generate_slides(self, storyboard, enriched_catalog, full_text, mineru_summary, slide_llm, 
                          json_output, pptx_output, max_slides, max_sections, emit, paper_frame, mineru_context):
         gen = PPTXGenerator()
-        gen.add_title(storyboard.get("title"), storyboard.get("sub"))
+        deck_title = self._clean_generated_text(storyboard.get("title"), self._infer_document_title(full_text, paper_frame))
+        deck_subtitle = self._clean_generated_text(storyboard.get("sub"), "")
+        gen.add_title(deck_title, deck_subtitle)
         export_data = {
-            "title": storyboard.get("title"), 
-            "sub": storyboard.get("sub"), 
+            "title": deck_title, 
+            "sub": deck_subtitle, 
             "authors": storyboard.get("authors"),
             "journal_name": storyboard.get("journal_name"),
             "publish_date": storyboard.get("publish_date"),
@@ -202,12 +245,13 @@ class PDF2PPTxBridge(PDF2PPTx):
         sections = []
         current_section = None
         for s_slide in storyboard.get("slides", []):
-            s_name = s_slide.get("section", "Main")
+            s_name = self._clean_generated_text(s_slide.get("section"), "Main")
             if not current_section or current_section["name"] != s_name:
                 current_section = {"name": s_name, "slides": []}
                 sections.append(current_section)
             current_section["slides"].append({
-                "title": s_slide.get("title"), "claim": s_slide.get("goal"),
+                "title": self._clean_generated_text(s_slide.get("title"), s_slide.get("goal") or s_name),
+                "claim": self._clean_generated_text(s_slide.get("goal"), ""),
                 "fig_ids": s_slide.get("fig_ids") or ([s_slide.get("fig_id")] if s_slide.get("fig_id") else []),
                 "keywords": s_slide.get("context_keywords", [])
             })
@@ -328,7 +372,15 @@ class PDF2PPTxBridge(PDF2PPTx):
         flat_idx = 0
         for section in generated_sections:
             gen.add_section_slide(section["name"])
-            export_data["slides"].append({"type": "section", "title": section["name"]})
+            section_summary = next(
+                (
+                    self._clean_generated_text(slide.get("title") or slide.get("claim"))
+                    for slide in section["slides"]
+                    if self._clean_generated_text(slide.get("title") or slide.get("claim"))
+                ),
+                "",
+            )
+            export_data["slides"].append({"type": "section", "title": section["name"], "summary": section_summary})
 
             for s_data in section["slides"]:
                 fids = assigned.get(flat_idx, [])

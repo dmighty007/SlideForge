@@ -1475,11 +1475,64 @@ function _bridgeWordClamp(text, maxWords = 22) {
     return `${words.slice(0, maxWords).join(" ")}...`;
 }
 
+function _bridgeTokenSet(text) {
+    const stop = new Set([
+        "the", "and", "for", "with", "that", "this", "from", "into", "over", "under", "across", "after",
+        "before", "figure", "panel", "shows", "show", "display", "displays", "result", "results", "using",
+        "method", "methods", "simulation", "simulations",
+    ]);
+    return new Set(
+        String(text || "")
+            .toLowerCase()
+            .match(/[a-z0-9][a-z0-9-]{2,}/g)
+            ?.filter(token => !stop.has(token)) || [],
+    );
+}
+
+function _bridgeTextMatchScore(left, right) {
+    const a = _bridgeTokenSet(left);
+    const b = _bridgeTokenSet(right);
+    if (!a.size || !b.size) return 0;
+    let overlap = 0;
+    a.forEach(token => {
+        if (b.has(token)) overlap += 1;
+    });
+    return overlap / Math.max(1, Math.min(a.size, b.size));
+}
+
+function _bridgeSlideMatchText(slide) {
+    const parts = [slide?.title, slide?.claim, slide?.goal];
+    (Array.isArray(slide?.points) ? slide.points : []).forEach(point => {
+        parts.push(point?.heading);
+        const content = Array.isArray(point?.content) ? point.content : [point?.content];
+        parts.push(...content);
+    });
+    return parts.filter(Boolean).join(" ");
+}
+
+function _bridgeChoosePrimaryVisual(slide) {
+    const visuals = Array.isArray(slide?.visuals) ? slide.visuals.filter(item => item?.path) : [];
+    if (!visuals.length) return null;
+    const preferred = slide?.primary_visual_id ? visuals.find(item => item.id === slide.primary_visual_id) : null;
+    if (preferred) return preferred;
+    const weakPreferredId = slide?.fig_id || slide?.visual_id;
+    const slideText = _bridgeSlideMatchText(slide);
+    return visuals
+        .map((visual, index) => ({
+            visual,
+            index,
+            score: _bridgeTextMatchScore(slideText, [visual.caption, visual.finding, visual.type, visual.id].filter(Boolean).join(" ")),
+            preferred: weakPreferredId && visual.id === weakPreferredId ? 1 : 0,
+        }))
+        .sort((a, b) => (b.score - a.score) || (b.preferred - a.preferred) || (a.index - b.index))[0].visual;
+}
+
 function _normalizeBridgeContentSlide(slide) {
     const visuals = Array.isArray(slide?.visuals) ? slide.visuals.filter(Boolean) : [];
-    const primaryVisual = visuals.find(item => typeof item.path === "string" && item.path.trim()) || null;
+    const primaryVisual = _bridgeChoosePrimaryVisual({ ...slide, visuals });
     const normalizedFigPath =
         typeof slide?.fig_path === "string" && slide.fig_path.trim()
+            && (!primaryVisual || primaryVisual.id === slide?.visual_id || primaryVisual.path === slide.fig_path)
             ? slide.fig_path
             : primaryVisual?.path || "";
     const normalizedFigCap =
@@ -1490,10 +1543,48 @@ function _normalizeBridgeContentSlide(slide) {
     return {
         ...slide,
         visuals,
-        visual_id: slide?.visual_id || primaryVisual?.id || null,
+        visual_id: primaryVisual?.id || slide?.visual_id || null,
         fig_path: normalizedFigPath,
         fig_cap: normalizedFigCap,
     };
+}
+
+function _bridgePlanPrimaryVisuals(slides) {
+    const contentSlides = (slides || []).filter(slide => slide?.type === "content");
+    const visualUsage = new Map();
+    const candidates = [];
+
+    contentSlides.forEach((slide, slideIndex) => {
+        const primary = _bridgeChoosePrimaryVisual(slide);
+        if (primary?.id) visualUsage.set(primary.id, (visualUsage.get(primary.id) || 0) + 1);
+        (Array.isArray(slide.visuals) ? slide.visuals : []).forEach(visual => {
+            if (!visual?.id || !visual?.path) return;
+            candidates.push({
+                slide,
+                slideIndex,
+                visual,
+                score: _bridgeTextMatchScore(
+                    _bridgeSlideMatchText(slide),
+                    [visual.caption, visual.finding, visual.type, visual.id].filter(Boolean).join(" "),
+                ),
+            });
+        });
+    });
+
+    const allVisualIds = new Set(candidates.map(item => item.visual.id));
+    allVisualIds.forEach(visualId => {
+        if (visualUsage.has(visualId)) return;
+        const best = candidates
+            .filter(item => item.visual.id === visualId)
+            .sort((a, b) => (b.score - a.score) || ((visualUsage.get(_bridgeChoosePrimaryVisual(a.slide)?.id) || 0) - (visualUsage.get(_bridgeChoosePrimaryVisual(b.slide)?.id) || 0)))[0];
+        if (!best) return;
+        const previous = _bridgeChoosePrimaryVisual(best.slide);
+        if (previous?.id) visualUsage.set(previous.id, Math.max(0, (visualUsage.get(previous.id) || 1) - 1));
+        best.slide.primary_visual_id = best.visual.id;
+        visualUsage.set(best.visual.id, 1);
+    });
+
+    return slides;
 }
 
 function _bridgeSlideMetrics(slide) {
@@ -1579,6 +1670,12 @@ function _bridgeTextPlain(value) {
     return String(value || "").replace(/<[^>]*>/g, "").trim();
 }
 
+function _bridgeIsPlaceholderText(text) {
+    return /^(imported presentation|imported (slide )?content|imported figure|imported section from the source document|insert figure( \/ chart)? here|chart \/ graph placeholder)$/i.test(
+        String(text || "").replace(/[\[\]]/g, "").trim(),
+    );
+}
+
 function _bridgeFindText(elements, matcher) {
     return (elements || []).find(el => el.type === "text" && matcher(_bridgeTextPlain(el.content), el));
 }
@@ -1600,9 +1697,131 @@ function _bridgeSetFirstBulletBlock(elements, content, options = {}) {
     return el;
 }
 
+function _bridgeContentText(value) {
+    if (Array.isArray(value)) {
+        return value
+            .map(item => _bridgeTextPlain(item?.html || item?.text || ""))
+            .filter(Boolean)
+            .join(" ");
+    }
+    return _bridgeTextPlain(value);
+}
+
+function _bridgeTextLineCount(value, charsPerLine) {
+    if (Array.isArray(value)) {
+        return value.reduce((sum, item) => {
+            const text = _bridgeTextPlain(item?.html || item?.text || "");
+            if (!text) return sum;
+            return sum + Math.max(1, Math.ceil(text.length / charsPerLine)) + (item?.level ? 0.15 : 0.35);
+        }, 0);
+    }
+    const chunks = String(_bridgeTextPlain(value) || "").split(/\n+/).filter(Boolean);
+    if (!chunks.length) return 1;
+    return chunks.reduce((sum, chunk) => sum + Math.max(1, Math.ceil(chunk.length / charsPerLine)), 0);
+}
+
+function _bridgeFitTextElement(el, { maxHeight, minFontSize = 11, minLineHeight = 1.16 } = {}) {
+    if (!el || el.type !== "text" || !maxHeight) return;
+    const width = parseFloat(el.width) || 320;
+    const styles = el.styles || {};
+    const originalFont = parseFloat(styles.fontSize) || 18;
+    let fontSize = originalFont;
+    let lineHeight = parseFloat(styles.lineHeight) || 1.35;
+    const text = _bridgeContentText(el.content);
+    if (!text) return;
+
+    for (let i = 0; i < 16; i += 1) {
+        const charsPerLine = Math.max(8, Math.floor(width / Math.max(5.5, fontSize * 0.54)));
+        const lines = _bridgeTextLineCount(el.content, charsPerLine);
+        const estimatedHeight = Math.ceil(lines * fontSize * lineHeight + 10);
+        if (estimatedHeight <= maxHeight || fontSize <= minFontSize) break;
+        if (lineHeight > minLineHeight + 0.01) {
+            lineHeight = Math.max(minLineHeight, lineHeight - 0.05);
+        } else {
+            fontSize = Math.max(minFontSize, fontSize - 1);
+        }
+    }
+
+    el.styles = {
+        ...styles,
+        fontSize: `${Math.round(fontSize)}px`,
+        lineHeight: String(Number(lineHeight.toFixed(2))),
+        overflow: "hidden",
+    };
+    el.height = `${maxHeight}px`;
+    el.autoHeight = false;
+}
+
+function _bridgeFindNearText(elements, x, y, tolerance = 8) {
+    return (elements || []).find(el => {
+        if (el.type !== "text") return false;
+        return Math.abs((parseFloat(el.x) || 0) - x) <= tolerance && Math.abs((parseFloat(el.y) || 0) - y) <= tolerance;
+    });
+}
+
+function _bridgeApplyContentAwareFit(slideState) {
+    const layoutId = slideState?.layoutId;
+    const elements = slideState?.elements || [];
+    const fitAt = (x, y, maxHeight, options = {}) => _bridgeFitTextElement(_bridgeFindNearText(elements, x, y), { maxHeight, ...options });
+    const fitArrayText = (index, maxHeight, options = {}) => {
+        const el = elements.filter(item => item.type === "text" && Array.isArray(item.content))[index];
+        _bridgeFitTextElement(el, { maxHeight, ...options });
+    };
+
+    if (layoutId === "title-page") {
+        fitAt(80, 220, 126, { minFontSize: 30, minLineHeight: 1.02 });
+        fitAt(80, 358, 36, { minFontSize: 13 });
+        fitAt(80, 400, 56, { minFontSize: 11 });
+        return slideState;
+    }
+    if (layoutId === "section-divider") {
+        fitAt(400, 270, 72, { minFontSize: 26, minLineHeight: 1.02 });
+        fitAt(400, 355, 112, { minFontSize: 13 });
+        return slideState;
+    }
+    if (layoutId === "content-slide") {
+        fitAt(76, 44, 60, { minFontSize: 24, minLineHeight: 1.02 });
+        fitAt(54, 126, 42, { minFontSize: 13 });
+        fitArrayText(0, 370, { minFontSize: 14, minLineHeight: 1.18 });
+        fitAt(790, 384, 72, { minFontSize: 12 });
+        return slideState;
+    }
+    if (layoutId === "two-column") {
+        fitAt(76, 22, 62, { minFontSize: 24, minLineHeight: 1.05 });
+        fitArrayText(0, 548, { minFontSize: 13, minLineHeight: 1.18 });
+        fitArrayText(1, 548, { minFontSize: 13, minLineHeight: 1.18 });
+        return slideState;
+    }
+    if (layoutId === "figure-caption") {
+        fitAt(76, 22, 62, { minFontSize: 23, minLineHeight: 1.05 });
+        fitAt(54, 106, 36, { minFontSize: 12 });
+        fitAt(54, 582, 48, { minFontSize: 10 });
+        fitAt(698, 202, 122, { minFontSize: 12, minLineHeight: 1.18 });
+        fitAt(698, 330, 34, { minFontSize: 15 });
+        fitAt(698, 368, 52, { minFontSize: 10 });
+        return slideState;
+    }
+    if (layoutId === "results-data") {
+        fitAt(76, 22, 62, { minFontSize: 23, minLineHeight: 1.05 });
+        fitAt(54, 106, 34, { minFontSize: 12 });
+        fitAt(54, 538, 46, { minFontSize: 10 });
+        [136, 276, 416].forEach(y => {
+            fitAt(716, y + 18, 36, { minFontSize: 14 });
+            fitAt(716, y + 58, 44, { minFontSize: 10 });
+        });
+        return slideState;
+    }
+    if (layoutId === "conclusion") {
+        fitAt(76, 18, 58, { minFontSize: 26, minLineHeight: 1.05 });
+        fitArrayText(0, 432, { minFontSize: 13, minLineHeight: 1.18 });
+        fitAt(54, 614, 44, { minFontSize: 10 });
+    }
+    return slideState;
+}
+
 function _bridgeSlideSummary(slide) {
     const direct = _bridgeNarrativeSummary(slide?.points, 1);
-    return direct || String(slide?.claim || slide?.goal || "Imported slide content");
+    return direct || String(slide?.claim || slide?.goal || slide?.fig_cap || slide?.title || "");
 }
 
 function _bridgePresetForContentSlide(slide) {
@@ -1625,14 +1844,14 @@ function _bridgeHydrateContentPreset(slideState, slide, theme) {
     if (presetId === "figure-caption") {
         _bridgeSetTextByPlaceholder(elements, "Results / Figure", title);
         _bridgeSetTextByPlaceholder(elements, "Key finding stated as a clear assertion — the figure supports this claim", summary);
-        _bridgeSetTextByPlaceholder(elements, "Figure 1. Descriptive caption explaining the figure content.", _bridgeWordClamp(String(slide.fig_cap || ""), 26));
+        _bridgeSetTextByPlaceholder(elements, "Figure 1. Descriptive caption explaining the figure content.", _bridgeWordClamp(String(slide.fig_cap || summary || title), 26));
         _bridgeSetTextByPlaceholder(elements, "Key Insight", "Key Insight");
         const insight = _bridgeFindText(elements, text => text.startsWith("Explain what this result means"));
-        if (insight) insight.content = _bridgeWordClamp(_bridgeNarrativeSummary(slide.points, 2), 34);
+        if (insight) insight.content = _bridgeWordClamp(_bridgeNarrativeSummary(slide.points, 2) || summary || slide.fig_cap || title, 34);
         const stat = _bridgeFindText(elements, text => text === "p < 0.001");
         if (stat) stat.content = _bridgeWordClamp((slide.points?.[0]?.heading || "Evidence"), 5);
         const sig = _bridgeFindText(elements, text => text === "Statistical significance");
-        if (sig) sig.content = "Imported figure";
+        if (sig) sig.content = _bridgeWordClamp(slide.fig_cap || slide.points?.[0]?.content?.[0] || "Figure evidence", 9);
         elements.push(
             _makeImageElement({
                 x: 72,
@@ -1661,15 +1880,26 @@ function _bridgeHydrateContentPreset(slideState, slide, theme) {
     if (presetId === "results-data") {
         _bridgeSetTextByPlaceholder(elements, "Key Results", title);
         _bridgeSetTextByPlaceholder(elements, "Main finding stated as a clear assertion — the chart below supports this", summary);
-        _bridgeSetTextByPlaceholder(elements, "Figure 1. Short caption for chart.", _bridgeWordClamp(String(slide.fig_cap || ""), 20));
+        _bridgeSetTextByPlaceholder(elements, "Figure 1. Short caption for chart.", _bridgeWordClamp(String(slide.fig_cap || summary || title), 20));
         const labels = _bridgePointsAsCards(slide.points, 3);
         ["p < 0.001", "n = 1,024", "R² = 0.94"].forEach((placeholder, idx) => {
-            const el = _bridgeSetTextByPlaceholder(elements, placeholder, labels[idx]?.heading || placeholder);
+            const el = _bridgeSetTextByPlaceholder(elements, placeholder, labels[idx]?.heading || ["Finding", "Evidence", "Impact"][idx]);
             if (el) el.styles.fontSize = "24px";
         });
         ["Statistical Significance", "Sample Size", "Model Fit"].forEach((placeholder, idx) => {
-            _bridgeSetTextByPlaceholder(elements, placeholder, labels[idx]?.body || placeholder);
+            _bridgeSetTextByPlaceholder(elements, placeholder, labels[idx]?.body || summary || title);
         });
+        if (slide.fig_path) {
+            elements.push(
+                _makeImageElement({
+                    x: 72,
+                    y: 154,
+                    width: 584,
+                    height: 354,
+                    content: _normalizeImportedImagePath(slide.fig_path),
+                }),
+            );
+        }
         return;
     }
 
@@ -1685,6 +1915,16 @@ function _bridgeHydrateContentPreset(slideState, slide, theme) {
     _bridgeSetTextByPlaceholder(elements, "One clear assertion that summarises the content on this slide", summary);
     _bridgeSetTextByPlaceholder(elements, "Signal", _bridgeWordClamp(slide.points?.[0]?.heading || "Takeaway", 3));
     _bridgeSetFirstBulletBlock(elements, bullets);
+}
+
+function _bridgeFinalizeSlide(slideState) {
+    if (!slideState) return slideState;
+    slideState.elements = (slideState.elements || []).filter(el => {
+        if (el.type !== "text") return true;
+        const text = _bridgeContentText(el.content);
+        return !_bridgeIsPlaceholderText(text);
+    });
+    return _bridgeApplyContentAwareFit(slideState);
 }
 
 function _makeBeamerHeader(theme, sectionTitle) {
@@ -1725,14 +1965,14 @@ function _makeBeamerFooter(theme, presentationTitle, slideNumber, totalSlides) {
 }
 
 function _createBridgeTitleSlide(data, theme, presentationTitle, slideNumber, totalSlides) {
-    return _bridgeBuildPresetSlide("title-page", theme, elements => {
+    return _bridgeFinalizeSlide(_bridgeBuildPresetSlide("title-page", theme, elements => {
         _bridgeSetTextByPlaceholder(elements, "RESEARCH PRESENTATION", data.journal_name || "Imported Presentation");
         _bridgeSetTextByPlaceholder(elements, "Research Title Goes Here", presentationTitle);
         _bridgeSetTextByPlaceholder(elements, "Author Name · Co-Author Name", data.authors || "");
         const metaText = [data.journal_name, data.publish_date, data.doi ? `DOI: ${data.doi}` : ""].filter(Boolean).join(" · ");
         _bridgeSetTextByPlaceholder(elements, "Department · University · Conference 2025", metaText || data.sub || "AI-generated research presentation");
         _bridgeSetTextByPlaceholder(elements, "contact@university.edu", "");
-    });
+    }));
 /*
     const ui = _bridgeVisualMeta(theme);
     const summary = String(data.sub || "AI-generated research presentation");
@@ -1796,11 +2036,12 @@ function _createBridgeTitleSlide(data, theme, presentationTitle, slideNumber, to
 }
 
 function _createBridgeSectionSlide(slide, theme, presentationTitle, slideNumber, totalSlides) {
-    return _bridgeBuildPresetSlide("section-divider", theme, elements => {
+    return _bridgeFinalizeSlide(_bridgeBuildPresetSlide("section-divider", theme, elements => {
         _bridgeSetTextByPlaceholder(elements, "02", String(Math.max(1, slideNumber - 1)).padStart(2, "0"));
         _bridgeSetTextByPlaceholder(elements, "Section Title", String(slide.title || "Section"));
-        _bridgeSetTextByPlaceholder(elements, "A brief description of what this section covers", "Imported section from the source document");
-    });
+        const description = slide.goal || slide.claim || slide.summary || presentationTitle || "";
+        _bridgeSetTextByPlaceholder(elements, "A brief description of what this section covers", _bridgeWordClamp(description, 18));
+    }));
 /*
     const ui = _bridgeVisualMeta(theme);
     return {
@@ -1829,7 +2070,7 @@ function _createBridgeSectionSlide(slide, theme, presentationTitle, slideNumber,
 function _createBridgeEvidenceSlide(slide, theme, currentSectionName, presentationTitle, slideNumber, totalSlides) {
     const slideState = _bridgeBuildPresetSlide("figure-caption", theme);
     _bridgeHydrateContentPreset(slideState, slide, theme);
-    return slideState;
+    return _bridgeFinalizeSlide(slideState);
 /*
     const ui = _bridgeVisualMeta(theme);
     const hasFigure = Boolean(slide.fig_path);
@@ -1877,7 +2118,7 @@ function _createBridgeArgumentSlide(slide, theme, currentSectionName, presentati
     const presetId = _bridgePresetForContentSlide(slide);
     const slideState = _bridgeBuildPresetSlide(presetId, theme);
     _bridgeHydrateContentPreset(slideState, slide, theme);
-    return slideState;
+    return _bridgeFinalizeSlide(slideState);
 /*
     const ui = _bridgeVisualMeta(theme);
     const bulletContent = _buildBulletContent(slide.points);
@@ -1922,7 +2163,7 @@ function _createBridgeArgumentSlide(slide, theme, currentSectionName, presentati
 function _createBridgeSummarySlide(slide, theme, currentSectionName, presentationTitle, slideNumber, totalSlides) {
     const slideState = _bridgeBuildPresetSlide("conclusion", theme);
     _bridgeHydrateContentPreset(slideState, slide, theme);
-    return slideState;
+    return _bridgeFinalizeSlide(slideState);
 /*
     const ui = _bridgeVisualMeta(theme);
     const bulletContent = _buildBulletContent(slide.points);
@@ -1989,9 +2230,18 @@ function _looksLikeBridgeExport(data) {
     return Boolean(
         data &&
         Array.isArray(data.slides) &&
-        data.slides.length &&
         data.slides.every(slide => slide && typeof slide === "object" && "type" in slide && !("elements" in slide)),
     );
+}
+
+function _bridgeInferPresentationTitle(data) {
+    const direct = String(data?.title || "").trim();
+    if (direct && !/^untitled|imported presentation$/i.test(direct)) return direct;
+    const firstContent = (data?.slides || []).find(slide => slide?.type === "content" && String(slide?.title || "").trim());
+    if (firstContent?.title) return String(firstContent.title).trim();
+    const firstSection = (data?.slides || []).find(slide => slide?.type === "section" && String(slide?.title || "").trim());
+    if (firstSection?.title) return String(firstSection.title).trim();
+    return direct || "Imported Presentation";
 }
 
 function _convertBridgeExportToEditorState(data) {
@@ -2010,17 +2260,20 @@ function _convertBridgeExportToEditorState(data) {
         slides.push(nextSlide);
     };
 
-    const presentationTitle = data.title || "Imported Presentation";
-    const totalSlides = (data.slides || []).length + (data.title || data.sub ? 1 : 0);
+    const presentationTitle = _bridgeInferPresentationTitle(data);
+    const shouldAddTitleSlide = Boolean(presentationTitle || data.sub || data.authors || data.journal_name || data.doi);
+    const totalSlides = (data.slides || []).length + (shouldAddTitleSlide ? 1 : 0);
     let currentSlideNumber = 1;
 
-    if (data.title || data.sub) {
+    if (shouldAddTitleSlide) {
         addBridgeSlide(_createBridgeTitleSlide(data, theme, presentationTitle, currentSlideNumber++, totalSlides));
     }
 
     let currentSectionName = "";
     
-    for (const slide of data.slides || []) {
+    const bridgeSlides = _bridgePlanPrimaryVisuals((data.slides || []).map(slide => ({ ...slide })));
+
+    for (const slide of bridgeSlides) {
         if (slide.type === "section") {
             currentSectionName = slide.title || "Section";
             addBridgeSlide(_createBridgeSectionSlide(slide, theme, presentationTitle, currentSlideNumber++, totalSlides));
