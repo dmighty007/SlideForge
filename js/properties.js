@@ -35,6 +35,8 @@ function onCommit(cb) {
     if (window.refreshPreviews) window.refreshPreviews();
 }
 
+let _propertiesPanelSelectionSignature = "";
+
 function markTextElementStyleAsLocal(data, prop) {
     if (!data || data.type !== "text") return;
     if (!["color"].includes(prop)) return;
@@ -219,6 +221,112 @@ const PROPERTY_PANEL_REVEAL_FRAGMENT_CLASSES = [
     "current-visible",
 ];
 
+function getThemeTextStyleDefaults() {
+    const theme = typeof getPresentationTheme === "function" ? getPresentationTheme() : null;
+    return {
+        fontFamily: theme?.bodyFont || '"Manrope", sans-serif',
+        fontSize: "32px",
+        fontWeight: "normal",
+        fontStyle: "normal",
+        color: theme?.defaultTextColor || "#2E2E2E",
+    };
+}
+
+function setTextControlActive(element, isActive) {
+    if (!element) return;
+    element.classList.toggle("active", Boolean(isActive));
+    element.classList.toggle("text-style-active", Boolean(isActive));
+}
+
+function isControlBeingEdited(element) {
+    return Boolean(element && document.activeElement === element && ["INPUT", "SELECT", "TEXTAREA"].includes(element.tagName));
+}
+
+function bindFontSizeFormattingControl(input) {
+    if (!input || input.dataset.fontSizeFormattingBound === "true") return;
+    input.dataset.fontSizeFormattingBound = "true";
+    bindInlineFormattingGuard(input);
+
+    const commit = () => {
+        const raw = String(input.value || "").trim();
+        if (!raw) return;
+        const nextValue = _normalizePx(raw, "");
+        if (!nextValue) return;
+        if (input.dataset.lastCommittedValue === nextValue) return;
+        input.dataset.lastCommittedValue = nextValue;
+        restoreInlineSelection?.();
+        applyTextFormatting("fontSize", nextValue, { inlineAction: "fontSize" });
+    };
+
+    const scheduleCommit = () => {
+        window.clearTimeout(Number(input.dataset.fontSizeCommitTimer) || 0);
+        input.dataset.fontSizeCommitTimer = String(window.setTimeout(commit, 180));
+    };
+
+    input.addEventListener("input", scheduleCommit);
+    input.addEventListener("change", commit);
+    input.addEventListener("blur", commit);
+    input.addEventListener("keydown", e => {
+        if (e.key !== "Enter") return;
+        e.preventDefault();
+        window.clearTimeout(Number(input.dataset.fontSizeCommitTimer) || 0);
+        commit();
+        input.blur();
+    });
+    input.addEventListener("focus", () => input.select());
+}
+
+function clearTextFormatting(data = getSelectedElementData()) {
+    if (!data || data.type !== "text") return;
+    const defaults = getThemeTextStyleDefaults();
+    const dom = document.getElementById(data.id);
+    const contentHost = dom?.querySelector(".text-element-content");
+    const sourceContent = contentHost?.isContentEditable ? contentHost.innerHTML : data.content;
+    const nextContent = stripAllInlineTextFormattingFromTextContent(sourceContent);
+    const nextStyles = {
+        ...data.styles,
+        fontFamily: defaults.fontFamily,
+        fontSize: defaults.fontSize,
+        fontWeight: defaults.fontWeight,
+        fontStyle: defaults.fontStyle,
+        color: defaults.color,
+    };
+
+    saveStateToUndo();
+    updateElementState(data.id, { content: nextContent, styles: nextStyles, themeManaged: true });
+    data.content = nextContent;
+    data.styles = nextStyles;
+    data.themeManaged = true;
+
+    if (contentHost) {
+        contentHost.innerHTML = renderTextContent({ ...data, content: nextContent });
+        ["fontFamily", "fontSize", "fontWeight", "fontStyle", "color"].forEach(prop => {
+            _setElementDomStyleProperty(contentHost, prop, nextStyles[prop], "important");
+            _setElementDomStyleProperty(dom, prop, nextStyles[prop], "important");
+        });
+        if (contentHost.isContentEditable) {
+            const selection = window.getSelection?.();
+            const range = document.createRange();
+            range.selectNodeContents(contentHost);
+            range.collapse(false);
+            selection?.removeAllRanges();
+            selection?.addRange(range);
+            captureInlineSelection?.();
+        }
+    } else if (dom) {
+        syncTextDomContent(data);
+    }
+
+    const layout = dom ? syncTextBoxLayout(dom, data) : null;
+    if (layout?.autoHeight && Number.isFinite(layout.height)) {
+        updateElementState(data.id, { height: `${layout.height}px` });
+        data.height = `${layout.height}px`;
+    }
+    updateFloatingTextToolbar?.();
+    buildPropertiesPanel();
+    refreshPreviews?.();
+}
+
 function applyTextFormatting(prop, value, options = {}) {
     const data = getSelectedElementData();
     if (!data || data.type !== "text") return;
@@ -234,6 +342,13 @@ function applyTextFormatting(prop, value, options = {}) {
         // because the focus is likely on the sidebar/color picker now.
         if (typeof restoreInlineSelection === "function") {
             restoreInlineSelection();
+        }
+
+        if (typeof hasNonCollapsedInlineSelection === "function" && !hasNonCollapsedInlineSelection()) {
+            if (["fontWeight", "fontStyle", "fontFamily", "fontSize", "color"].includes(prop)) {
+                applyStyle(prop, value);
+            }
+            return;
         }
 
         saveStateToUndo();
@@ -256,11 +371,6 @@ function applyTextFormatting(prop, value, options = {}) {
             if (window.refreshPreviews) window.refreshPreviews();
             return;
         }
-    }
-
-    if (isInlineEditingSession) {
-        setProjectSaveHint?.("Select text inside the box to style it", "muted");
-        return;
     }
 
     // Fallback: Apply to the entire element only outside inline edit mode.
@@ -759,6 +869,7 @@ function updateFloatingTextToolbar() {
     const colorInput = document.getElementById("floating-text-color");
     const subBtn = document.getElementById("floating-text-sub");
     const supBtn = document.getElementById("floating-text-sup");
+    const clearBtn = document.getElementById("floating-text-clear");
     const insertSymbolBtn = document.getElementById("floating-insert-symbol");
     const insertEquationBtn = document.getElementById("floating-insert-equation");
 
@@ -787,10 +898,12 @@ function updateFloatingTextToolbar() {
     if (boldBtn) {
         bindInlineFormattingGuard(boldBtn);
         boldBtn.onclick = () => applyTextFormatting("fontWeight", data.styles.fontWeight === "bold" ? "normal" : "bold", { inlineAction: "bold" });
+        setTextControlActive(boldBtn, data.styles.fontWeight === "bold");
     }
     if (italicBtn) {
         bindInlineFormattingGuard(italicBtn);
         italicBtn.onclick = () => applyTextFormatting("fontStyle", data.styles.fontStyle === "italic" ? "normal" : "italic", { inlineAction: "italic" });
+        setTextControlActive(italicBtn, data.styles.fontStyle === "italic");
     }
     if (fontSelect) {
         bindInlineFormattingGuard(fontSelect);
@@ -798,36 +911,33 @@ function updateFloatingTextToolbar() {
             restoreInlineSelection?.();
             applyTextFormatting("fontFamily", e.target.value, { inlineAction: "fontFamily" });
         };
-        fontSelect.value = data.styles.fontFamily || "Inter, sans-serif";
+        if (!isControlBeingEdited(fontSelect)) {
+            fontSelect.value = data.styles.fontFamily || "Inter, sans-serif";
+        }
+        setTextControlActive(fontSelect, normalizeFontFamily(fontSelect.value) !== normalizeFontFamily(getThemeTextStyleDefaults().fontFamily));
     }
     if (sizeInput) {
-        bindInlineFormattingGuard(sizeInput);
-        const commitFontSize = () => {
-            const val = sizeInput.value.trim();
-            if (val) {
-                restoreInlineSelection?.();
-                applyTextFormatting("fontSize", /^\d+$/.test(val) ? val + "px" : val, { inlineAction: "fontSize" });
-            }
-        };
-        sizeInput.onchange = commitFontSize;
-        sizeInput.onblur = commitFontSize;
-        sizeInput.onfocus = () => sizeInput.select();
-        sizeInput.value = parseInt(data.styles.fontSize) || 32;
+        bindFontSizeFormattingControl(sizeInput);
+        if (!isControlBeingEdited(sizeInput)) {
+            sizeInput.value = parseInt(data.styles.fontSize) || 32;
+            sizeInput.dataset.lastCommittedValue = _normalizePx(sizeInput.value, "32px");
+        }
+        setTextControlActive(sizeInput, `${parseInt(data.styles.fontSize) || 32}px` !== getThemeTextStyleDefaults().fontSize);
     }
     if (colorInput) {
         bindInlineFormattingGuard(colorInput);
         colorInput.oninput = e => {
-            colorInput.dataset.lastAppliedInlineColor = e.target.value;
-            applyTextFormatting("color", e.target.value, { inlineAction: "color" });
+            colorInput.dataset.pendingInlineColor = e.target.value;
         };
         colorInput.onchange = e => {
-            if (colorInput.dataset.lastAppliedInlineColor !== e.target.value) {
-                applyTextFormatting("color", e.target.value, { inlineAction: "color" });
-            }
-            delete colorInput.dataset.lastAppliedInlineColor;
+            applyTextFormatting("color", e.target.value, { inlineAction: "color" });
+            delete colorInput.dataset.pendingInlineColor;
             endFormattingInteraction();
         };
-        colorInput.value = _normalizeColorForInput(data.styles.color, "#000000");
+        if (!isControlBeingEdited(colorInput)) {
+            colorInput.value = _normalizeColorForInput(data.styles.color, "#000000");
+        }
+        setTextControlActive(colorInput, _normalizeColorForInput(data.styles.color, "#000000").toLowerCase() !== _normalizeColorForInput(getThemeTextStyleDefaults().color, "#000000").toLowerCase());
     }
 
     const paletteContainer = document.getElementById("floating-text-palette");
@@ -855,6 +965,10 @@ function updateFloatingTextToolbar() {
         bindInlineFormattingGuard(supBtn);
         supBtn.onclick = () => applyTextFormatting("superscript", null, { inlineAction: "superscript" });
     }
+    if (clearBtn) {
+        bindInlineFormattingGuard(clearBtn);
+        clearBtn.onclick = () => clearTextFormatting(data);
+    }
 
     if (insertSymbolBtn) {
         bindInlineFormattingGuard(insertSymbolBtn);
@@ -865,35 +979,45 @@ function updateFloatingTextToolbar() {
         // onclick is handled in HTML but we guard it here
     }
 
-    if (!toolbar.dataset.guarded) {
-        toolbar.dataset.guarded = "true";
-        bindInlineFormattingGuard(toolbar);
-    }
+    toolbar.dataset.guarded = "true";
+}
+
+function createGroup(title) {
+    const wrap = document.createElement("div");
+    wrap.className = "prop-group space-y-3";
+    wrap.innerHTML = `<h3 class="prop-group-title">${title}</h3>`;
+    return wrap;
+}
+
+function createField(label, inputHTML) {
+    const div = document.createElement("div");
+    div.className = "flex flex-col gap-1";
+    div.innerHTML = `<label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide">${label}</label>${inputHTML}`;
+    return div;
 }
 
 function buildPropertiesPanel() {
     const panel = document.getElementById("properties-content");
     if (!panel) return;
+    const selectionSignature = `${currentSlideIndex}:${state.selectedIds.join("|")}`;
+    const previousScrollTop = panel.scrollTop;
+    const shouldRestoreScroll = _propertiesPanelSelectionSignature === selectionSignature;
+    _propertiesPanelSelectionSignature = selectionSignature;
+    const restorePropertiesScroll = () => {
+        if (!shouldRestoreScroll) return;
+        requestAnimationFrame(() => {
+            panel.scrollTop = previousScrollTop;
+        });
+    };
+
     panel.innerHTML = "";
     updateFloatingTextToolbar();
 
     if (state.selectedIds.length === 0) {
         _buildSlideWorkspacePanel(panel);
+        restorePropertiesScroll();
         return;
     }
-
-    const createGroup = title => {
-        const wrap = document.createElement("div");
-        wrap.className = "prop-group space-y-3";
-        wrap.innerHTML = `<h3 class="prop-group-title">${title}</h3>`;
-        return wrap;
-    };
-    const createField = (label, inputHTML) => {
-        const div = document.createElement("div");
-        div.className = "flex flex-col gap-1";
-        div.innerHTML = `<label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide">${label}</label>${inputHTML}`;
-        return div;
-    };
 
     const onCommit = cb => {
         saveStateToUndo();
@@ -1002,183 +1126,7 @@ function buildPropertiesPanel() {
 
     if (data) {
         if (data.type === "text") {
-            const listState = getTextListState(data.content, data.bulletStyle);
-            const grp = createGroup("Typography");
-            
-            // Font Family - Top
-            grp.appendChild(
-                createField(
-                    "Font Family",
-                    `
-                <select id="prop-font" class="bg-white border border-slate-300 rounded-lg px-2 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-accent w-full shadow-sm">
-                    <option value='"Manrope", sans-serif' ${data.styles.fontFamily === '"Manrope", sans-serif' ? "selected" : ""}>Manrope</option>
-                    <option value='"DM Sans", sans-serif' ${data.styles.fontFamily === '"DM Sans", sans-serif' ? "selected" : ""}>DM Sans</option>
-                    <option value='"Work Sans", sans-serif' ${data.styles.fontFamily === '"Work Sans", sans-serif' ? "selected" : ""}>Work Sans</option>
-                    <option value='"Space Grotesk", sans-serif' ${data.styles.fontFamily === '"Space Grotesk", sans-serif' ? "selected" : ""}>Space Grotesk</option>
-                    <option value='"Montserrat", sans-serif' ${data.styles.fontFamily === '"Montserrat", sans-serif' ? "selected" : ""}>Montserrat</option>
-                    <option value='"Fraunces", serif' ${data.styles.fontFamily === '"Fraunces", serif' ? "selected" : ""}>Fraunces</option>
-                    <option value='"Newsreader", serif' ${data.styles.fontFamily === '"Newsreader", serif' ? "selected" : ""}>Newsreader</option>
-                    <option value="Inter, sans-serif" ${data.styles.fontFamily === "Inter, sans-serif" ? "selected" : ""}>Inter</option>
-                </select>
-            `,
-                ),
-            );
-
-            // Compact Row for Size, Color, Bold, Italic
-            const textToolsRow = document.createElement("div");
-            textToolsRow.className = "grid grid-cols-4 gap-2 items-end mt-2";
-            
-            // Size
-            const sizeCol = document.createElement("div");
-            sizeCol.className = "col-span-1";
-            sizeCol.innerHTML = `<label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Size</label>
-                <input type="text" id="prop-fs" class="w-full text-xs p-1" value="${data.styles.fontSize || "32px"}">`;
-            
-            // Color
-            const colorCol = document.createElement("div");
-            colorCol.className = "col-span-1";
-            colorCol.innerHTML = `<label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Color</label>
-                <input type="color" id="prop-tc" class="w-full h-7 cursor-pointer rounded-md p-0" value="${_normalizeColorForInput(data.styles.color, "#ffffff")}">`;
-            
-            // Format buttons
-            const formatCol = document.createElement("div");
-            formatCol.className = "col-span-2 flex gap-1";
-            formatCol.innerHTML = `
-                <button id="prop-bold" class="flex-1 h-7 rounded bg-white border border-slate-200 text-[11px] font-bold ${data.styles.fontWeight === "bold" ? "bg-primary/10 border-primary text-primary" : "text-slate-600"}">B</button>
-                <button id="prop-italic" class="flex-1 h-7 rounded bg-white border border-slate-200 text-[11px] font-serif italic ${data.styles.fontStyle === "italic" ? "bg-primary/10 border-primary text-primary" : "text-slate-600"}">I</button>
-            `;
-            
-            textToolsRow.appendChild(sizeCol);
-            textToolsRow.appendChild(colorCol);
-            textToolsRow.appendChild(formatCol);
-            grp.appendChild(textToolsRow);
-
-            const shadowState = _parseTextShadowValue(data.styles?.textShadow);
-            const strokeWidth = parseFloat(_normalizeStrokeWidthValue(data.styles?.textStrokeWidth, "0px")) || 0;
-            const strokeColor = _normalizeColorForInput(data.styles?.textStrokeColor, "#000000");
-
-            grp.appendChild(
-                createField(
-                    "Text Shadow",
-                    `
-                <div class="grid grid-cols-4 gap-2 items-end">
-                    <div>
-                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">X</label>
-                        <input type="number" id="prop-ts-x" class="w-full text-xs p-1" value="${shadowState.offsetX}" step="1">
-                    </div>
-                    <div>
-                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Y</label>
-                        <input type="number" id="prop-ts-y" class="w-full text-xs p-1" value="${shadowState.offsetY}" step="1">
-                    </div>
-                    <div>
-                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Blur</label>
-                        <input type="number" id="prop-ts-blur" class="w-full text-xs p-1" value="${shadowState.blur}" min="0" step="1">
-                    </div>
-                    <div>
-                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Color</label>
-                        <input type="color" id="prop-ts-color" class="w-full h-7 cursor-pointer rounded-md p-0" value="${shadowState.color}">
-                    </div>
-                </div>
-            `,
-                ),
-            );
-
-            grp.appendChild(
-                createField(
-                    "Text Stroke",
-                    `
-                <div class="grid grid-cols-2 gap-2 items-end">
-                    <div>
-                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Width</label>
-                        <input type="number" id="prop-stroke-width" class="w-full text-xs p-1" value="${strokeWidth}" min="0" max="24" step="0.5">
-                    </div>
-                    <div>
-                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Color</label>
-                        <input type="color" id="prop-stroke-color" class="w-full h-7 cursor-pointer rounded-md p-0" value="${strokeColor}">
-                    </div>
-                </div>
-            `,
-                ),
-            );
-
-            grp.appendChild(
-                createField(
-                    "Effects",
-                    `
-                <div class="grid grid-cols-2 gap-2">
-                    ${_renderTextEffectPresetButton(data, "auto", "Auto Theme")}
-                    ${_renderTextEffectPresetButton(data, "soft", "Soft")}
-                    ${_renderTextEffectPresetButton(data, "dramatic", "Dramatic")}
-                    ${_renderTextEffectPresetButton(data, "glow", "Glow")}
-                    ${_renderTextEffectPresetButton(data, "outline", "Outline")}
-                    ${_renderTextEffectPresetButton(data, "none", "Clear")}
-                </div>
-            `,
-                ),
-            );
-
-            // Alignment
-            grp.appendChild(
-                createField(
-                    "Alignment",
-                    `
-                <div class="prop-btn-group">
-                    ${['left', 'center', 'right', 'justify'].map(align => `
-                        <button id="prop-align-${align}" data-value="${align}" class="${ (data.styles.textAlign || "left") === align ? 'active' : '' }">
-                            <i class="fa-solid fa-align-${align === 'justify' ? 'justify' : align}"></i>
-                        </button>
-                    `).join('')}
-                </div>
-            `,
-                ),
-            );
-            
-            // List Type Selector (Visual)
-            const listTypeField = createField("List Type", `
-                <div class="prop-btn-group">
-                    <button id="prop-list-none" class="${listState.kind === 'none' ? 'active' : ''}" title="No List">None</button>
-                    <button id="prop-list-bullet" class="${listState.kind === 'bulleted' ? 'active' : ''}" title="Bulleted List"><i class="fa-solid fa-list-ul"></i></button>
-                    <button id="prop-list-number" class="${listState.kind === 'numbered' ? 'active' : ''}" title="Numbered List"><i class="fa-solid fa-list-ol"></i></button>
-                </div>
-            `);
-            grp.appendChild(listTypeField);
-
-            // Sub-settings for Bullet/Number
-            if (listState.kind !== "none") {
-                const subGrp = document.createElement("div");
-                subGrp.className = "pl-2 border-l-2 border-slate-100 space-y-2 mt-1";
-                
-                if (listState.kind === "bulleted") {
-                    subGrp.appendChild(createField("Bullet Style", `
-                        <select id="prop-list-style" class="text-[10px] py-1">
-                            ${Object.keys(BULLET_STYLE_THEMES).map(s => `<option value="${s}" ${s === listState.style ? 'selected' : ''}>${s.charAt(0).toUpperCase() + s.slice(1)}</option>`).join('')}
-                        </select>
-                    `));
-                } else {
-                    subGrp.appendChild(createField("Number Style", `
-                        <select id="prop-list-number-style" class="text-[10px] py-1">
-                            ${Object.entries(NUMBERED_STYLE_THEMES).map(([k,v]) => `<option value="${k}" ${k === listState.style ? 'selected' : ''}>${v}</option>`).join('')}
-                        </select>
-                    `));
-                }
-
-                if (listState.kind === "bulleted") {
-                    const levelField = createField("Nesting & Indent", `
-                        <div class="flex gap-1">
-                            <button id="prop-list-outdent" class="flex-1 py-1 rounded border border-slate-200 bg-white hover:bg-slate-50" title="Outdent (Shift+Tab)">
-                                <i class="fa-solid fa-outdent text-[9px] mr-1"></i> <span class="text-[9px]">Out</span>
-                            </button>
-                            <button id="prop-list-indent" class="flex-1 py-1 rounded border border-slate-200 bg-white hover:bg-slate-50" title="Indent (Tab)">
-                                <i class="fa-solid fa-indent text-[9px] mr-1"></i> <span class="text-[9px]">In</span>
-                            </button>
-                        </div>
-                    `);
-                    subGrp.appendChild(levelField);
-                }
-                grp.appendChild(subGrp);
-            }
-
-            panel.appendChild(grp);
+            buildTextPanel(panel, data);
         }
 
         if (data.type === "shape") {
@@ -1750,181 +1698,8 @@ function buildPropertiesPanel() {
             }
 
             if (data.type === "text") {
-                const font = document.getElementById("prop-font");
-                if (font) {
-                    bindInlineFormattingGuard(font);
-                    font.onchange = e => {
-                        restoreInlineSelection?.();
-                        applyTextFormatting("fontFamily", e.target.value, { inlineAction: "fontFamily" });
-                    };
-                }
-                const bold = document.getElementById("prop-bold");
-                if (bold) {
-                    bindInlineFormattingGuard(bold);
-                    bold.onclick = () => applyTextFormatting("fontWeight", data.styles.fontWeight === "bold" ? "normal" : "bold", { inlineAction: "bold" });
-                }
-
-                const italic = document.getElementById("prop-italic");
-                if (italic) {
-                    bindInlineFormattingGuard(italic);
-                    italic.onclick = () =>
-                        applyTextFormatting("fontStyle", data.styles.fontStyle === "italic" ? "normal" : "italic", {
-                            inlineAction: "italic",
-                        });
-                }
-
-                const fontSize = document.getElementById("prop-fs");
-                if (fontSize) {
-                    bindInlineFormattingGuard(fontSize);
-                    const commitFontSize = () => {
-                        restoreInlineSelection?.();
-                        applyTextFormatting("fontSize", _normalizePx(fontSize.value, "32px"), { inlineAction: "fontSize" });
-                    };
-                    fontSize.onchange = commitFontSize;
-                    fontSize.onblur = commitFontSize;
-                    fontSize.onfocus = () => fontSize.select();
-                }
-
-                const textColor = document.getElementById("prop-tc");
-                if (textColor) {
-                    bindInlineFormattingGuard(textColor);
-                    textColor.addEventListener("input", beginFormattingInteraction);
-                    textColor.onchange = e => {
-                        applyTextFormatting("color", e.target.value, { inlineAction: "color" });
-                        endFormattingInteraction();
-                    };
-                }
-
-                const bindWholeTextStyleControl = (el, handler) => {
-                    if (!el) return;
-                    bindInlineFormattingGuard(el);
-                    el.addEventListener("input", beginFormattingInteraction);
-                    const commit = () => {
-                        handler();
-                        endFormattingInteraction();
-                    };
-                    el.onchange = commit;
-                    el.onblur = commit;
-                };
-
-                const shadowX = document.getElementById("prop-ts-x");
-                const shadowY = document.getElementById("prop-ts-y");
-                const shadowBlur = document.getElementById("prop-ts-blur");
-                const shadowColor = document.getElementById("prop-ts-color");
-                const commitTextShadow = () => {
-                    applyStyle("textShadow", _buildTextShadowValue(shadowX?.value, shadowY?.value, shadowBlur?.value, shadowColor?.value));
-                    buildPropertiesPanel();
-                };
-                bindWholeTextStyleControl(shadowX, commitTextShadow);
-                bindWholeTextStyleControl(shadowY, commitTextShadow);
-                bindWholeTextStyleControl(shadowBlur, commitTextShadow);
-                bindWholeTextStyleControl(shadowColor, commitTextShadow);
-
-                const strokeWidthInput = document.getElementById("prop-stroke-width");
-                const strokeColorInput = document.getElementById("prop-stroke-color");
-                const commitTextStroke = () => {
-                    const nextWidth = _normalizeStrokeWidthValue(strokeWidthInput?.value, "0px");
-                    const nextColor = _normalizeColorForInput(strokeColorInput?.value, "#000000");
-                    applyStyle("textStrokeWidth", nextWidth);
-                    applyStyle("textStrokeColor", nextColor);
-                    buildPropertiesPanel();
-                };
-                bindWholeTextStyleControl(strokeWidthInput, commitTextStroke);
-                bindWholeTextStyleControl(strokeColorInput, commitTextStroke);
-
-                const bindTextEffectPresetButton = (id, presetName) => {
-                    const btn = document.getElementById(id);
-                    if (!btn) return;
-                    bindInlineFormattingGuard(btn);
-                    btn.onclick = () => {
-                        _applyTextEffectPreset(data, presetName);
-                        buildPropertiesPanel();
-                    };
-                };
-                bindTextEffectPresetButton("prop-effect-auto", "auto");
-                bindTextEffectPresetButton("prop-effect-soft", "soft");
-                bindTextEffectPresetButton("prop-effect-dramatic", "dramatic");
-                bindTextEffectPresetButton("prop-effect-glow", "glow");
-                bindTextEffectPresetButton("prop-effect-outline", "outline");
-                bindTextEffectPresetButton("prop-effect-none", "none");
-
-                // Alignment Button Group
-                ['left', 'center', 'right', 'justify'].forEach(align => {
-                    const btn = document.getElementById(`prop-align-${align}`);
-                    if (btn) {
-                        btn.onclick = () => {
-                            applyStyleAndRefresh("textAlign", align);
-                        };
-                    }
-                });
-
-                // List Type Toggles
-                const setListKind = (kind) => {
-                    onCommit(() => {
-                        const currentListState = getTextListState(data.content, data.bulletStyle);
-                        const nextStyle =
-                            kind === "numbered"
-                                ? currentListState.kind === "numbered"
-                                    ? currentListState.style || "decimal"
-                                    : "decimal"
-                                : currentListState.kind === "bulleted"
-                                  ? currentListState.style || "default"
-                                  : "default";
-                        applyTextBulletState(data, kind, nextStyle);
-                        buildPropertiesPanel();
-                    });
-                };
-
-                const btnNone = document.getElementById("prop-list-none");
-                const btnBullet = document.getElementById("prop-list-bullet");
-                const btnNumber = document.getElementById("prop-list-number");
-
-                if (btnNone) btnNone.onclick = () => setListKind("none");
-                if (btnBullet) btnBullet.onclick = () => setListKind("bulleted");
-                if (btnNumber) btnNumber.onclick = () => setListKind("numbered");
-
-                const listStyle = document.getElementById("prop-list-style");
-                if (listStyle) {
-                    listStyle.onchange = e => {
-                        onCommit(() => {
-                            applyTextBulletState(data, "bulleted", e.target.value);
-                            buildPropertiesPanel();
-                        });
-                    };
-                }
-
-                const numberStyle = document.getElementById("prop-list-number-style");
-                if (numberStyle) {
-                    numberStyle.onchange = e => {
-                        onCommit(() => {
-                            applyTextBulletState(data, "numbered", e.target.value);
-                            buildPropertiesPanel();
-                        });
-                    };
-                }
-
-                const indentBtn = document.getElementById("prop-list-indent");
-                const outdentBtn = document.getElementById("prop-list-outdent");
-
-                if (indentBtn) {
-                    indentBtn.onclick = () => {
-                        if (getTextListState(data.content, data.bulletStyle).kind !== "bulleted") return;
-                        onCommit(() => {
-                            shiftTextBulletLevels(data, 1);
-                            buildPropertiesPanel();
-                        });
-                    };
-                }
-
-                if (outdentBtn) {
-                    outdentBtn.onclick = () => {
-                        if (getTextListState(data.content, data.bulletStyle).kind !== "bulleted") return;
-                        onCommit(() => {
-                            shiftTextBulletLevels(data, -1);
-                            buildPropertiesPanel();
-                        });
-                    };
-                }
+                // Listeners are now handled within buildTextPanel(panel, data) 
+                // in js/properties/panels/text.js
             }
 
             if (data.type === "shape") {
@@ -2575,6 +2350,7 @@ function buildPropertiesPanel() {
         }
     }, 0);
 
+    restorePropertiesScroll();
     requestAnimationFrame(updateFloatingTextToolbar);
 }
 
@@ -2608,13 +2384,17 @@ function applyStyle(prop, value) {
         const dom = document.getElementById(id);
         const contentHost = data.type === "text" ? dom?.querySelector(".text-element-content") : null;
 
-        if (data.type === "text" && prop === "color") {
-            let nextContent = data.content;
+        if (data.type === "text" && ["color", "fontSize", "fontFamily", "fontWeight", "fontStyle"].includes(prop)) {
+            let nextContent = contentHost?.isContentEditable ? contentHost.innerHTML : data.content;
             if (contentHost?.dataset.structuredEdit === "true" && _getStructuredEditorMode(contentHost) === "list") {
-                nextContent = stripInlineColorFromTextContent(parseStructuredBulletEditorHtml(contentHost));
+                nextContent = stripInlineTextStylesFromTextContent(parseStructuredBulletEditorHtml(contentHost), [prop]);
                 contentHost.innerHTML = buildStructuredBulletEditorHtml(nextContent, data.bulletStyle || "default");
-            } else if (!contentHost?.isContentEditable) {
-                nextContent = stripInlineColorFromTextContent(data.content);
+            } else {
+                nextContent = stripInlineTextStylesFromTextContent(nextContent, [prop]);
+                if (contentHost?.isContentEditable) {
+                    contentHost.innerHTML = nextContent;
+                    captureInlineSelection();
+                }
             }
 
             if (nextContent !== data.content) {
@@ -2659,12 +2439,22 @@ function applyStyleAndRefresh(prop, value) {
 }
 
 function updateUIFromSelection() {
+    const active = document.activeElement;
+    if (
+        active?.matches?.("input, select, textarea") &&
+        (active.closest("#floating-text-toolbar") || active.closest("#properties-panel"))
+    ) {
+        return;
+    }
+
     const inline = getStyleAtSelection();
     if (!inline) return;
+    const defaults = getThemeTextStyleDefaults();
 
     // Update Font Family
-    const fontSelect = document.getElementById("prop-font");
-    if (fontSelect && inline.fontFamily) {
+    const fontControls = [document.getElementById("prop-font"), document.getElementById("floating-text-font")].filter(Boolean);
+    fontControls.forEach(fontSelect => {
+        if (!inline.fontFamily) return;
         const family = inline.fontFamily.replace(/['"]/g, "").split(",")[0].trim();
         // Try to find matching option
         for (let opt of fontSelect.options) {
@@ -2673,17 +2463,24 @@ function updateUIFromSelection() {
                 break;
             }
         }
-    }
+        setTextControlActive(fontSelect, normalizeFontFamily(fontSelect.value) !== normalizeFontFamily(defaults.fontFamily));
+    });
 
     // Update Font Size
-    const fsInput = document.getElementById("prop-fs");
-    if (fsInput && inline.fontSize) {
-        fsInput.value = parseInt(inline.fontSize) || 32;
-    }
+    const sizeControls = [document.getElementById("prop-fs"), document.getElementById("floating-text-size")].filter(Boolean);
+    sizeControls.forEach(fsInput => {
+        if (!inline.fontSize) return;
+        if (!isControlBeingEdited(fsInput)) {
+            fsInput.value = parseInt(inline.fontSize) || 32;
+            fsInput.dataset.lastCommittedValue = _normalizePx(fsInput.value, "32px");
+        }
+        setTextControlActive(fsInput, _normalizePx(fsInput.value, "32px") !== defaults.fontSize);
+    });
 
     // Update Color
-    const colorInput = document.getElementById("prop-tc");
-    if (colorInput && inline.color) {
+    const colorControls = [document.getElementById("prop-tc"), document.getElementById("floating-text-color")].filter(Boolean);
+    colorControls.forEach(colorInput => {
+        if (!inline.color) return;
         // Convert rgb(r, g, b) to #rrggbb
         let color = inline.color;
         if (color.startsWith("rgb")) {
@@ -2693,17 +2490,16 @@ function updateUIFromSelection() {
             }
         }
         colorInput.value = color;
-    }
+        setTextControlActive(colorInput, color.toLowerCase() !== _normalizeColorForInput(defaults.color, "#000000").toLowerCase());
+    });
 
     // Update Bold/Italic states
-    const boldBtn = document.getElementById("prop-bold");
-    if (boldBtn) {
+    [document.getElementById("prop-bold"), document.getElementById("floating-text-bold")].filter(Boolean).forEach(boldBtn => {
         boldBtn.classList.toggle("active", inline.fontWeight === "bold");
-    }
-    const italicBtn = document.getElementById("prop-italic");
-    if (italicBtn) {
+    });
+    [document.getElementById("prop-italic"), document.getElementById("floating-text-italic")].filter(Boolean).forEach(italicBtn => {
         italicBtn.classList.toggle("active", inline.fontStyle === "italic");
-    }
+    });
 }
 
 // Global selection listener
@@ -2720,31 +2516,29 @@ function bindInlineFormattingGuard(element) {
     if (!element) return;
     if (element.dataset.inlineFormattingGuardBound === "true") return;
     element.dataset.inlineFormattingGuardBound = "true";
+    const isFormControl = ["INPUT", "SELECT", "TEXTAREA"].includes(element.tagName);
     element.addEventListener("pointerdown", event => {
         if (getActiveInlineEditor()) {
             captureInlineSelection();
             beginFormattingInteraction();
         }
-        if (!["INPUT", "SELECT", "TEXTAREA"].includes(element.tagName)) {
+        const interactiveTarget = event.target?.closest?.("input, select, textarea, button, label");
+        if (!interactiveTarget && !["INPUT", "SELECT", "TEXTAREA", "BUTTON", "LABEL"].includes(element.tagName)) {
             event.preventDefault();
         }
-        if (element.tagName === "INPUT" || element.tagName === "SELECT") {
-            setTimeout(() => element.focus(), 0);
-        }
     });
-    const release = () => {
+    const release = event => {
+        if (event && event.target !== element) return;
         if (getActiveInlineEditor()) {
-            requestAnimationFrame(() => {
-                restoreInlineSelection();
-                endFormattingInteraction();
-            });
+            requestAnimationFrame(() => endFormattingInteraction());
         } else {
             endFormattingInteraction();
         }
     };
     element.addEventListener("change", release);
-    element.addEventListener("input", release);
-    element.addEventListener("click", release);
+    if (!isFormControl) {
+        element.addEventListener("click", release);
+    }
     element.addEventListener("blur", release);
 }
 

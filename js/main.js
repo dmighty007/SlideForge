@@ -5,6 +5,8 @@ window.onload = async () => {
     await initPresentationPersistence();
     bindProjectTitleInput();
     bindUserMenu();
+    initPropertiesPanelToggle();
+    initToolDockToggle();
     normalizeStateIds();
     if (typeof migrateInlineVideoAssets === "function") {
         try {
@@ -105,6 +107,7 @@ window.onload = async () => {
         retintPresentationTheme(previousTheme, e.target.value);
         applyPresentationTheme(e.target.value, { persist: false });
         renderSlidesFromState();
+        renderSlidePreviews(null, { preserveScroll: true });
     });
     document.getElementById("page-setup-selector").addEventListener("change", e => {
         changePresentationPageSetup(e.target.value);
@@ -145,6 +148,69 @@ window.onload = async () => {
     updateSlideCounter();
     runAutosaveSmokeTest();
 };
+
+function setPropertiesPanelVisible(visible, { persist = true } = {}) {
+    const panel = document.getElementById("properties-panel");
+    const button = document.getElementById("toggle-properties-panel");
+    if (!panel) return;
+
+    panel.classList.toggle("hidden", !visible);
+    if (button) {
+        button.setAttribute("aria-pressed", visible ? "true" : "false");
+        button.title = visible ? "Hide Properties" : "Show Properties";
+    }
+    if (persist) {
+        localStorage.setItem("pptmaker_properties_panel_visible", visible ? "1" : "0");
+    }
+
+    requestAnimationFrame(() => {
+        if (typeof handleEditorViewportResize === "function") {
+            handleEditorViewportResize();
+        } else if (typeof applyZoom === "function") {
+            applyZoom({ preserveViewport: true });
+        }
+        if (typeof updateFloatingTextToolbar === "function") {
+            updateFloatingTextToolbar();
+        }
+    });
+}
+
+function togglePropertiesPanel() {
+    const panel = document.getElementById("properties-panel");
+    setPropertiesPanelVisible(panel?.classList.contains("hidden"));
+}
+window.togglePropertiesPanel = togglePropertiesPanel;
+
+function initPropertiesPanelToggle() {
+    const saved = localStorage.getItem("pptmaker_properties_panel_visible");
+    setPropertiesPanelVisible(saved === "1", { persist: false });
+}
+
+function setToolDockVisible(visible, { persist = true } = {}) {
+    const dock = document.getElementById("toolbar-tool-dock");
+    const button = document.getElementById("toggle-tool-dock");
+    if (!dock) return;
+
+    dock.classList.toggle("toolbar-dock-hidden", !visible);
+    if (button) {
+        button.setAttribute("aria-pressed", visible ? "true" : "false");
+        button.title = visible ? "Hide Tools" : "Show Tools";
+    }
+    if (persist) {
+        localStorage.setItem("pptmaker_tool_dock_visible", visible ? "1" : "0");
+    }
+}
+
+function toggleToolDock() {
+    const dock = document.getElementById("toolbar-tool-dock");
+    setToolDockVisible(dock?.classList.contains("toolbar-dock-hidden"));
+}
+window.toggleToolDock = toggleToolDock;
+
+function initToolDockToggle() {
+    const saved = localStorage.getItem("pptmaker_tool_dock_visible");
+    setToolDockVisible(saved !== "0", { persist: false });
+}
 
 // ─── Debounced preview refresh (used by properties.js via window) ─────────────
 

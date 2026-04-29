@@ -257,17 +257,40 @@ function buildStructuredBulletContent(lines, bulletStyle = "default") {
 }
 
 function stripInlineColorFromHtml(html) {
+    return stripInlineTextStylesFromHtml(html, ["color"]);
+}
+
+function stripInlineTextStylesFromHtml(html, props = []) {
+    const removeAll = props === true || props === "all" || (Array.isArray(props) && props.includes("all"));
+    const propSet = new Set(Array.isArray(props) ? props : []);
     const probe = document.createElement("div");
     probe.innerHTML = String(html || "");
 
     Array.from(probe.querySelectorAll("*")).forEach(node => {
         if (!(node instanceof HTMLElement)) return;
-        node.style.removeProperty("color");
+        if (removeAll) {
+            node.removeAttribute("style");
+            node.removeAttribute("class");
+        } else {
+            if (propSet.has("color")) node.style.removeProperty("color");
+            if (propSet.has("fontFamily")) node.style.removeProperty("font-family");
+            if (propSet.has("fontSize")) node.style.removeProperty("font-size");
+            if (propSet.has("fontWeight")) node.style.removeProperty("font-weight");
+            if (propSet.has("fontStyle")) node.style.removeProperty("font-style");
+        }
         if (node.tagName === "FONT") {
-            node.removeAttribute("color");
+            if (removeAll || propSet.has("color")) node.removeAttribute("color");
+            if (removeAll || propSet.has("fontFamily")) node.removeAttribute("face");
+            if (removeAll || propSet.has("fontSize")) node.removeAttribute("size");
         }
         if (!node.getAttribute("style") || !node.getAttribute("style").trim()) {
             node.removeAttribute("style");
+        }
+    });
+
+    Array.from(probe.querySelectorAll("span")).reverse().forEach(node => {
+        if (node.attributes.length === 0) {
+            node.replaceWith(...Array.from(node.childNodes));
         }
     });
 
@@ -275,17 +298,43 @@ function stripInlineColorFromHtml(html) {
 }
 
 function stripInlineColorFromTextContent(content) {
+    return stripInlineTextStylesFromTextContent(content, ["color"]);
+}
+
+function stripInlineTextStylesFromTextContent(content, props = []) {
     if (isStructuredBulletContent(content)) {
         return content.map(rawItem => {
             const item = normalizeStructuredBulletItem(rawItem);
             return normalizeStructuredBulletItem({
                 ...item,
-                html: stripInlineColorFromHtml(item.html),
+                html: stripInlineTextStylesFromHtml(item.html, props),
             });
         });
     }
 
-    return stripInlineColorFromHtml(content);
+    return stripInlineTextStylesFromHtml(content, props);
+}
+
+function stripAllInlineTextFormattingFromHtml(html) {
+    const probe = document.createElement("div");
+    probe.innerHTML = stripInlineTextStylesFromHtml(html, "all");
+    Array.from(probe.querySelectorAll("b,strong,i,em,u,s,sub,sup,font")).reverse().forEach(node => {
+        node.replaceWith(...Array.from(node.childNodes));
+    });
+    return probe.innerHTML;
+}
+
+function stripAllInlineTextFormattingFromTextContent(content) {
+    if (isStructuredBulletContent(content)) {
+        return content.map(rawItem => {
+            const item = normalizeStructuredBulletItem(rawItem);
+            return normalizeStructuredBulletItem({
+                ...item,
+                html: stripAllInlineTextFormattingFromHtml(item.html),
+            });
+        });
+    }
+    return stripAllInlineTextFormattingFromHtml(content);
 }
 
 function buildNumberedListMarkup(style, lines) {

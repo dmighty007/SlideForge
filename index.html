@@ -91,142 +91,161 @@
 
     <!-- ═══════════════════════════════════════════════════════════ TOP TOOLBAR -->
     <header id="app-toolbar" class="toolbar-shell z-30 shrink-0">
-        <div class="toolbar-brand">
-            <div class="toolbar-logo">
-                <i class="fa-solid fa-layer-group text-white text-xs"></i>
-            </div>
-            <div class="toolbar-brand-copy">
-                <span class="toolbar-product">SlideForge</span>
-                <div class="toolbar-meta">
-                    <span id="slide-counter">Slide 1 / 1</span>
-                    <span id="autosave-status">Autosave on</span>
+        <div class="toolbar-primary-row">
+            <div class="toolbar-brand">
+                <div class="toolbar-logo">
+                    <i class="fa-solid fa-layer-group text-white text-xs"></i>
+                </div>
+                <div class="toolbar-brand-copy">
+                    <span class="toolbar-product">SlideForge</span>
+                    <div class="toolbar-meta">
+                        <span id="slide-counter">Slide 1 / 1</span>
+                        <span id="autosave-status">Autosave on</span>
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <div class="toolbar-project">
-            <div class="toolbar-cluster">
-                <button onclick="createNewProject()" class="toolbar-btn" title="New Project">
-                    <i class="fa-regular fa-file text-sm"></i>
-                </button>
-                <button onclick="openProjectsModal()" class="toolbar-btn" title="Open Saved Project">
-                    <i class="fa-regular fa-folder-open text-sm"></i>
-                </button>
+            <div class="toolbar-project">
+                <div class="toolbar-cluster">
+                    <button onclick="createNewProject()" class="toolbar-btn" title="New Project">
+                        <i class="fa-regular fa-file text-sm"></i>
+                    </button>
+                    <button onclick="openProjectsModal()" class="toolbar-btn" title="Open Saved Project">
+                        <i class="fa-regular fa-folder-open text-sm"></i>
+                    </button>
+                </div>
+                <div class="toolbar-title-wrap">
+                    <div class="toolbar-title-card">
+                        <div class="toolbar-title-row">
+                            <span class="toolbar-title-label">Project</span>
+                            <input
+                                id="project-title-input"
+                                type="text"
+                                value="Untitled Presentation"
+                                placeholder="Project title"
+                                class="toolbar-title-input"
+                                title="Project Title"
+                            />
+                            <span id="project-save-hint" class="toolbar-title-hint">Saved</span>
+                            <button onclick="saveCurrentProject()" class="toolbar-btn toolbar-btn-primary toolbar-save-btn" title="Save Project">
+                                <i class="fa-regular fa-floppy-disk text-sm"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="toolbar-title-wrap">
-                <div class="toolbar-title-card">
-                    <div class="toolbar-title-row">
-                        <span class="toolbar-title-label">Project</span>
-                        <input
-                            id="project-title-input"
-                            type="text"
-                            value="Untitled Presentation"
-                            placeholder="Project title"
-                            class="toolbar-title-input"
-                            title="Project Title"
-                        />
-                        <span id="project-save-hint" class="toolbar-title-hint">Saved</span>
-                        <button onclick="saveCurrentProject()" class="toolbar-btn toolbar-btn-primary toolbar-save-btn" title="Save Project">
-                            <i class="fa-regular fa-floppy-disk text-sm"></i>
+
+            <div class="toolbar-actions toolbar-primary-actions">
+                <div class="toolbar-cluster toolbar-cluster-muted">
+                    <button id="toggle-tool-dock" onclick="toggleToolDock()" title="Hide Tools" class="toolbar-btn" aria-pressed="true">
+                        <i class="fa-solid fa-toolbox text-sm"></i>
+                        <span class="toolbar-btn-label">Tools</span>
+                    </button>
+                </div>
+
+                <div class="toolbar-cluster toolbar-cluster-strong">
+                    <button onclick="togglePlayMode()" id="btn-present" class="toolbar-btn toolbar-btn-success" title="Present">
+                        <i class="fa-solid fa-play text-sm"></i>
+                        <span class="toolbar-btn-label">Present</span>
+                    </button>
+                    <div style="position:relative; display:inline-block;" id="export-menu-container">
+                        <button onclick="toggleExportMenu()" class="toolbar-btn toolbar-btn-primary" title="Export">
+                            <i class="fa-solid fa-download text-sm"></i>
+                            <span class="toolbar-btn-label">Export</span>
+                            <i class="fa-solid fa-chevron-down text-[10px] ml-1"></i>
+                        </button>
+                        <div id="export-menu-dropdown" style="display:none; position:absolute; top:calc(100% + 8px); right:0; z-index:9999; min-width:210px; padding:8px; border-radius:16px; border:1px solid rgba(226,232,240,0.96); background:rgba(255,255,255,0.98); box-shadow:0 18px 40px rgba(15,23,42,0.14); flex-direction:column; gap:4px;">
+                            <button onclick="closeExportMenu(); exportPresentationZip()" class="toolbar-user-menu-item">
+                                <i class="fa-solid fa-file-zipper w-4 text-center"></i> Web (ZIP)
+                            </button>
+                            <button onclick="closeExportMenu(); exportPresentationPDF()" class="toolbar-user-menu-item">
+                                <i class="fa-solid fa-file-pdf w-4 text-center"></i> PDF Document
+                            </button>
+                            <button onclick="closeExportMenu(); exportPresentationPNG()" class="toolbar-user-menu-item">
+                                <i class="fa-regular fa-image w-4 text-center"></i> Slide Image (PNG)
+                            </button>
+                            <button onclick="closeExportMenu(); exportPresentationPPTX()" class="toolbar-user-menu-item">
+                                <i class="fa-solid fa-file-powerpoint w-4 text-center"></i> PowerPoint (PPTX)
+                            </button>
+                            <button onclick="closeExportMenu(); exportPresentationJson()" class="toolbar-user-menu-item">
+                                <i class="fa-solid fa-file-code w-4 text-center"></i> Raw JSON State
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="toolbar-cluster toolbar-auth">
+                    <button id="auth-menu-button" class="toolbar-user-btn" onclick="toggleUserMenu()" title="Account">
+                        <span id="auth-user-glyph" class="toolbar-user-glyph">
+                            <i class="fa-regular fa-user"></i>
+                        </span>
+                        <span id="auth-status" class="toolbar-auth-status">Guest</span>
+                        <i class="fa-solid fa-chevron-down text-[10px] text-slate-400"></i>
+                    </button>
+                    <div id="auth-menu" class="toolbar-user-menu hidden">
+                        <div id="auth-menu-header" class="toolbar-user-menu-header">Not signed in</div>
+                        <button id="auth-primary-btn" type="button" class="toolbar-user-menu-item" onclick="openAuthModal('login')">
+                            <i class="fa-solid fa-right-to-bracket"></i>
+                            <span>Sign In</span>
+                        </button>
+                        <button id="auth-secondary-btn" type="button" class="toolbar-user-menu-item" onclick="openAuthModal('register')">
+                            <i class="fa-regular fa-user-plus"></i>
+                            <span>Register</span>
                         </button>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div class="toolbar-actions">
-            <div class="toolbar-cluster toolbar-cluster-muted">
-                <button onclick="undo()" title="Undo (Ctrl+Z)" class="toolbar-btn" id="btn-undo">
-                    <i class="fa-solid fa-rotate-left text-sm"></i>
-                </button>
-                <button onclick="redo()" title="Redo (Ctrl+Y)" class="toolbar-btn" id="btn-redo">
-                    <i class="fa-solid fa-rotate-right text-sm"></i>
-                </button>
-                <div class="w-px h-4 bg-gray-200 mx-1"></div>
-                <button onclick="aiCleanUpSlide()" title="AI Clean Up (Auto-align)" class="toolbar-btn text-indigo-500 hover:text-indigo-600 bg-indigo-50/50 hover:bg-indigo-50 border-indigo-100/50">
-                    <i class="fa-solid fa-wand-magic-sparkles text-sm"></i>
-                </button>
-                <label class="toolbar-label" for="theme-selector">Theme</label>
-                <select id="theme-selector" class="toolbar-select">
-                    <option value="editorial">Editorial</option>
-                    <option value="blueprint">Blueprint</option>
-                    <option value="chalkboard">Chalkboard</option>
-                    <option value="circuit">Circuit</option>
-                    <option value="afterglow">Afterglow</option>
-                    <option value="fieldnotes">Field Notes</option>
-                    <option value="monograph">Monograph</option>
-                    <option value="graphite">Graphite</option>
-                    <option value="horizon">Horizon</option>
-                </select>
-                <label class="toolbar-label" for="page-setup-selector">Size</label>
-                <select id="page-setup-selector" class="toolbar-select">
-                    <option value="widescreen-16-9">16:9</option>
-                    <option value="standard-4-3">4:3</option>
-                    <option value="widescreen-16-10">16:10</option>
-                </select>
-            </div>
-
-            <div class="toolbar-cluster">
-                <button id="toolbar-ai-import" onclick="triggerAIImportPicker()" title="Import PDF or AI JSON" class="toolbar-btn toolbar-btn-accent">
-                    <i class="fa-solid fa-wand-magic-sparkles text-sm"></i>
-                    <span class="toolbar-btn-label">AI Import</span>
-                </button>
-                <button onclick="copySelectionToClipboard()" class="toolbar-btn" title="Copy Selected Element">
-                    <i class="fa-regular fa-copy text-sm"></i>
-                </button>
-                <button onclick="pasteFromClipboard()" class="toolbar-btn" title="Paste From Clipboard">
-                    <i class="fa-regular fa-clipboard text-sm"></i>
-                </button>
-            </div>
-
-            <div class="toolbar-cluster toolbar-cluster-strong">
-                <button onclick="togglePlayMode()" id="btn-present" class="toolbar-btn toolbar-btn-success" title="Present">
-                    <i class="fa-solid fa-play text-sm"></i>
-                    <span class="toolbar-btn-label">Present</span>
-                </button>
-                <div style="position:relative; display:inline-block;" id="export-menu-container">
-                    <button onclick="toggleExportMenu()" class="toolbar-btn toolbar-btn-primary" title="Export">
-                        <i class="fa-solid fa-download text-sm"></i>
-                        <span class="toolbar-btn-label">Export</span>
-                        <i class="fa-solid fa-chevron-down text-[10px] ml-1"></i>
+        <div id="toolbar-tool-dock" class="toolbar-secondary-row">
+            <div class="toolbar-secondary-bar">
+                <div class="toolbar-cluster toolbar-cluster-muted toolbar-icon-cluster">
+                    <button onclick="undo()" title="Undo (Ctrl+Z)" class="toolbar-btn" id="btn-undo">
+                        <i class="fa-solid fa-rotate-left text-sm"></i>
                     </button>
-                    <div id="export-menu-dropdown" style="display:none; position:absolute; top:calc(100% + 8px); right:0; z-index:9999; min-width:210px; padding:8px; border-radius:16px; border:1px solid rgba(226,232,240,0.96); background:rgba(255,255,255,0.98); box-shadow:0 18px 40px rgba(15,23,42,0.14); flex-direction:column; gap:4px;">
-                        <button onclick="closeExportMenu(); exportPresentationZip()" class="toolbar-user-menu-item">
-                            <i class="fa-solid fa-file-zipper w-4 text-center"></i> Web (ZIP)
-                        </button>
-                        <button onclick="closeExportMenu(); exportPresentationPDF()" class="toolbar-user-menu-item">
-                            <i class="fa-solid fa-file-pdf w-4 text-center"></i> PDF Document
-                        </button>
-                        <button onclick="closeExportMenu(); exportPresentationPNG()" class="toolbar-user-menu-item">
-                            <i class="fa-regular fa-image w-4 text-center"></i> Slide Image (PNG)
-                        </button>
-                        <button onclick="closeExportMenu(); exportPresentationPPTX()" class="toolbar-user-menu-item">
-                            <i class="fa-solid fa-file-powerpoint w-4 text-center"></i> PowerPoint (PPTX)
-                        </button>
-                        <button onclick="closeExportMenu(); exportPresentationJson()" class="toolbar-user-menu-item">
-                            <i class="fa-solid fa-file-code w-4 text-center"></i> Raw JSON State
-                        </button>
-                    </div>
+                    <button onclick="redo()" title="Redo (Ctrl+Y)" class="toolbar-btn" id="btn-redo">
+                        <i class="fa-solid fa-rotate-right text-sm"></i>
+                    </button>
+                    <button onclick="aiCleanUpSlide()" title="AI Clean Up (Auto-align)" class="toolbar-btn text-indigo-500 hover:text-indigo-600 bg-indigo-50/50 hover:bg-indigo-50 border-indigo-100/50">
+                        <i class="fa-solid fa-wand-magic-sparkles text-sm"></i>
+                    </button>
                 </div>
-            </div>
 
-            <div class="toolbar-cluster toolbar-auth">
-                <button id="auth-menu-button" class="toolbar-user-btn" onclick="toggleUserMenu()" title="Account">
-                    <span id="auth-user-glyph" class="toolbar-user-glyph">
-                        <i class="fa-regular fa-user"></i>
-                    </span>
-                    <span id="auth-status" class="toolbar-auth-status">Guest</span>
-                    <i class="fa-solid fa-chevron-down text-[10px] text-slate-400"></i>
-                </button>
-                <div id="auth-menu" class="toolbar-user-menu hidden">
-                    <div id="auth-menu-header" class="toolbar-user-menu-header">Not signed in</div>
-                    <button id="auth-primary-btn" type="button" class="toolbar-user-menu-item" onclick="openAuthModal('login')">
-                        <i class="fa-solid fa-right-to-bracket"></i>
-                        <span>Sign In</span>
+                <div class="toolbar-cluster toolbar-theme-cluster">
+                    <label class="toolbar-label" for="theme-selector">Theme</label>
+                    <select id="theme-selector" class="toolbar-select">
+                        <option value="editorial">Editorial</option>
+                        <option value="blueprint">Blueprint</option>
+                        <option value="chalkboard">Chalkboard</option>
+                        <option value="circuit">Circuit</option>
+                        <option value="afterglow">Afterglow</option>
+                        <option value="fieldnotes">Field Notes</option>
+                        <option value="monograph">Monograph</option>
+                        <option value="graphite">Graphite</option>
+                        <option value="horizon">Horizon</option>
+                    </select>
+                    <label class="toolbar-label" for="page-setup-selector">Size</label>
+                    <select id="page-setup-selector" class="toolbar-select">
+                        <option value="widescreen-16-9">16:9</option>
+                        <option value="standard-4-3">4:3</option>
+                        <option value="widescreen-16-10">16:10</option>
+                    </select>
+                </div>
+
+                <div class="toolbar-cluster toolbar-icon-cluster">
+                    <button id="toggle-properties-panel" onclick="togglePropertiesPanel()" title="Show Properties" class="toolbar-btn" aria-pressed="false">
+                        <i class="fa-solid fa-sliders text-sm"></i>
+                        <span class="toolbar-btn-label">Properties</span>
                     </button>
-                    <button id="auth-secondary-btn" type="button" class="toolbar-user-menu-item" onclick="openAuthModal('register')">
-                        <i class="fa-regular fa-user-plus"></i>
-                        <span>Register</span>
+                    <button id="toolbar-ai-import" onclick="triggerAIImportPicker()" title="Import PDF or AI JSON" class="toolbar-btn toolbar-btn-accent">
+                        <i class="fa-solid fa-wand-magic-sparkles text-sm"></i>
+                        <span class="toolbar-btn-label">AI Import</span>
+                    </button>
+                    <button onclick="copySelectionToClipboard()" class="toolbar-btn" title="Copy Selected Element">
+                        <i class="fa-regular fa-copy text-sm"></i>
+                    </button>
+                    <button onclick="pasteFromClipboard()" class="toolbar-btn" title="Paste From Clipboard">
+                        <i class="fa-regular fa-clipboard text-sm"></i>
                     </button>
                 </div>
             </div>
@@ -522,6 +541,9 @@
                     <button id="floating-text-sup" class="floating-text-button" title="Superscript">
                         <i class="fa-solid fa-superscript"></i>
                     </button>
+                    <button id="floating-text-clear" class="floating-text-button" title="Clear formatting">
+                        <i class="fa-solid fa-eraser"></i>
+                    </button>
                     <div class="floating-toolbar-divider"></div>
                     <button id="floating-insert-symbol" class="floating-text-button" title="Insert Symbol" onclick="openSymbolPicker()">
                         <i class="fa-solid fa-icons"></i>
@@ -606,7 +628,7 @@
         </main>
 
         <!-- ══════════════════════════════════════ RIGHT PANEL (Properties) -->
-        <aside id="properties-panel" class="w-72 bg-white border-l border-border flex flex-col z-20 shrink-0 shadow-panel">
+        <aside id="properties-panel" class="w-72 bg-white border-l border-border flex flex-col z-20 shrink-0 shadow-panel hidden">
             <div class="h-11 border-b border-border flex items-center px-4 shrink-0">
                 <h2 class="text-xs font-bold text-text-sub uppercase tracking-widest">Properties</h2>
             </div>
@@ -926,6 +948,7 @@
     <script src="js/textSelection.js"></script>
     <script src="js/crop.js"></script>
     <script src="js/render.js"></script>
+    <script src="js/properties/panels/text.js"></script>
     <script src="js/properties.js"></script>
     <script src="js/interact.js"></script>
     <script src="js/export.js"></script>

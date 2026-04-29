@@ -17,8 +17,7 @@ function isEditorActive(editor) {
     return (
         !!editor &&
         editor.classList?.contains("text-element-content") &&
-        editor.contentEditable === "true" &&
-        editor.dataset.structuredEdit !== "true"
+        editor.contentEditable === "true"
     );
 }
 
@@ -97,6 +96,14 @@ function restoreInlineSelection() {
     selection.removeAllRanges();
     selection.addRange(savedRange.cloneRange());
     return true;
+}
+
+function hasNonCollapsedInlineSelection() {
+    const editor = getInlineEditorForFormatting();
+    const selection = _getNativeSelection();
+    if (!editor || !selection || selection.rangeCount === 0) return false;
+    const range = selection.getRangeAt(0);
+    return !range.collapsed && editor.contains(range.commonAncestorContainer);
 }
 
 function selectInsertedNode(node) {
@@ -184,6 +191,11 @@ function applyInlineTextStyle(action, value) {
 function getStyleAtSelection() {
     const editor = getActiveInlineEditor();
     if (!editor) return null;
+    const selection = _getNativeSelection();
+    if (!selection || selection.rangeCount === 0) return null;
+
+    const range = selection.getRangeAt(0);
+    if (!editor.contains(range.commonAncestorContainer)) return null;
 
     // Use queryCommandValue for standard props
     const isBold = document.queryCommandState?.("bold") ?? false;
@@ -193,15 +205,12 @@ function getStyleAtSelection() {
 
     // For font size, it's trickier because queryCommandValue returns 1-7
     // We can check the computed style of the selection's anchor node
-    const selection = _getNativeSelection();
     let fontSize = "";
-    if (selection && selection.rangeCount > 0) {
-        let node = selection.anchorNode;
-        if (node && node.nodeType === 3) node = node.parentElement;
-        if (node) {
-            const style = window.getComputedStyle(node);
-            fontSize = style.fontSize;
-        }
+    let node = selection.anchorNode;
+    if (node && node.nodeType === 3) node = node.parentElement;
+    if (node && editor.contains(node)) {
+        const style = window.getComputedStyle(node);
+        fontSize = style.fontSize;
     }
 
     return {

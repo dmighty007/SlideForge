@@ -1296,7 +1296,6 @@ function _applyTypeContent(el, elData) {
 
         el.addEventListener("dblclick", event => {
             if (document.body.classList.contains("play-mode-active")) return;
-            event.preventDefault();
             event.stopPropagation();
             selectElement(elData.id, "replace");
             const isStructured = isStructuredBulletContent(elData.content);
@@ -1359,7 +1358,7 @@ function _applyTypeContent(el, elData) {
             }
         });
         contentHost.addEventListener("blur", (e) => {
-            if (contentHost.dataset.structuredEdit !== "true" && shouldKeepInlineEditorOpen(e)) {
+            if (shouldKeepInlineEditorOpen(e)) {
                 return;
             }
             if (contentHost.dataset.structuredEdit === "true") {

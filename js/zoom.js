@@ -11,7 +11,7 @@ let zoomMode = "fit";
 
 const EDITOR_ZOOM_MIN = 0.1;
 const EDITOR_ZOOM_MAX = 5;
-const EDITOR_ZOOM_PADDING = 32;
+const EDITOR_ZOOM_PADDING = 18;
 
 function isPresentationPlaying() {
     return document.body.classList.contains("play-mode-active");

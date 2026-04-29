@@ -55,13 +55,8 @@ function _setupElementInteract() {
                     const sourceEvent = event.sourceEvent || event;
                     const isMultiSelect = sourceEvent.shiftKey || sourceEvent.metaKey || sourceEvent.ctrlKey;
                     
-                    // If element is NOT selected, select it but STOP the current drag.
-                    // This enables "Select then Drag" and prevents accidental moves during marquee selection.
                     if (!state.selectedIds.includes(canvasTarget.id)) {
                         selectElement(canvasTarget.id, isMultiSelect ? "add" : "replace");
-                        // Cancel this drag interaction
-                        event.interaction.stop();
-                        return;
                     }
                     
                     saveStateToUndo();
