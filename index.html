@@ -145,10 +145,27 @@
                     <i class="fa-solid fa-play text-sm"></i>
                     <span class="toolbar-btn-label">Present</span>
                 </button>
-                <button onclick="exportPresentationZip()" class="toolbar-btn toolbar-btn-primary" title="Export">
-                    <i class="fa-solid fa-file-zipper text-sm"></i>
-                    <span class="toolbar-btn-label">Export</span>
-                </button>
+                <div style="position:relative; display:inline-block;" id="export-menu-container">
+                    <button onclick="toggleExportMenu()" class="toolbar-btn toolbar-btn-primary" title="Export">
+                        <i class="fa-solid fa-download text-sm"></i>
+                        <span class="toolbar-btn-label">Export</span>
+                        <i class="fa-solid fa-chevron-down text-[10px] ml-1"></i>
+                    </button>
+                    <div id="export-menu-dropdown" style="display:none; position:absolute; top:calc(100% + 8px); right:0; z-index:9999; min-width:210px; padding:8px; border-radius:16px; border:1px solid rgba(226,232,240,0.96); background:rgba(255,255,255,0.98); box-shadow:0 18px 40px rgba(15,23,42,0.14); flex-direction:column; gap:4px;">
+                        <button onclick="closeExportMenu(); exportPresentationZip()" class="toolbar-user-menu-item">
+                            <i class="fa-solid fa-file-zipper w-4 text-center"></i> Web (ZIP)
+                        </button>
+                        <button onclick="closeExportMenu(); exportPresentationPDF()" class="toolbar-user-menu-item">
+                            <i class="fa-solid fa-file-pdf w-4 text-center"></i> PDF Document
+                        </button>
+                        <button onclick="closeExportMenu(); exportPresentationPPTX()" class="toolbar-user-menu-item">
+                            <i class="fa-solid fa-file-powerpoint w-4 text-center"></i> PowerPoint (PPTX)
+                        </button>
+                        <button onclick="closeExportMenu(); exportPresentationJson()" class="toolbar-user-menu-item">
+                            <i class="fa-solid fa-file-code w-4 text-center"></i> Raw JSON State
+                        </button>
+                    </div>
+                </div>
             </div>
 
             <div class="toolbar-cluster toolbar-auth">
@@ -679,7 +696,14 @@
     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js-plugins@4.6.0/chalkboard/style.css" />
     <script src="https://cdn.jsdelivr.net/npm/reveal.js-plugins@4.6.0/chalkboard/plugin.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/js/all.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    
+    <!-- Export Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
 

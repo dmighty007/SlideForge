@@ -37,6 +37,14 @@ window.onload = async () => {
         keyboard: false,
     });
 
+    // Global slide navigation helper used by export routines
+    function switchSlide(index) {
+        if (typeof Reveal !== "undefined" && Reveal.slide) {
+            Reveal.slide(index);
+        }
+    }
+    window.switchSlide = switchSlide;
+
     const relayoutReveal = () => {
         if (typeof Reveal === "undefined" || !Reveal.isReady?.()) return;
         Reveal.layout();
@@ -154,6 +162,9 @@ window.pasteFromClipboard = pasteFromClipboard;
 window.togglePlayMode = togglePlayMode;
 window.exportJSON = exportJSON;
 window.exportPresentationZip = exportPresentationZip;
+window.exportPresentationPDF = exportPresentationPDF;
+window.exportPresentationPPTX = exportPresentationPPTX;
+window.exportPresentationJson = exportPresentationJson;
 window.handleAIImportUpload = handleAIImportUpload;
 window.handleAIJsonUpload = handleAIJsonUpload;
 window.hideAIImportProgress = hideAIImportProgress;
@@ -178,6 +189,8 @@ window.closeAuthModal = closeAuthModal;
 window.switchAuthMode = switchAuthMode;
 window.toggleAuthMode = toggleAuthMode;
 window.toggleUserMenu = toggleUserMenu;
+window.toggleExportMenu = toggleExportMenu;
+window.closeExportMenu = closeExportMenu;
 window.closeUserMenu = closeUserMenu;
 window.submitAuthForm = submitAuthForm;
 window.logoutCurrentUser = logoutCurrentUser;
@@ -317,7 +330,7 @@ function _insertSymbol(sym) {
             id, type: 'text', x: 200, y: 200,
             width: '120px', height: 'auto', autoHeight: true,
             content: sym,
-            styles: { color: theme.defaultTextColor, fontSize: '48px', fontFamily: theme.bodyFont, zIndex: 1 },
+            styles: { color: theme.defaultTextColor, fontSize: '48px', fontFamily: theme.bodyFont, zIndex: getNextZIndex() },
         });
         renderSlidesFromState();
         selectElement(id);
@@ -355,7 +368,7 @@ function addEquationElement(latexSrc) {
         styles: {
             color: theme.defaultTextColor || '#ffffff',
             fontSize: '24px',
-            zIndex: 1,
+            zIndex: getNextZIndex(),
             backgroundColor: 'transparent',
         },
     });
@@ -401,6 +414,9 @@ window.duplicateSelectedElements = duplicateSelectedElements;
 window.deleteSelectedElements = deleteSelectedElements;
 window.togglePlayMode = togglePlayMode;
 window.exportPresentationZip = exportPresentationZip;
+window.exportPresentationPDF = exportPresentationPDF;
+window.exportPresentationPPTX = exportPresentationPPTX;
+window.exportPresentationJson = exportPresentationJson;
 window.importPresentationJson = importPresentationJson;
 window.handleAIImportUpload = handleAIImportUpload;
 window.hideAIImportProgress = hideAIImportProgress;

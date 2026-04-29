@@ -1146,7 +1146,7 @@ function createElementNode(elData) {
             return;
         }
         e.stopPropagation();
-        const mode = e.shiftKey ? "add" : e.ctrlKey || e.metaKey ? "toggle" : "replace";
+        const mode = e.shiftKey || e.ctrlKey || e.metaKey ? "toggle" : "replace";
         selectElement(el.id, mode);
     });
 

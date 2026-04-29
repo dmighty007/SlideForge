@@ -156,7 +156,7 @@ function addElement(type, options = {}) {
             fontSize: type === "text" ? "32px" : type === "table" ? "16px" : "0px",
             fontFamily: theme.bodyFont,
             textAlign: type === "text" || type === "table" ? "left" : undefined,
-            zIndex: 1,
+            zIndex: getNextZIndex(),
             borderRadius: type === "shape" ? shapeBorderRadius : type === "video" || type === "pdf" ? "8px" : "0px",
         },
         animation: null,
@@ -212,7 +212,7 @@ function addConnector(connectorType = "line") {
             backgroundColor: "transparent",
             color: theme.accentStrong,
             strokeWidth: 4,
-            zIndex: 1,
+            zIndex: getNextZIndex(),
             borderRadius: "0px",
         },
         themeManaged: true,
@@ -230,8 +230,10 @@ function addComponent(templateId) {
     saveStateToUndo();
     const groupId = generateId("grp");
     const newIds = [];
+    const baseZ = getNextZIndex();
     template.elements.forEach(el => {
         const id = generateId("el");
+        const componentZ = el.styles && el.styles.zIndex ? el.styles.zIndex : 1;
         state.slides[activeIndex].elements.push({
             ...el,
             id,
@@ -239,6 +241,10 @@ function addComponent(templateId) {
             themeManaged: true,
             x: 200 + (el.offsetX || 0),
             y: 200 + (el.offsetY || 0),
+            styles: {
+                ...(el.styles || {}),
+                zIndex: baseZ + componentZ - 1
+            }
         });
         newIds.push(id);
     });
@@ -292,6 +298,9 @@ function duplicateSelectedElements() {
             copy.groupId = null;
         }
         
+        if (!copy.styles) copy.styles = {};
+        copy.styles.zIndex = getNextZIndex();
+        
         state.slides[activeIndex].elements.push(copy);
         newIds.push(newId);
     });
@@ -312,6 +321,8 @@ function duplicateElement(id) {
     copy.x += 20;
     copy.y += 20;
     copy.groupId = null; // never inherit group
+    if (!copy.styles) copy.styles = {};
+    copy.styles.zIndex = getNextZIndex();
     state.slides[activeIndex].elements.push(copy);
     renderSlidesFromState();
     selectElement(newId);
@@ -429,7 +440,7 @@ function _createClipboardTextElement(text, x = 100, y = 100) {
             fontFamily: theme.bodyFont,
             textAlign: "left",
             lineHeight: "1.45",
-            zIndex: 1,
+            zIndex: getNextZIndex(),
             backgroundColor: "transparent",
         },
     };
@@ -446,7 +457,7 @@ function _createClipboardImageElement(dataUrl, origWidth, origHeight, x = 100, y
         width: `${targetWidth}px`,
         height: `${Math.round(targetWidth * aspect)}px`,
         content: dataUrl,
-        styles: { zIndex: 1, borderRadius: "8px" },
+        styles: { zIndex: getNextZIndex(), borderRadius: "8px" },
     };
 }
 
@@ -596,6 +607,9 @@ function pasteElement(payload = null) {
         } else {
             copy.groupId = null;
         }
+        
+        if (!copy.styles) copy.styles = {};
+        copy.styles.zIndex = getNextZIndex();
         
         state.slides[activeIndex].elements.push(copy);
         newIds.push(newId);
@@ -758,7 +772,7 @@ async function handleImageFileInsert(event) {
             width: `${targetWidth}px`,
             height: `${Math.round(targetHeight)}px`,
             content: dataUrl,
-            styles: { zIndex: 1, borderRadius: "8px" },
+            styles: { zIndex: getNextZIndex(), borderRadius: "8px" },
         });
         renderSlidesFromState();
         selectElement(id);
@@ -827,7 +841,7 @@ async function handlePdfFileInsert(event) {
         pdfAnnotations: [],
         pdfSelectedAnnotationId: "",
         localMimeType: "application/pdf",
-        styles: { zIndex: 1, borderRadius: "8px", backgroundColor: "#ffffff" },
+        styles: { zIndex: getNextZIndex(), borderRadius: "8px", backgroundColor: "#ffffff" },
     });
     renderSlidesFromState();
     selectElement(id);
@@ -995,7 +1009,7 @@ async function _insertUploadedVideo(file) {
         muted: true,
         autoplay: false,
         loop: false,
-        styles: { zIndex: 1, borderRadius: "8px" },
+        styles: { zIndex: getNextZIndex(), borderRadius: "8px" },
     });
     renderSlidesFromState();
     selectElement(id);
@@ -1089,7 +1103,7 @@ function handleHtmlFileInsert(event) {
             width: "520px",
             height: "320px",
             content: htmlContent,
-            styles: { zIndex: 1, borderRadius: "8px", backgroundColor: "#111827", border: "1px solid #334155" },
+            styles: { zIndex: getNextZIndex(), borderRadius: "8px", backgroundColor: "#111827", border: "1px solid #334155" },
         });
         renderSlidesFromState();
         selectElement(id);
@@ -1337,389 +1351,163 @@ function _bridgeVisualMeta(theme) {
     };
 }
 
-function _createBridgeTitleSlide(data, theme) {
+function _makeBeamerHeader(theme, sectionTitle) {
+    const ui = _bridgeVisualMeta(theme);
+    return [
+        _makeShapeElement({
+            x: 0, y: 0, width: 1024, height: 72,
+            backgroundColor: ui.accent,
+            zIndex: 1,
+            borderRadius: "0px"
+        }),
+        _makeTextElement({
+            x: 40, y: 20, width: 944,
+            content: String(sectionTitle || "Overview"),
+            fontSize: 26, fontWeight: "700", color: "#ffffff", fontFamily: ui.headingFont,
+            textAlign: "left"
+        })
+    ];
+}
+
+function _makeBeamerFooter(theme, presentationTitle, slideNumber, totalSlides) {
+    const ui = _bridgeVisualMeta(theme);
+    const content = `${String(presentationTitle || "Presentation")} — Slide ${slideNumber} of ${totalSlides}`;
+    return [
+        _makeShapeElement({
+            x: 0, y: 736, width: 1024, height: 32,
+            backgroundColor: "rgba(0,0,0,0.04)",
+            zIndex: 1,
+            borderRadius: "0px"
+        }),
+        _makeTextElement({
+            x: 40, y: 742, width: 944,
+            content: content,
+            fontSize: 12, fontWeight: "500", color: ui.muted, fontFamily: ui.bodyFont,
+            textAlign: "center"
+        })
+    ];
+}
+
+function _createBridgeTitleSlide(data, theme, presentationTitle, slideNumber, totalSlides) {
     const ui = _bridgeVisualMeta(theme);
     const summary = String(data.sub || "AI-generated research presentation");
+    const elements = [
+        _makeShapeElement({
+            x: 0, y: 0, width: 1024, height: 768,
+            backgroundColor: ui.surface, opacity: 0.18, zIndex: 1, borderRadius: "0px"
+        }),
+        _makeShapeElement({
+            x: 0, y: 160, width: 1024, height: 340,
+            backgroundColor: ui.accent, opacity: 0.05, zIndex: 1, borderRadius: "0px"
+        }),
+        _makeShapeElement({
+            x: 0, y: 160, width: 16, height: 340,
+            backgroundColor: ui.accent, zIndex: 2, borderRadius: "0px"
+        }),
+        _makeTextElement({
+            x: 80, y: 200, width: 864,
+            content: presentationTitle,
+            fontSize: 50, fontWeight: "800", color: ui.text, fontFamily: ui.headingFont, lineHeight: "1.15",
+        }),
+        _makeTextElement({
+            x: 80, y: 380, width: 864,
+            content: summary,
+            fontSize: 24, fontWeight: "500", color: ui.muted, fontFamily: ui.bodyFont, lineHeight: "1.45",
+        }),
+    ];
+
+    if (data.authors) {
+        elements.push(
+            _makeTextElement({
+                x: 80, y: 540, width: 864,
+                content: String(data.authors),
+                fontSize: 20, fontWeight: "600", color: ui.text, fontFamily: ui.bodyFont, lineHeight: "1.3",
+            })
+        );
+    }
+    
+    let metaText = [];
+    if (data.journal_name) metaText.push(String(data.journal_name));
+    if (data.publish_date) metaText.push(String(data.publish_date));
+    if (data.doi) metaText.push(`DOI: ${data.doi}`);
+
+    if (metaText.length > 0) {
+        elements.push(
+            _makeTextElement({
+                x: 80, y: 580, width: 864,
+                content: metaText.join(" | "),
+                fontSize: 16, fontWeight: "500", color: ui.muted, fontFamily: ui.bodyFont, lineHeight: "1.3",
+            })
+        );
+    }
+
+    elements.push(..._makeBeamerFooter(theme, presentationTitle, slideNumber, totalSlides));
+
     return {
         id: generateId("slide"),
-        elements: [
-            _makeShapeElement({
-                x: 0,
-                y: 0,
-                width: 1024,
-                height: 768,
-                backgroundColor: ui.surface,
-                opacity: 0.18,
-                zIndex: 1,
-            }),
-            _makeShapeElement({
-                x: 64,
-                y: 104,
-                width: 896,
-                height: 470,
-                backgroundColor: "rgba(255,255,255,0.72)",
-                border: `1px solid ${ui.surfaceBorder}`,
-                borderRadius: "26px",
-                zIndex: 1,
-            }),
-            _makeShapeElement({
-                x: 64,
-                y: 104,
-                width: 10,
-                height: 470,
-                backgroundColor: ui.accent,
-                borderRadius: "26px 0 0 26px",
-                zIndex: 2,
-            }),
-            _makeTextElement({
-                x: 96,
-                y: 146,
-                width: 740,
-                content: "Research story",
-                fontSize: 12,
-                fontWeight: "700",
-                color: ui.accent,
-                fontFamily: ui.bodyFont,
-                lineHeight: "1.2",
-            }),
-            _makeTextElement({
-                x: 96,
-                y: 178,
-                width: 780,
-                content: String(data.title || "Imported Presentation"),
-                fontSize: 48,
-                fontWeight: "700",
-                color: ui.text,
-                fontFamily: ui.headingFont,
-                lineHeight: "1.15",
-            }),
-            _makeTextElement({
-                x: 96,
-                y: 314,
-                width: 700,
-                content: summary,
-                fontSize: 23,
-                fontWeight: "500",
-                color: ui.muted,
-                fontFamily: ui.bodyFont,
-                lineHeight: "1.45",
-            }),
-            _makeTextElement({
-                x: 96,
-                y: 616,
-                width: 340,
-                content: "Imported from AI PDF analysis",
-                fontSize: 14,
-                fontWeight: "500",
-                color: ui.muted,
-                fontFamily: ui.bodyFont,
-                lineHeight: "1.3",
-            }),
-        ],
+        elements
     };
 }
 
-function _createBridgeSectionSlide(slide, theme) {
+function _createBridgeSectionSlide(slide, theme, presentationTitle, slideNumber, totalSlides) {
     const ui = _bridgeVisualMeta(theme);
     return {
         id: generateId("slide"),
         elements: [
             _makeShapeElement({
-                x: 0,
-                y: 0,
-                width: 1024,
-                height: 768,
-                backgroundColor: ui.surface,
-                opacity: 0.1,
-                zIndex: 1,
-            }),
-            _makeShapeElement({
-                x: 54,
-                y: 150,
-                width: 912,
-                height: 330,
-                backgroundColor: "rgba(255,255,255,0.76)",
-                border: `1px solid ${ui.surfaceBorder}`,
-                borderRadius: "28px",
-                zIndex: 1,
-            }),
-            _makeShapeElement({
-                x: 54,
-                y: 150,
-                width: 14,
-                height: 330,
-                backgroundColor: ui.accent,
-                borderRadius: "28px 0 0 28px",
-                zIndex: 2,
+                x: 0, y: 0, width: 1024, height: 768,
+                backgroundColor: ui.accent, opacity: 0.9, zIndex: 1, borderRadius: "0px"
             }),
             _makeTextElement({
-                x: 96,
-                y: 202,
-                width: 760,
+                x: 80, y: 330, width: 864,
                 content: "Section",
-                fontSize: 13,
-                fontWeight: "700",
-                color: ui.accent,
-                fontFamily: ui.bodyFont,
-                lineHeight: "1.2",
+                fontSize: 24, fontWeight: "700", color: "rgba(255,255,255,0.7)", fontFamily: ui.bodyFont, lineHeight: "1.2",
             }),
             _makeTextElement({
-                x: 96,
-                y: 234,
-                width: 780,
+                x: 80, y: 380, width: 864,
                 content: String(slide.title || "Section"),
-                fontSize: 44,
-                fontWeight: "700",
-                color: ui.text,
-                fontFamily: ui.headingFont,
-                lineHeight: "1.15",
+                fontSize: 56, fontWeight: "800", color: "#ffffff", fontFamily: ui.headingFont, lineHeight: "1.15",
             }),
+            ..._makeBeamerFooter(theme, presentationTitle, slideNumber, totalSlides)
         ],
     };
 }
 
-function _createBridgeEvidenceSlide(slide, theme) {
+function _createBridgeEvidenceSlide(slide, theme, currentSectionName, presentationTitle, slideNumber, totalSlides) {
     const ui = _bridgeVisualMeta(theme);
     const hasFigure = Boolean(slide.fig_path);
-    const cards = _bridgePointsAsCards(slide.points, 3);
-    const metrics = _bridgeSlideMetrics(slide);
-    const lead = _bridgeWordClamp(_bridgeNarrativeSummary(slide.points, 1) || String(slide.fig_cap || ""), 26);
-    const cardBodyFont = metrics.wordCount >= 42 ? 14 : 15;
-    const elements = [
-        _makeShapeElement({
-            x: 42,
-            y: 36,
-            width: 940,
-            height: 680,
-            backgroundColor: "rgba(255,255,255,0.72)",
-            border: `1px solid ${ui.surfaceBorder}`,
-            borderRadius: "24px",
-            zIndex: 1,
-        }),
-        _makeTextElement({
-            x: 64,
-            y: 54,
-            width: 860,
-            content: String(slide.title || "Content"),
-            fontSize: 32,
-            fontWeight: "700",
-            color: ui.text,
-            fontFamily: ui.headingFont,
-            lineHeight: "1.2",
-        }),
-        _makeTextElement({
-            x: 64,
-            y: 104,
-            width: 820,
-            content: lead,
-            fontSize: metrics.wordCount >= 42 ? 16 : 18,
-            fontWeight: "500",
-            color: ui.muted,
-            fontFamily: ui.bodyFont,
-            lineHeight: "1.45",
-            height: 42,
-            autoHeight: false,
-        }),
-    ];
-
-    if (hasFigure) {
-        elements.push(
-            _makeImageElement({
-                x: 64,
-                y: 158,
-                width: metrics.hasCaption ? 520 : 548,
-                height: metrics.hasCaption ? 330 : 366,
-                content: _normalizeImportedImagePath(slide.fig_path),
-            }),
-        );
-        elements.push(
-            _makeShapeElement({
-                x: 620,
-                y: 158,
-                width: 322,
-                height: 366,
-                backgroundColor: "rgba(248,250,252,0.96)",
-                border: `1px solid ${ui.surfaceBorder}`,
-                borderRadius: "18px",
-                zIndex: 1,
-            }),
-        );
-        cards.forEach((card, idx) => {
-            const y = 180 + idx * 108;
-            elements.push(
-                _makeTextElement({
-                    x: 642,
-                    y,
-                    width: 268,
-                    content: card.heading,
-                    fontSize: 16,
-                    fontWeight: "700",
-                    color: ui.accent,
-                    fontFamily: ui.bodyFont,
-                    lineHeight: "1.2",
-                    height: 22,
-                    autoHeight: false,
-                }),
-            );
-            elements.push(
-                _makeTextElement({
-                    x: 642,
-                    y: y + 26,
-                    width: 268,
-                    content: card.body,
-                    fontSize: cardBodyFont,
-                    fontWeight: "400",
-                    color: ui.text,
-                    fontFamily: ui.bodyFont,
-                    lineHeight: "1.42",
-                    height: 74,
-                    autoHeight: false,
-                }),
-            );
-        });
-        if (slide.fig_cap) {
-            elements.push(
-                _makeTextElement({
-                    x: 64,
-                    y: 500,
-                    width: 548,
-                    content: _bridgeWordClamp(String(slide.fig_cap), 38),
-                    fontSize: 12,
-                    fontWeight: "400",
-                    color: ui.muted,
-                    fontFamily: ui.bodyFont,
-                    lineHeight: "1.35",
-                    height: 50,
-                    autoHeight: false,
-                }),
-            );
-        }
-    }
-
-    return { id: generateId("slide"), elements };
-}
-
-function _createBridgeArgumentSlide(slide, theme) {
-    const ui = _bridgeVisualMeta(theme);
-    const hasFigure = Boolean(slide.fig_path);
-    const cards = _bridgePointsAsCards(slide.points, 3);
     const bulletContent = _buildBulletContent(slide.points);
-    const metrics = _bridgeSlideMetrics(slide);
     const dense = _bridgeIsDenseSlide(slide);
+
     const elements = [
-        _makeShapeElement({
-            x: 40,
-            y: 42,
-            width: 944,
-            height: 664,
-            backgroundColor: "rgba(255,255,255,0.68)",
-            border: `1px solid ${ui.surfaceBorder}`,
-            borderRadius: "24px",
-            zIndex: 1,
-        }),
-        _makeShapeElement({
-            x: 40,
-            y: 42,
-            width: 10,
-            height: 664,
-            backgroundColor: ui.accent,
-            borderRadius: "24px 0 0 24px",
-            zIndex: 2,
-        }),
+        ..._makeBeamerHeader(theme, currentSectionName),
         _makeTextElement({
-            x: 72,
-            y: 56,
-            width: 850,
+            x: 40, y: 110, width: 944,
             content: String(slide.title || "Content"),
-            fontSize: 31,
-            fontWeight: "700",
-            color: ui.text,
-            fontFamily: ui.headingFont,
-            lineHeight: "1.18",
+            fontSize: 34, fontWeight: "700", color: ui.text, fontFamily: ui.headingFont, lineHeight: "1.2",
         }),
         _makeTextElement({
-            x: 72,
-            y: 122,
-            width: hasFigure ? 470 : 840,
+            x: 40, y: 180, width: hasFigure ? 440 : 944,
             content: bulletContent,
-            fontSize: dense ? (hasFigure ? 17 : 18) : hasFigure ? 19 : 21,
-            fontWeight: "400",
-            color: ui.text,
-            fontFamily: ui.bodyFont,
-            lineHeight: dense ? "1.42" : "1.52",
-            height: hasFigure ? 500 : 520,
-            autoHeight: false,
+            fontSize: dense ? 18 : 22, fontWeight: "400", color: ui.text, fontFamily: ui.bodyFont, lineHeight: "1.5",
         }),
+        ..._makeBeamerFooter(theme, presentationTitle, slideNumber, totalSlides)
     ];
 
     if (hasFigure) {
         elements.push(
             _makeImageElement({
-                x: 578,
-                y: 144,
-                width: dense ? 320 : 344,
-                height: dense ? 228 : 258,
+                x: 520, y: 180, width: 460, height: slide.fig_cap ? 460 : 500,
                 content: _normalizeImportedImagePath(slide.fig_path),
-            }),
-        );
-        elements.push(
-            _makeShapeElement({
-                x: 578,
-                y: dense ? 392 : 428,
-                width: 344,
-                height: dense ? 210 : 212,
-                backgroundColor: "rgba(248,250,252,0.96)",
-                border: `1px solid ${ui.surfaceBorder}`,
-                borderRadius: "18px",
-                zIndex: 1,
-            }),
-        );
-        const insight = cards[0] || { heading: "Why it matters", body: _bridgeNarrativeSummary(slide.points, 2) };
-        elements.push(
-            _makeTextElement({
-                x: 602,
-                y: dense ? 414 : 452,
-                width: 292,
-                content: insight.heading,
-                fontSize: 16,
-                fontWeight: "700",
-                color: ui.accent,
-                fontFamily: ui.bodyFont,
-                lineHeight: "1.2",
-                height: 22,
-                autoHeight: false,
-            }),
-        );
-        elements.push(
-            _makeTextElement({
-                x: 602,
-                y: dense ? 442 : 480,
-                width: 292,
-                content: insight.body,
-                fontSize: dense ? 14 : 15,
-                fontWeight: "400",
-                color: ui.text,
-                fontFamily: ui.bodyFont,
-                lineHeight: "1.42",
-                height: dense ? 92 : 84,
-                autoHeight: false,
-            }),
+            })
         );
         if (slide.fig_cap) {
             elements.push(
                 _makeTextElement({
-                    x: 578,
-                    y: dense ? 608 : 642,
-                    width: 344,
-                    content: _bridgeWordClamp(String(slide.fig_cap), 26),
-                    fontSize: 12,
-                    fontWeight: "400",
-                    color: ui.muted,
-                    fontFamily: ui.bodyFont,
-                    lineHeight: "1.3",
-                    height: 32,
-                    autoHeight: false,
-                }),
+                    x: 520, y: 660, width: 460,
+                    content: _bridgeWordClamp(String(slide.fig_cap), 30),
+                    fontSize: 14, fontWeight: "400", color: ui.muted, fontFamily: ui.bodyFont, lineHeight: "1.35",
+                })
             );
         }
     }
@@ -1727,95 +1515,86 @@ function _createBridgeArgumentSlide(slide, theme) {
     return { id: generateId("slide"), elements };
 }
 
-function _createBridgeSummarySlide(slide, theme) {
+function _createBridgeArgumentSlide(slide, theme, currentSectionName, presentationTitle, slideNumber, totalSlides) {
     const ui = _bridgeVisualMeta(theme);
-    const cards = _bridgePointsAsCards(slide.points, 3);
-    const dense = _bridgeIsDenseSlide(slide);
+    const bulletContent = _buildBulletContent(slide.points);
+    const hasFigure = Boolean(slide.fig_path);
+    
     const elements = [
-        _makeShapeElement({
-            x: 56,
-            y: 92,
-            width: 912,
-            height: 540,
-            backgroundColor: "rgba(255,255,255,0.74)",
-            border: `1px solid ${ui.surfaceBorder}`,
-            borderRadius: "24px",
-            zIndex: 1,
+        ..._makeBeamerHeader(theme, currentSectionName),
+        _makeTextElement({
+            x: 40, y: 110, width: 944,
+            content: String(slide.title || "Content"),
+            fontSize: 34, fontWeight: "700", color: ui.text, fontFamily: ui.headingFont, lineHeight: "1.2",
         }),
         _makeTextElement({
-            x: 84,
-            y: 118,
-            width: 820,
-            content: String(slide.title || "Summary"),
-            fontSize: 36,
-            fontWeight: "700",
-            color: ui.text,
-            fontFamily: ui.headingFont,
-            lineHeight: "1.15",
+            x: 40, y: 180, width: hasFigure ? 460 : 944,
+            content: bulletContent,
+            fontSize: 22, fontWeight: "400", color: ui.text, fontFamily: ui.bodyFont, lineHeight: "1.5",
         }),
+        ..._makeBeamerFooter(theme, presentationTitle, slideNumber, totalSlides)
     ];
 
-    cards.forEach((card, idx) => {
-        const x = 84 + idx * 280;
+    if (hasFigure) {
         elements.push(
-            _makeShapeElement({
-                x,
-                y: 218,
-                width: 248,
-                height: 280,
-                backgroundColor: "rgba(248,250,252,0.95)",
-                border: `1px solid ${ui.surfaceBorder}`,
-                borderRadius: "18px",
-                zIndex: 1,
-            }),
+            _makeImageElement({
+                x: 540, y: 180, width: 440, height: slide.fig_cap ? 400 : 440,
+                content: _normalizeImportedImagePath(slide.fig_path),
+            })
         );
-        elements.push(
-            _makeTextElement({
-                x: x + 20,
-                y: 244,
-                width: 208,
-                content: card.heading,
-                fontSize: dense ? 16 : 17,
-                fontWeight: "700",
-                color: ui.accent,
-                fontFamily: ui.bodyFont,
-                lineHeight: "1.2",
-                height: 24,
-                autoHeight: false,
-            }),
-        );
-        elements.push(
-            _makeTextElement({
-                x: x + 20,
-                y: 280,
-                width: 208,
-                content: card.body,
-                fontSize: dense ? 14 : 15,
-                fontWeight: "400",
-                color: ui.text,
-                fontFamily: ui.bodyFont,
-                lineHeight: "1.42",
-                height: 170,
-                autoHeight: false,
-            }),
-        );
-    });
-
+        if (slide.fig_cap) {
+            elements.push(
+                _makeTextElement({
+                    x: 540, y: 630, width: 440,
+                    content: _bridgeWordClamp(String(slide.fig_cap), 30),
+                    fontSize: 14, fontWeight: "400", color: ui.muted, fontFamily: ui.bodyFont, lineHeight: "1.35",
+                })
+            );
+        }
+    }
     return { id: generateId("slide"), elements };
 }
 
-function _createBridgeContentSlide(slide, theme, index = 0, sectionIndex = 0, totalSlides = 1) {
+function _createBridgeSummarySlide(slide, theme, currentSectionName, presentationTitle, slideNumber, totalSlides) {
+    const ui = _bridgeVisualMeta(theme);
+    const bulletContent = _buildBulletContent(slide.points);
+    
+    return {
+        id: generateId("slide"),
+        elements: [
+            ..._makeBeamerHeader(theme, currentSectionName),
+            _makeShapeElement({
+                x: 40, y: 110, width: 944, height: 100,
+                backgroundColor: ui.accentSoft, borderRadius: "12px", zIndex: 1
+            }),
+            _makeTextElement({
+                x: 60, y: 140, width: 900,
+                content: String(slide.title || "Summary"),
+                fontSize: 36, fontWeight: "700", color: ui.accent, fontFamily: ui.headingFont, lineHeight: "1.2",
+            }),
+            _makeTextElement({
+                x: 40, y: 240, width: 944,
+                content: bulletContent,
+                fontSize: 22, fontWeight: "400", color: ui.text, fontFamily: ui.bodyFont, lineHeight: "1.6",
+            }),
+            ..._makeBeamerFooter(theme, presentationTitle, slideNumber, totalSlides)
+        ],
+    };
+}
+
+function _createBridgeContentSlide(slide, theme, currentSectionName, presentationTitle, slideNumber, totalSlides) {
     const hasFigure = Boolean(slide.fig_path);
     const pointCount = (Array.isArray(slide.points) ? slide.points.length : 0);
     const dense = _bridgeIsDenseSlide(slide);
     const summaryLike = /future|impact|implication|conclusion|limit|direction/i.test(String(slide.title || ""));
+    
     if (summaryLike && pointCount >= 2) {
-        return _createBridgeSummarySlide(slide, theme);
+        return _createBridgeSummarySlide(slide, theme, currentSectionName, presentationTitle, slideNumber, totalSlides);
     }
-    if (hasFigure && !dense && (index % 2 === 0 || pointCount <= 2)) {
-        return _createBridgeEvidenceSlide(slide, theme);
+    if (hasFigure && !dense && (slideNumber % 2 === 0 || pointCount <= 2)) {
+        return _createBridgeEvidenceSlide(slide, theme, currentSectionName, presentationTitle, slideNumber, totalSlides);
     }
-    return _createBridgeArgumentSlide(slide, theme);
+    return _createBridgeArgumentSlide(slide, theme, currentSectionName, presentationTitle, slideNumber, totalSlides);
 }
 
 function _attachBridgeEquations(slideState, slide) {
@@ -1862,26 +1641,28 @@ function _convertBridgeExportToEditorState(data) {
         slides.push(nextSlide);
     };
 
+    const presentationTitle = data.title || "Imported Presentation";
+    const totalSlides = (data.slides || []).length + (data.title || data.sub ? 1 : 0);
+    let currentSlideNumber = 1;
+
     if (data.title || data.sub) {
-        addBridgeSlide(_createBridgeTitleSlide(data, theme));
+        addBridgeSlide(_createBridgeTitleSlide(data, theme, presentationTitle, currentSlideNumber++, totalSlides));
     }
 
-    let sectionIndex = -1;
-    let contentIndex = 0;
-    const contentTotal = (data.slides || []).filter(slide => slide.type === "content").length;
+    let currentSectionName = "";
+    
     for (const slide of data.slides || []) {
         if (slide.type === "section") {
-            sectionIndex += 1;
-            addBridgeSlide(_createBridgeSectionSlide(slide, theme));
+            currentSectionName = slide.title || "Section";
+            addBridgeSlide(_createBridgeSectionSlide(slide, theme, presentationTitle, currentSlideNumber++, totalSlides));
         } else if (slide.type === "content") {
             const normalizedSlide = _normalizeBridgeContentSlide(slide);
             addBridgeSlide(
                 _attachBridgeEquations(
-                    _createBridgeContentSlide(normalizedSlide, theme, contentIndex, sectionIndex, contentTotal),
+                    _createBridgeContentSlide(normalizedSlide, theme, currentSectionName, presentationTitle, currentSlideNumber++, totalSlides),
                     normalizedSlide,
                 ),
             );
-            contentIndex += 1;
         }
     }
 
@@ -3033,5 +2814,21 @@ function exportPresentationZip() {
         exportZip();
     } else {
         console.error("exportZip function not found. Ensure export.js is loaded.");
+    }
+}
+
+function exportPresentationPDF() {
+    if (typeof exportPDF === "function") {
+        exportPDF();
+    } else {
+        console.error("exportPDF function not found. Ensure export.js is loaded.");
+    }
+}
+
+function exportPresentationPPTX() {
+    if (typeof exportPPTX === "function") {
+        exportPPTX();
+    } else {
+        console.error("exportPPTX function not found. Ensure export.js is loaded.");
     }
 }

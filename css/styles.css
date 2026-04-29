@@ -80,7 +80,7 @@ body {
 }
 
 #app-toolbar {
-    overflow: hidden;
+    overflow: visible;
 }
 
 .toolbar-logo {
@@ -1915,3 +1915,10 @@ body {
 .resize-handle.bc { bottom: -5px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
 .resize-handle.bl { bottom: -5px; left: -5px; cursor: nesw-resize; }
 .resize-handle.lc { top: 50%; left: -5px; transform: translateY(-50%); cursor: ew-resize; }
+
+/* Marquee Live Selection Hover */
+.canvas-element.marquee-hover {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
+}

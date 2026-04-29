@@ -34,6 +34,124 @@ async function exportZip() {
 }
 
 /**
+ * Exports the presentation as a PDF using html2canvas and jsPDF.
+ */
+async function exportPDF() {
+    try {
+        setProjectSaveHint?.("Generating PDF...", "success");
+        const pdf = new jspdf.jsPDF({
+            orientation: "landscape",
+            unit: "px",
+            format: [1024, 768]
+        });
+
+        const originalIndex = currentSlideIndex;
+        for (let i = 0; i < state.slides.length; i++) {
+            // Use the globally exposed switchSlide
+            if (typeof window.switchSlide === "function") {
+                window.switchSlide(i);
+            } else if (typeof Reveal !== "undefined" && Reveal.slide) {
+                Reveal.slide(i);
+            }
+            // Wait for assets to load / animations to settle
+            await new Promise(r => setTimeout(r, 800));
+
+            const container = document.getElementById("slides-container");
+            // Hide selection UI before capturing
+            document.querySelectorAll('.resize-handle, .crop-handle, .connector-point-handle, #group-bound')
+                .forEach(el => el.style.display = 'none');
+            document.querySelectorAll('.canvas-element')
+                .forEach(el => el.classList.remove('selected', 'group-member-selected'));
+
+            const canvas = await html2canvas(container, {
+                scale: 3, // Higher resolution
+                useCORS: true,
+                allowTaint: true,
+                backgroundColor: "#ffffff",
+                logging: false,
+                width: 1024,
+                height: 768
+            });
+            // Restore UI
+            document.querySelectorAll('.resize-handle, .crop-handle, .connector-point-handle, #group-bound')
+                .forEach(el => el.style.display = '');
+
+            const imgData = canvas.toDataURL("image/jpeg", 0.95);
+            if (i > 0) pdf.addPage([1024, 768], "landscape");
+            pdf.addImage(imgData, "JPEG", 0, 0, 1024, 768);
+            setProjectSaveHint?.(`Generated slide ${i + 1}/${state.slides.length}`, "success");
+        }
+
+        // Restore original slide
+        if (typeof window.switchSlide === "function") {
+            window.switchSlide(originalIndex);
+        } else if (typeof Reveal !== "undefined" && Reveal.slide) {
+            Reveal.slide(originalIndex);
+        }
+        pdf.save("presentation.pdf");
+        setProjectSaveHint?.("PDF Exported!", "success");
+    } catch (err) {
+        console.error(err);
+        setProjectSaveHint?.(err?.message || "PDF export failed", "danger");
+    }
+}
+
+/**
+ * GET CSRF TOKEN helper
+ */
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+/**
+ * Exports the presentation to a native PowerPoint (.pptx) format.
+ */
+async function exportPPTX() {
+    try {
+        setProjectSaveHint?.("Generating PowerPoint...", "success");
+        
+        // Use the same filename as the project title
+        const titleInput = document.getElementById("project-title-input");
+        const filename = (titleInput ? titleInput.value : "presentation") + ".pptx";
+
+        const response = await fetch("/api/presentations/export/pptx/", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": getCookie("csrftoken"),
+            },
+            body: JSON.stringify({
+                state: state,
+                filename: filename
+            })
+        });
+
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || "Failed to generate PPTX on server");
+        }
+
+        const blob = await response.blob();
+        saveAs(blob, filename);
+        setProjectSaveHint?.("PPTX Exported!", "success");
+    } catch (err) {
+        console.error(err);
+        setProjectSaveHint?.(err?.message || "PPTX export failed", "danger");
+    }
+}
+
+/**
  * Scans state for DataURLs (images/videos), extracts them, and updates paths.
  */
 async function processStateAssets(originalState) {

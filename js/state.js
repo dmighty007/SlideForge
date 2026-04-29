@@ -285,6 +285,21 @@ function toggleUserMenu() {
     menu.classList.toggle("hidden");
 }
 
+function toggleExportMenu() {
+    const dd = document.getElementById("export-menu-dropdown");
+    if (!dd) return;
+    if (dd.style.display === "none" || dd.style.display === "") {
+        dd.style.display = "flex";
+    } else {
+        dd.style.display = "none";
+    }
+}
+
+function closeExportMenu() {
+    const dd = document.getElementById("export-menu-dropdown");
+    if (dd) dd.style.display = "none";
+}
+
 function bindUserMenu() {
     if (document.body.dataset.userMenuBound === "true") return;
     document.body.dataset.userMenuBound = "true";
@@ -294,6 +309,13 @@ function bindUserMenu() {
         if (!menu || menu.classList.contains("hidden")) return;
         if (menu.contains(event.target) || button?.contains(event.target)) return;
         closeUserMenu();
+    });
+    document.addEventListener("mousedown", event => {
+        const dd = document.getElementById("export-menu-dropdown");
+        const container = document.getElementById("export-menu-container");
+        if (!dd || dd.style.display === "none") return;
+        if (container?.contains(event.target)) return;
+        closeExportMenu();
     });
 }
 
@@ -610,6 +632,14 @@ function updateElementStyleState(id, styleUpdates) {
     if (!el) return;
     if (!el.styles) el.styles = {};
     Object.assign(el.styles, styleUpdates);
+}
+
+function getNextZIndex() {
+    const activeIndex = currentSlideIndex;
+    if (!state || !state.slides || !state.slides[activeIndex]) return 1;
+    const elements = state.slides[activeIndex].elements || [];
+    const maxZ = elements.reduce((m, el) => Math.max(m, Number(el.styles?.zIndex) || 0), 0);
+    return maxZ + 1;
 }
 
 function getPersistableState() {

@@ -4,7 +4,11 @@ import json
 import shutil
 import subprocess
 import sys
+import concurrent.futures
 import threading
+import time
+import urllib.request
+import urllib.error
 from pathlib import Path
 
 from django.conf import settings
@@ -13,6 +17,36 @@ from django.db import close_old_connections
 from studio.models import Presentation
 
 from .models import ImportJob
+
+_IMPORT_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="import_worker")
+
+_OLLAMA_LOCK = threading.Lock()
+_OLLAMA_REF_COUNT = 0
+_OLLAMA_PROC = None
+
+def _acquire_ollama():
+    global _OLLAMA_REF_COUNT, _OLLAMA_PROC
+    with _OLLAMA_LOCK:
+        _OLLAMA_REF_COUNT += 1
+        if _OLLAMA_REF_COUNT == 1:
+            try:
+                urllib.request.urlopen("http://127.0.0.1:11434/", timeout=1)
+            except Exception:
+                _OLLAMA_PROC = subprocess.Popen(["ollama", "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                time.sleep(2)
+
+def _release_ollama():
+    global _OLLAMA_REF_COUNT, _OLLAMA_PROC
+    with _OLLAMA_LOCK:
+        _OLLAMA_REF_COUNT -= 1
+        if _OLLAMA_REF_COUNT == 0 and _OLLAMA_PROC is not None:
+            if _OLLAMA_PROC.poll() is None:
+                _OLLAMA_PROC.terminate()
+                try:
+                    _OLLAMA_PROC.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    _OLLAMA_PROC.kill()
+            _OLLAMA_PROC = None
 
 
 EVENT_PROGRESS = {
@@ -81,9 +115,14 @@ def _materialize_bridge_visuals(bridge_result: dict, job: ImportJob) -> dict:
         if normalized in copied_urls:
             return copied_urls[normalized]
 
-        source = Path(normalized)
+        source = Path(normalized).resolve()
         if not source.exists() or not source.is_file():
             return normalized
+
+        try:
+            source.relative_to(settings.BASE_DIR)
+        except ValueError:
+            return normalized  # Prevent Path Traversal
 
         destination = target_dir / source.name
         if destination.exists():
@@ -126,11 +165,11 @@ def _materialize_bridge_visuals(bridge_result: dict, job: ImportJob) -> dict:
 
 
 def queue_import_job(import_job: ImportJob):
-    thread = threading.Thread(target=_run_import_job, args=(import_job.id,), daemon=True)
-    thread.start()
+    _IMPORT_EXECUTOR.submit(_run_import_job, import_job.id)
 
 
 def _run_import_job(job_id):
+    _acquire_ollama()
     close_old_connections()
     job = ImportJob.objects.get(id=job_id)
     pdf_path = Path(job.source_pdf.path)
@@ -198,7 +237,7 @@ def _run_import_job(job_id):
         job.message = "AI import complete"
         job.progress_percent = 100
         job.output_json = bridge_result
-        job.save()
+        job.save(update_fields=["presentation", "status", "event", "message", "progress_percent", "output_json", "updated_at"])
     except Exception as exc:
         job.status = "failed"
         job.event = "failed"
@@ -207,4 +246,8 @@ def _run_import_job(job_id):
         job.progress_percent = 100
         job.save(update_fields=["status", "event", "message", "error", "progress_percent", "updated_at"])
     finally:
+        if 'proc' in locals() and proc is not None and proc.poll() is None:
+            proc.kill()
+            proc.wait()
+        _release_ollama()
         close_old_connections()

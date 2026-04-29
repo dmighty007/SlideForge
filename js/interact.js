@@ -51,10 +51,15 @@ function _setupElementInteract() {
                     const canvasTarget = getInteractCanvasTarget(event.target);
                     if (!canvasTarget) return false;
                     if (event.target.isContentEditable || isElementInTextEditMode(event.target)) return false;
-                    // Ensure the dragged element (and its group) are selected
-                    if (!state.selectedIds.includes(canvasTarget.id)) {
+                    
+                    // Native selection is handled by mousedown in render.js.
+                    // But if interact triggers start via touch/drag and it's not selected:
+                    const sourceEvent = event.sourceEvent || event;
+                    const isMultiSelect = sourceEvent.shiftKey || sourceEvent.metaKey || sourceEvent.ctrlKey;
+                    if (!state.selectedIds.includes(canvasTarget.id) && !isMultiSelect) {
                         selectElement(canvasTarget.id, "replace");
                     }
+                    
                     saveStateToUndo();
                     state.selectedIds.forEach(id =>
                         document.getElementById(id)?.classList.add("shadow-2xl", "scale-[1.01]", "z-50"),
@@ -441,7 +446,6 @@ function _setupMarquee() {
     let marqueeStart = null;
 
     canvasWrapper.addEventListener("mousedown", e => {
-        // ★ KEY BUG FIX: ignore clicks on canvas elements OR group-bound handles
         if (e.target.closest(".canvas-element")) return;
         if (e.target.closest("#group-bound")) return;
         if (e.target.closest("#floating-text-toolbar")) return;
@@ -452,7 +456,7 @@ function _setupMarquee() {
         marquee.classList.remove("hidden");
         marquee.style.width = "0px";
         marquee.style.height = "0px";
-        if (!e.ctrlKey && !e.metaKey) clearSelection();
+        if (!e.shiftKey && !e.ctrlKey && !e.metaKey) clearSelection();
     });
 
     window.addEventListener("mousemove", e => {
@@ -463,6 +467,23 @@ function _setupMarquee() {
         marquee.style.top = Math.min(e.clientY, marqueeStart.y) - rect.top + "px";
         marquee.style.width = Math.abs(e.clientX - marqueeStart.x) + "px";
         marquee.style.height = Math.abs(e.clientY - marqueeStart.y) + "px";
+
+        const mRect = marquee.getBoundingClientRect();
+        const isLeftToRight = e.clientX > marqueeStart.x;
+        document.querySelectorAll(".canvas-element").forEach(el => {
+            const r = el.getBoundingClientRect();
+            let isSelected = false;
+            if (isLeftToRight) {
+                isSelected = (r.left >= mRect.left && r.right <= mRect.right && r.top >= mRect.top && r.bottom <= mRect.bottom);
+            } else {
+                isSelected = !(r.left > mRect.right || r.right < mRect.left || r.top > mRect.bottom || r.bottom < mRect.top);
+            }
+            if (isSelected) {
+                el.classList.add("marquee-hover");
+            } else {
+                el.classList.remove("marquee-hover");
+            }
+        });
     });
 
     window.addEventListener("mouseup", e => {
@@ -470,15 +491,32 @@ function _setupMarquee() {
         const marquee = document.getElementById("marquee");
         const mRect = marquee.getBoundingClientRect();
         const newlySelected = [];
+        const isLeftToRight = e.clientX > marqueeStart.x;
+        
         document.querySelectorAll(".canvas-element").forEach(el => {
+            el.classList.remove("marquee-hover");
             const r = el.getBoundingClientRect();
-            if (r.left >= mRect.left && r.right <= mRect.right && r.top >= mRect.top && r.bottom <= mRect.bottom) {
+            let isSelected = false;
+            if (isLeftToRight) {
+                isSelected = (r.left >= mRect.left && r.right <= mRect.right && r.top >= mRect.top && r.bottom <= mRect.bottom);
+            } else {
+                isSelected = !(r.left > mRect.right || r.right < mRect.left || r.top > mRect.bottom || r.bottom < mRect.top);
+            }
+            if (isSelected) {
                 newlySelected.push(el.id);
             }
         });
+        
         if (newlySelected.length > 0) {
-            const combined =
-                e.ctrlKey || e.metaKey ? Array.from(new Set([...state.selectedIds, ...newlySelected])) : newlySelected;
+            let combined = newlySelected;
+            if (e.shiftKey || e.ctrlKey || e.metaKey) {
+                const toggled = new Set(state.selectedIds);
+                newlySelected.forEach(id => {
+                    if (toggled.has(id)) toggled.delete(id);
+                    else toggled.add(id);
+                });
+                combined = Array.from(toggled);
+            }
             setSelectedIds(combined);
             state.selectedIds.forEach(id => document.getElementById(id)?.classList.add("selected"));
             buildPropertiesPanel();

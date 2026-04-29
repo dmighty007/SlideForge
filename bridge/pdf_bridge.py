@@ -160,6 +160,10 @@ class PDF2PPTxBridge(PDF2PPTx):
             "{\n"
             '  "title": "Talk title (compelling, not generic)",\n'
             '  "sub": "Subtitle (what audience gains)",\n'
+            '  "authors": "List of authors (if available)",\n'
+            '  "journal_name": "Journal or conference name (if available)",\n'
+            '  "publish_date": "Publication date/year (if available)",\n'
+            '  "doi": "DOI string (if available)",\n'
             '  "slides": [\n'
             "    {\n"
             '      "section": "Act (Setup / Problem / Method / Insight / Impact)",\n'
@@ -185,7 +189,15 @@ class PDF2PPTxBridge(PDF2PPTx):
                          json_output, pptx_output, max_slides, max_sections, emit, paper_frame, mineru_context):
         gen = PPTXGenerator()
         gen.add_title(storyboard.get("title"), storyboard.get("sub"))
-        export_data = {"title": storyboard.get("title"), "sub": storyboard.get("sub"), "slides": []}
+        export_data = {
+            "title": storyboard.get("title"), 
+            "sub": storyboard.get("sub"), 
+            "authors": storyboard.get("authors"),
+            "journal_name": storyboard.get("journal_name"),
+            "publish_date": storyboard.get("publish_date"),
+            "doi": storyboard.get("doi"),
+            "slides": []
+        }
         
         sections = []
         current_section = None

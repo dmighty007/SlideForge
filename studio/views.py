@@ -12,6 +12,8 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_http_methods
 
 from .models import Asset, Presentation, PresentationRevision
+from bridge.pptx_exporter import PPTXExporter
+
 
 
 def _auth_required(request):
@@ -279,3 +281,28 @@ def presentation_detail(request, presentation_id):
             "updatedAt": presentation.updated_at.isoformat(),
         }
     )
+
+
+@require_http_methods(["POST"])
+def export_pptx_view(request):
+    try:
+        payload = _request_json(request)
+        state = payload.get("state")
+        if not state:
+            return HttpResponseBadRequest("Missing state in payload")
+
+        exporter = PPTXExporter(state)
+        pptx_stream = exporter.export()
+        
+        filename = payload.get("filename", "presentation.pptx")
+        if not filename.endswith(".pptx"):
+            filename += ".pptx"
+
+        response = FileResponse(
+            pptx_stream,
+            content_type="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
