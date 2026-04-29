@@ -87,7 +87,7 @@
     <!-- App Styles -->
     <link rel="stylesheet" href="css/styles.css" />
 </head>
-<body class="entry-gate-active font-sans bg-surface text-text-main flex flex-col h-screen overflow-hidden select-none">
+<body class="entry-gate-pending font-sans bg-surface text-text-main flex flex-col h-screen overflow-hidden select-none">
     <section id="entry-hero" class="entry-hero" aria-label="SlideForge sign in">
         <div class="entry-hero-content">
             <div class="entry-hero-copy">
@@ -561,7 +561,7 @@
                         <i class="fa-solid fa-italic"></i>
                     </button>
                     <div class="floating-toolbar-divider"></div>
-                    <select id="floating-text-font" class="floating-text-select" title="Font Family" style="width:110px;">
+                    <select id="floating-text-font" class="floating-text-select" title="Font Family" style="width:96px;">
                         <option value='"Times New Roman", Times, serif'>Times New Roman</option>
                         <option value="Arial, sans-serif">Arial</option>
                         <option value="Inter, sans-serif">Inter</option>
@@ -578,10 +578,10 @@
                         <option value='"Bangers", cursive'>Bangers</option>
                         <option value='"Shrikhand", cursive'>Shrikhand</option>
                     </select>
-                    <input type="text" id="floating-text-size" class="floating-text-select text-center" style="width:64px;" title="Font Size" placeholder="Size">
-                    <div class="flex items-center gap-1.5 ml-2 mr-1">
+                    <input type="text" id="floating-text-size" class="floating-text-select text-center" style="width:48px;" title="Font Size" placeholder="Size">
+                    <div class="floating-color-tools">
                         <div id="floating-text-palette" class="flex items-center gap-1"></div>
-                        <input type="color" id="floating-text-color" class="floating-text-button p-0 border-0" style="width:24px;height:24px;cursor:pointer;border-radius:6px;overflow:hidden;" title="Custom Color">
+                        <input type="color" id="floating-text-color" class="floating-text-button p-0 border-0" title="Custom Color">
                     </div>
                     <div class="floating-toolbar-divider"></div>
                     <button id="floating-text-sub" class="floating-text-button" title="Subscript">
@@ -776,58 +776,84 @@
 
     <!-- ══════════════════════════════════════════ SHAPE PICKER MODAL -->
     <div id="shape-picker-modal" style="display:none" class="fixed inset-0 z-[500] flex items-center justify-center bg-black/40 backdrop-blur-sm">
-        <div class="shape-picker-sheet bg-white rounded-2xl shadow-2xl w-[560px] max-w-[92vw] flex flex-col border border-border">
+        <div class="shape-picker-sheet bg-white rounded-xl shadow-2xl w-[660px] max-w-[92vw] flex flex-col border border-border">
             <div class="flex items-center justify-between px-5 py-3 border-b border-border">
                 <div>
                     <h3 class="text-sm font-semibold text-text-main">Insert Shape</h3>
-                    <p class="text-xs text-text-sub">Basic shapes and directional arrows</p>
+                    <p class="text-xs text-text-sub">Basic shapes, block arrows, and editable connectors</p>
                 </div>
                 <button onclick="closeShapePicker()" class="text-text-sub hover:text-text-main w-7 h-7 flex items-center justify-center rounded-lg hover:bg-surface transition-colors">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
-            <div class="p-5">
-                <div class="shape-picker-grid">
-                    <button onclick="insertShapeFromPicker('rectangle')" class="shape-picker-item">
-                        <i class="fa-regular fa-square"></i>
-                        <span>Rectangle</span>
-                    </button>
-                    <button onclick="insertShapeFromPicker('circle')" class="shape-picker-item">
-                        <i class="fa-regular fa-circle"></i>
-                        <span>Circle</span>
-                    </button>
-                    <button onclick="insertShapeFromPicker('triangle')" class="shape-picker-item">
-                        <i class="fa-solid fa-play rotate-90"></i>
-                        <span>Triangle</span>
-                    </button>
-                    <button onclick="insertShapeFromPicker('diamond')" class="shape-picker-item">
-                        <i class="fa-regular fa-gem"></i>
-                        <span>Diamond</span>
-                    </button>
-                    <button onclick="insertShapeFromPicker('hexagon')" class="shape-picker-item">
-                        <i class="fa-solid fa-stop"></i>
-                        <span>Hexagon</span>
-                    </button>
-                    <button onclick="insertShapeFromPicker('parallelogram')" class="shape-picker-item">
-                        <i class="fa-solid fa-minus"></i>
-                        <span>Parallelogram</span>
-                    </button>
+            <div class="shape-picker-body">
+                <section class="shape-picker-section">
+                    <p class="shape-picker-section-label">Shapes</p>
+                    <div class="shape-picker-grid">
+                        <button onclick="insertShapeFromPicker('rectangle')" class="shape-picker-item">
+                            <i class="fa-regular fa-square"></i>
+                            <span>Rectangle</span>
+                        </button>
+                        <button onclick="insertShapeFromPicker('circle')" class="shape-picker-item">
+                            <i class="fa-regular fa-circle"></i>
+                            <span>Circle</span>
+                        </button>
+                        <button onclick="insertShapeFromPicker('triangle')" class="shape-picker-item">
+                            <i class="fa-solid fa-play rotate-90"></i>
+                            <span>Triangle</span>
+                        </button>
+                        <button onclick="insertShapeFromPicker('diamond')" class="shape-picker-item">
+                            <i class="fa-regular fa-gem"></i>
+                            <span>Diamond</span>
+                        </button>
+                        <button onclick="insertShapeFromPicker('hexagon')" class="shape-picker-item">
+                            <i class="fa-solid fa-stop"></i>
+                            <span>Hexagon</span>
+                        </button>
+                        <button onclick="insertShapeFromPicker('parallelogram')" class="shape-picker-item">
+                            <i class="fa-solid fa-minus"></i>
+                            <span>Parallelogram</span>
+                        </button>
+                    </div>
+                </section>
+                <section class="shape-picker-section">
+                    <p class="shape-picker-section-label">Block Arrows</p>
+                    <div class="shape-picker-grid shape-picker-grid-arrows">
                     <button onclick="insertShapeFromPicker('arrow-right')" class="shape-picker-item">
                         <i class="fa-solid fa-arrow-right"></i>
-                        <span>Arrow Right</span>
+                        <span>Right</span>
                     </button>
                     <button onclick="insertShapeFromPicker('arrow-left')" class="shape-picker-item">
                         <i class="fa-solid fa-arrow-left"></i>
-                        <span>Arrow Left</span>
+                        <span>Left</span>
                     </button>
                     <button onclick="insertShapeFromPicker('arrow-up')" class="shape-picker-item">
                         <i class="fa-solid fa-arrow-up"></i>
-                        <span>Arrow Up</span>
+                        <span>Up</span>
                     </button>
                     <button onclick="insertShapeFromPicker('arrow-down')" class="shape-picker-item">
                         <i class="fa-solid fa-arrow-down"></i>
-                        <span>Arrow Down</span>
+                        <span>Down</span>
                     </button>
+                    </div>
+                </section>
+                <section class="shape-picker-section">
+                    <p class="shape-picker-section-label">Line Arrows</p>
+                    <div class="shape-picker-grid shape-picker-grid-connectors">
+                    <button onclick="insertConnectorFromPicker('line')" class="shape-picker-item">
+                        <i class="fa-solid fa-arrow-right-long"></i>
+                        <span>Line</span>
+                    </button>
+                    <button onclick="insertConnectorFromPicker('curve')" class="shape-picker-item">
+                        <i class="fa-solid fa-arrow-trend-up"></i>
+                        <span>Curve</span>
+                    </button>
+                    <button onclick="insertConnectorFromPicker('poly')" class="shape-picker-item">
+                        <i class="fa-solid fa-turn-up"></i>
+                        <span>Elbow</span>
+                    </button>
+                    </div>
+                </section>
                 </div>
             </div>
         </div>

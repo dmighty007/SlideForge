@@ -1586,13 +1586,21 @@ function createViewerElement(elData) {
         let videoNode;
         if (videoInfo.type === 'youtube') {
             videoNode = document.createElement('iframe');
-            videoNode.src = 'https://www.youtube.com/embed/' + videoInfo.id + 
-                           '?autoplay=' + (elData.autoplay ? 1 : 0) + 
-                           '&mute=' + (elData.muted ? 1 : 0) + 
-                           '&loop=' + (elData.loop ? 1 : 0) + 
-                           '&playlist=' + videoInfo.id;
-            videoNode.setAttribute('allow', 'autoplay; encrypted-media');
+            const params = new URLSearchParams({
+                autoplay: elData.autoplay ? 1 : 0,
+                mute: elData.muted ? 1 : 0,
+                loop: elData.loop ? 1 : 0,
+                controls: 1,
+                rel: 0,
+                modestbranding: 1,
+                playsinline: 1
+            });
+            if (elData.loop) params.set('playlist', videoInfo.id);
+            videoNode.src = 'https://www.youtube-nocookie.com/embed/' + videoInfo.id + '?' + params.toString();
+            videoNode.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture');
             videoNode.setAttribute('allowfullscreen', 'true');
+            videoNode.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+            videoNode.setAttribute('title', 'YouTube video player');
         } else if (videoInfo.type === 'vimeo') {
             videoNode = document.createElement('iframe');
             videoNode.src = 'https://player.vimeo.com/video/' + videoInfo.id + 
@@ -1710,18 +1718,26 @@ function createViewerSlideBackgroundNode(background) {
 
 function _parseVideoUrl(url) {
     if (!url) return { type: 'none' };
-    if (url.includes('youtube.com') || url.includes('youtu.be')) {
+    const value = String(url).trim();
+    const parseableValue = /^[a-z][a-z0-9+.-]*:\/\//i.test(value) ? value : 'https://' + value;
+    let parsed = null;
+    try {
+        parsed = new URL(parseableValue);
+    } catch (_err) {}
+    const host = parsed && parsed.hostname ? parsed.hostname.replace(/^www\./, '') : '';
+    if (host === 'youtube.com' || host === 'youtube-nocookie.com' || host === 'youtu.be') {
         let videoId = '';
-        if (url.includes('youtu.be/')) videoId = url.split('youtu.be/')[1].split(/[?#]/)[0];
-        else if (url.includes('v=')) videoId = url.split('v=')[1].split(/[&?#]/)[0];
-        else if (url.includes('embed/')) videoId = url.split('embed/')[1].split(/[?#]/)[0];
+        if (host === 'youtu.be') videoId = parsed.pathname.split('/').filter(Boolean)[0] || '';
+        else if (parsed && parsed.searchParams.has('v')) videoId = parsed.searchParams.get('v') || '';
+        else if (parsed && parsed.pathname.includes('/embed/')) videoId = parsed.pathname.split('/embed/')[1].split('/')[0];
+        else videoId = parsed && parsed.pathname ? parsed.pathname.split('/').filter(Boolean)[0] || '' : '';
         return { type: 'youtube', id: videoId };
     }
-    if (url.includes('vimeo.com')) {
-        const videoId = url.split('vimeo.com/')[1].split(/[?#]/)[0];
+    if (host === 'vimeo.com' || host.endsWith('.vimeo.com')) {
+        const videoId = parsed && parsed.pathname ? parsed.pathname.split('/').filter(Boolean)[0] || '' : '';
         return { type: 'vimeo', id: videoId };
     }
-    return { type: 'direct', url: url };
+    return { type: 'direct', url: value };
 }
 
 function normalizeConnectorType(connectorType) {

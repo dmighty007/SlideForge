@@ -732,7 +732,24 @@ function startConnectorPointDrag(event) {
     window.addEventListener("mouseup", onUp);
 }
 
-function getShapeStyle(shapeType = "rectangle") {
+function isBlockArrowShape(shapeType = "") {
+    return ["arrow-right", "arrow-left", "arrow-up", "arrow-down"].includes(shapeType);
+}
+
+function _clampShapePercent(value, fallback, min, max) {
+    const next = Number(value);
+    if (!Number.isFinite(next)) return fallback;
+    return Math.max(min, Math.min(max, next));
+}
+
+function getShapeStyle(shape = "rectangle") {
+    const shapeType = typeof shape === "string" ? shape : shape?.shapeType || "rectangle";
+    const arrowHeadSize = _clampShapePercent(typeof shape === "string" ? undefined : shape?.arrowHeadSize, 38, 12, 80);
+    const arrowShaftSize = _clampShapePercent(typeof shape === "string" ? undefined : shape?.arrowShaftSize, 36, 12, 90);
+    const shaftStart = (100 - arrowShaftSize) / 2;
+    const shaftEnd = 100 - shaftStart;
+    const headStart = 100 - arrowHeadSize;
+    const headEnd = arrowHeadSize;
     switch (shapeType) {
         case "triangle":
             return { clipPath: "polygon(50% 0%, 0% 100%, 100% 100%)", borderRadius: "0px" };
@@ -743,17 +760,17 @@ function getShapeStyle(shapeType = "rectangle") {
         case "parallelogram":
             return { clipPath: "polygon(20% 0%, 100% 0%, 80% 100%, 0% 100%)", borderRadius: "0px" };
         case "arrow-right":
-            return { clipPath: "polygon(0% 32%, 62% 32%, 62% 0%, 100% 50%, 62% 100%, 62% 68%, 0% 68%)", borderRadius: "0px" };
+            return { clipPath: `polygon(0% ${shaftStart}%, ${headStart}% ${shaftStart}%, ${headStart}% 0%, 100% 50%, ${headStart}% 100%, ${headStart}% ${shaftEnd}%, 0% ${shaftEnd}%)`, borderRadius: "0px" };
         case "arrow-left":
-            return { clipPath: "polygon(38% 0%, 38% 32%, 100% 32%, 100% 68%, 38% 68%, 38% 100%, 0% 50%)", borderRadius: "0px" };
+            return { clipPath: `polygon(${headEnd}% 0%, ${headEnd}% ${shaftStart}%, 100% ${shaftStart}%, 100% ${shaftEnd}%, ${headEnd}% ${shaftEnd}%, ${headEnd}% 100%, 0% 50%)`, borderRadius: "0px" };
         case "arrow-up":
-            return { clipPath: "polygon(50% 0%, 100% 40%, 68% 40%, 68% 100%, 32% 100%, 32% 40%, 0% 40%)", borderRadius: "0px" };
+            return { clipPath: `polygon(50% 0%, 100% ${headEnd}%, ${shaftEnd}% ${headEnd}%, ${shaftEnd}% 100%, ${shaftStart}% 100%, ${shaftStart}% ${headEnd}%, 0% ${headEnd}%)`, borderRadius: "0px" };
         case "arrow-down":
-            return { clipPath: "polygon(32% 0%, 68% 0%, 68% 60%, 100% 60%, 50% 100%, 0% 60%, 32% 60%)", borderRadius: "0px" };
+            return { clipPath: `polygon(${shaftStart}% 0%, ${shaftEnd}% 0%, ${shaftEnd}% ${headStart}%, 100% ${headStart}%, 50% 100%, 0% ${headStart}%, ${shaftStart}% ${headStart}%)`, borderRadius: "0px" };
         case "circle":
             return { clipPath: "none", borderRadius: "9999px" };
         default:
-            return { clipPath: "none", borderRadius: "0px" };
+            return { clipPath: "none", borderRadius: typeof shape === "string" ? "0px" : shape?.styles?.borderRadius || "0px" };
     }
 }
 
@@ -1339,7 +1356,7 @@ function _createStaticNode(elData) {
         el.appendChild(frame);
         el.appendChild(chip);
     } else if (elData.type === "shape") {
-        const visual = getShapeStyle(elData.shapeType);
+        const visual = getShapeStyle(elData);
         el.style.clipPath = visual.clipPath;
         if (!elData.styles?.borderRadius) {
             el.style.borderRadius = visual.borderRadius;
@@ -1613,12 +1630,17 @@ function _applyTypeContent(el, elData) {
                 autoplay: elData.autoplay ? 1 : 0,
                 mute: elData.muted ? 1 : 0,
                 loop: elData.loop ? 1 : 0,
-                playlist: videoInfo.id, // required for loop
                 controls: 1,
+                rel: 0,
+                modestbranding: 1,
+                playsinline: 1,
             });
-            videoNode.src = `https://www.youtube.com/embed/${videoInfo.id}?${params.toString()}`;
+            if (elData.loop) params.set("playlist", videoInfo.id);
+            videoNode.src = `https://www.youtube-nocookie.com/embed/${videoInfo.id}?${params.toString()}`;
             videoNode.setAttribute("allow", "autoplay; encrypted-media; picture-in-picture");
             videoNode.setAttribute("allowfullscreen", "true");
+            videoNode.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
+            videoNode.setAttribute("title", "YouTube video player");
         } else if (videoInfo.type === "vimeo") {
             videoNode = document.createElement("iframe");
             videoNode.src = `https://player.vimeo.com/video/${videoInfo.id}?autoplay=${elData.autoplay ? 1 : 0}&muted=${elData.muted ? 1 : 0}&loop=${elData.loop ? 1 : 0}`;
@@ -1726,7 +1748,7 @@ function _applyTypeContent(el, elData) {
             }
         });
     } else if (elData.type === "shape") {
-        const visual = getShapeStyle(elData.shapeType);
+        const visual = getShapeStyle(elData);
         el.style.clipPath = visual.clipPath;
         if (!elData.styles?.borderRadius) {
             el.style.borderRadius = visual.borderRadius;
@@ -1738,18 +1760,26 @@ function _applyTypeContent(el, elData) {
 
 function _parseVideoUrl(url) {
     if (!url) return { type: "none" };
-    if (url.includes("youtube.com") || url.includes("youtu.be")) {
+    const value = String(url).trim();
+    const parseableValue = /^[a-z][a-z0-9+.-]*:\/\//i.test(value) ? value : `https://${value}`;
+    let parsed = null;
+    try {
+        parsed = new URL(parseableValue);
+    } catch (_err) {}
+    const host = parsed?.hostname.replace(/^www\./, "") || "";
+    if (host === "youtube.com" || host === "youtube-nocookie.com" || host === "youtu.be") {
         let videoId = "";
-        if (url.includes("youtu.be/")) videoId = url.split("youtu.be/")[1].split(/[?#]/)[0];
-        else if (url.includes("v=")) videoId = url.split("v=")[1].split(/[&?#]/)[0];
-        else if (url.includes("embed/")) videoId = url.split("embed/")[1].split(/[?#]/)[0];
+        if (host === "youtu.be") videoId = parsed.pathname.split("/").filter(Boolean)[0] || "";
+        else if (parsed?.searchParams.has("v")) videoId = parsed.searchParams.get("v") || "";
+        else if (parsed?.pathname.includes("/embed/")) videoId = parsed.pathname.split("/embed/")[1].split("/")[0];
+        else videoId = parsed?.pathname.split("/").filter(Boolean)[0] || "";
         return { type: "youtube", id: videoId };
     }
-    if (url.includes("vimeo.com")) {
-        const videoId = url.split("vimeo.com/")[1].split(/[?#]/)[0];
+    if (host === "vimeo.com" || host.endsWith(".vimeo.com")) {
+        const videoId = parsed?.pathname.split("/").filter(Boolean)[0] || "";
         return { type: "vimeo", id: videoId };
     }
-    return { type: "direct", url: url };
+    return { type: "direct", url: value };
 }
 
 function buildPdfEmbedSrc(url) {

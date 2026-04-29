@@ -96,6 +96,7 @@ function addElement(type, options = {}) {
         ...(type === "text" ? { bulletStyle: "default", autoHeight: true } : {}),
         ...(type === "table" ? { tableData: createDefaultTableData(3, 4) } : {}),
         ...(type === "shape" ? { shapeType } : {}),
+        ...(type === "shape" && isArrowShape ? { arrowHeadSize: 38, arrowShaftSize: 36 } : {}),
         ...(type === "video" ? { videoType: "youtube", muted: true, autoplay: false, loop: false } : {}),
         ...(type === "pdf"
             ? {

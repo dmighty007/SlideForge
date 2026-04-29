@@ -1425,26 +1425,60 @@ function buildPropertiesPanel() {
         }
 
         if (data.type === "shape") {
-            const shapeGrp = createGroup("Shape Type");
-            shapeGrp.appendChild(
-                createField(
-                    "Shape",
+            const shapeGrp = createGroup("Shape");
+            const isArrowShape = typeof isBlockArrowShape === "function" && isBlockArrowShape(data.shapeType);
+            const arrowHeadSize = Math.max(12, Math.min(80, Number(data.arrowHeadSize) || 38));
+            const arrowShaftSize = Math.max(12, Math.min(90, Number(data.arrowShaftSize) || 36));
+            shapeGrp.innerHTML += `
+                <div class="space-y-3">
+                    <div class="grid grid-cols-[1fr_auto] gap-2 items-end">
+                        <label class="flex flex-col gap-1">
+                            <span class="text-[10px] text-gray-500 uppercase font-semibold">Type</span>
+                            <select id="prop-shape-type" class="prop-select">
+                                <option value="rectangle" ${data.shapeType === "rectangle" ? "selected" : ""}>Rectangle</option>
+                                <option value="circle" ${data.shapeType === "circle" ? "selected" : ""}>Circle</option>
+                                <option value="triangle" ${data.shapeType === "triangle" ? "selected" : ""}>Triangle</option>
+                                <option value="diamond" ${data.shapeType === "diamond" ? "selected" : ""}>Diamond</option>
+                                <option value="hexagon" ${data.shapeType === "hexagon" ? "selected" : ""}>Hexagon</option>
+                                <option value="parallelogram" ${data.shapeType === "parallelogram" ? "selected" : ""}>Parallelogram</option>
+                                <option value="arrow-right" ${data.shapeType === "arrow-right" ? "selected" : ""}>Arrow Right</option>
+                                <option value="arrow-left" ${data.shapeType === "arrow-left" ? "selected" : ""}>Arrow Left</option>
+                                <option value="arrow-up" ${data.shapeType === "arrow-up" ? "selected" : ""}>Arrow Up</option>
+                                <option value="arrow-down" ${data.shapeType === "arrow-down" ? "selected" : ""}>Arrow Down</option>
+                            </select>
+                        </label>
+                        <span class="shape-type-chip">${isArrowShape ? "Block arrow" : "Shape"}</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <label class="flex flex-col gap-1">
+                            <span class="text-[10px] text-gray-500 uppercase font-semibold">Width</span>
+                            <input type="number" id="prop-shape-width" class="prop-input-sm" min="12" max="3000" step="1" value="${Math.round(parseFloat(data.width) || 150)}">
+                        </label>
+                        <label class="flex flex-col gap-1">
+                            <span class="text-[10px] text-gray-500 uppercase font-semibold">Height</span>
+                            <input type="number" id="prop-shape-height" class="prop-input-sm" min="12" max="3000" step="1" value="${Math.round(parseFloat(data.height) || 150)}">
+                        </label>
+                    </div>
+                    ${
+                        isArrowShape
+                            ? `
+                    <div class="shape-arrow-controls">
+                        <label class="shape-range-row">
+                            <span>Head</span>
+                            <input type="range" id="prop-shape-arrow-head-range" min="12" max="80" step="1" value="${arrowHeadSize}">
+                            <input type="number" id="prop-shape-arrow-head" class="prop-input-sm" min="12" max="80" step="1" value="${arrowHeadSize}">
+                        </label>
+                        <label class="shape-range-row">
+                            <span>Shaft</span>
+                            <input type="range" id="prop-shape-arrow-shaft-range" min="12" max="90" step="1" value="${arrowShaftSize}">
+                            <input type="number" id="prop-shape-arrow-shaft" class="prop-input-sm" min="12" max="90" step="1" value="${arrowShaftSize}">
+                        </label>
+                    </div>
                     `
-                <select id="prop-shape-type" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-sm text-slate-700 shadow-sm focus:outline-none focus:border-accent">
-                    <option value="rectangle" ${data.shapeType === "rectangle" ? "selected" : ""}>Rectangle</option>
-                    <option value="circle" ${data.shapeType === "circle" ? "selected" : ""}>Circle</option>
-                    <option value="triangle" ${data.shapeType === "triangle" ? "selected" : ""}>Triangle</option>
-                    <option value="diamond" ${data.shapeType === "diamond" ? "selected" : ""}>Diamond</option>
-                    <option value="hexagon" ${data.shapeType === "hexagon" ? "selected" : ""}>Hexagon</option>
-                    <option value="parallelogram" ${data.shapeType === "parallelogram" ? "selected" : ""}>Parallelogram</option>
-                    <option value="arrow-right" ${data.shapeType === "arrow-right" ? "selected" : ""}>Arrow Right</option>
-                    <option value="arrow-left" ${data.shapeType === "arrow-left" ? "selected" : ""}>Arrow Left</option>
-                    <option value="arrow-up" ${data.shapeType === "arrow-up" ? "selected" : ""}>Arrow Up</option>
-                    <option value="arrow-down" ${data.shapeType === "arrow-down" ? "selected" : ""}>Arrow Down</option>
-                </select>
-            `,
-                ),
-            );
+                            : ""
+                    }
+                </div>
+            `;
             panel.appendChild(shapeGrp);
         }
 
@@ -2026,53 +2060,78 @@ function buildPropertiesPanel() {
 
             if (data.type === "shape") {
                 const shapeType = document.getElementById("prop-shape-type");
+                const shapeWidth = document.getElementById("prop-shape-width");
+                const shapeHeight = document.getElementById("prop-shape-height");
+                const arrowHead = document.getElementById("prop-shape-arrow-head");
+                const arrowHeadRange = document.getElementById("prop-shape-arrow-head-range");
+                const arrowShaft = document.getElementById("prop-shape-arrow-shaft");
+                const arrowShaftRange = document.getElementById("prop-shape-arrow-shaft-range");
+                const syncShapeVisual = () => {
+                    const dom = document.getElementById(data.id);
+                    if (!dom || typeof getShapeStyle !== "function") return;
+                    const visual = getShapeStyle(data);
+                    dom.style.clipPath = visual.clipPath;
+                    dom.style.borderRadius = visual.borderRadius;
+                    updateElementStyleState(data.id, { borderRadius: visual.borderRadius });
+                };
+                const bindShapeDimension = (input, key) => {
+                    if (!input) return;
+                    const commit = () => {
+                        const next = Math.max(12, Math.min(3000, Number(input.value) || 12));
+                        onCommit(() => {
+                            updateElementState(data.id, { [key]: `${next}px` });
+                            data[key] = `${next}px`;
+                            const dom = document.getElementById(data.id);
+                            if (dom) dom.style[key] = `${next}px`;
+                            updateGroupBound?.();
+                        });
+                    };
+                    input.onchange = commit;
+                    input.onblur = commit;
+                };
+                const bindShapeArrowPercent = (numberInput, rangeInput, key, min, max, fallback) => {
+                    const clamp = value => Math.max(min, Math.min(max, Number(value) || fallback));
+                    const commit = source => {
+                        const next = clamp(source.value);
+                        if (numberInput) numberInput.value = next;
+                        if (rangeInput) rangeInput.value = next;
+                        onCommit(() => {
+                            updateElementState(data.id, { [key]: next });
+                            data[key] = next;
+                            syncShapeVisual();
+                        });
+                    };
+                    if (numberInput) {
+                        numberInput.onchange = () => commit(numberInput);
+                        numberInput.onblur = () => commit(numberInput);
+                    }
+                    if (rangeInput) {
+                        rangeInput.oninput = () => commit(rangeInput);
+                    }
+                };
+
                 if (shapeType) {
                     shapeType.onchange = e => {
                         onCommit(() => {
                             const value = e.target.value;
-                            updateElementState(data.id, { shapeType: value });
-                            const dom = document.getElementById(data.id);
-                            if (!dom) return;
-                            const shapeVisuals = {
-                                rectangle: { clipPath: "none", borderRadius: data.styles.borderRadius || "0px" },
-                                circle: { clipPath: "none", borderRadius: "9999px" },
-                                triangle: { clipPath: "polygon(50% 0%, 0% 100%, 100% 100%)", borderRadius: "0px" },
-                                diamond: {
-                                    clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
-                                    borderRadius: "0px",
-                                },
-                                hexagon: {
-                                    clipPath: "polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)",
-                                    borderRadius: "0px",
-                                },
-                                parallelogram: {
-                                    clipPath: "polygon(20% 0%, 100% 0%, 80% 100%, 0% 100%)",
-                                    borderRadius: "0px",
-                                },
-                                "arrow-right": {
-                                    clipPath: "polygon(0% 32%, 62% 32%, 62% 0%, 100% 50%, 62% 100%, 62% 68%, 0% 68%)",
-                                    borderRadius: "0px",
-                                },
-                                "arrow-left": {
-                                    clipPath: "polygon(38% 0%, 38% 32%, 100% 32%, 100% 68%, 38% 68%, 38% 100%, 0% 50%)",
-                                    borderRadius: "0px",
-                                },
-                                "arrow-up": {
-                                    clipPath: "polygon(50% 0%, 100% 40%, 68% 40%, 68% 100%, 32% 100%, 32% 40%, 0% 40%)",
-                                    borderRadius: "0px",
-                                },
-                                "arrow-down": {
-                                    clipPath: "polygon(32% 0%, 68% 0%, 68% 60%, 100% 60%, 50% 100%, 0% 60%, 32% 60%)",
-                                    borderRadius: "0px",
-                                },
-                            };
-                            const visual = shapeVisuals[value] || shapeVisuals.rectangle;
-                            dom.style.clipPath = visual.clipPath;
-                            dom.style.borderRadius = visual.borderRadius;
-                            updateElementStyleState(data.id, { borderRadius: visual.borderRadius });
+                            const patch = { shapeType: value };
+                            if (typeof isBlockArrowShape === "function" && isBlockArrowShape(value)) {
+                                patch.arrowHeadSize = Number(data.arrowHeadSize) || 38;
+                                patch.arrowShaftSize = Number(data.arrowShaftSize) || 36;
+                                data.arrowHeadSize = patch.arrowHeadSize;
+                                data.arrowShaftSize = patch.arrowShaftSize;
+                            }
+                            updateElementState(data.id, patch);
+                            data.shapeType = value;
+                            syncShapeVisual();
+                            buildPropertiesPanel();
                         });
                     };
                 }
+                bindShapeDimension(shapeWidth, "width");
+                bindShapeDimension(shapeHeight, "height");
+                bindShapeArrowPercent(arrowHead, arrowHeadRange, "arrowHeadSize", 12, 80, 38);
+                bindShapeArrowPercent(arrowShaft, arrowShaftRange, "arrowShaftSize", 12, 90, 36);
             }
 
             if (data.type === "table") {

@@ -331,6 +331,13 @@ function insertShapeFromPicker(shapeType) {
     closeShapePicker();
 }
 
+function insertConnectorFromPicker(connectorType) {
+    if (typeof addConnector === 'function') {
+        addConnector(connectorType);
+    }
+    closeShapePicker();
+}
+
 function _insertSymbol(sym) {
     const activeIndex = typeof currentSlideIndex !== 'undefined' ? currentSlideIndex : 0;
     const selectedTextEl = state.slides[activeIndex]?.elements.find(e => state.selectedIds.includes(e.id) && e.type === 'text');
@@ -547,6 +554,7 @@ window.closeSymbolPicker = closeSymbolPicker;
 window.openShapePicker = openShapePicker;
 window.closeShapePicker = closeShapePicker;
 window.insertShapeFromPicker = insertShapeFromPicker;
+window.insertConnectorFromPicker = insertConnectorFromPicker;
 window.switchSidebarTab = switchSidebarTab;
 window.renderSlidesFromState = renderSlidesFromState;
 window.renderSlidePreviews = renderSlidePreviews;

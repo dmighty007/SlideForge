@@ -105,12 +105,15 @@ function initZoom() {
 
 function getZoomAnchor(wrapper, event = null) {
     if (!wrapper) return null;
+    const engine = document.getElementById("zoom-engine");
+    const padX = parseFloat(engine?.dataset.zoomPadX) || 0;
+    const padY = parseFloat(engine?.dataset.zoomPadY) || 0;
     const rect = wrapper.getBoundingClientRect();
     const clientX = event?.clientX ?? rect.left + wrapper.clientWidth / 2;
     const clientY = event?.clientY ?? rect.top + wrapper.clientHeight / 2;
     return {
-        x: (wrapper.scrollLeft + clientX - rect.left) / stateZoom,
-        y: (wrapper.scrollTop + clientY - rect.top) / stateZoom,
+        x: (wrapper.scrollLeft + clientX - rect.left - padX) / stateZoom,
+        y: (wrapper.scrollTop + clientY - rect.top - padY) / stateZoom,
         clientX,
         clientY,
         rectLeft: rect.left,
@@ -120,8 +123,11 @@ function getZoomAnchor(wrapper, event = null) {
 
 function restoreZoomAnchor(wrapper, anchor) {
     if (!wrapper || !anchor) return;
-    wrapper.scrollLeft = anchor.x * stateZoom - (anchor.clientX - anchor.rectLeft);
-    wrapper.scrollTop = anchor.y * stateZoom - (anchor.clientY - anchor.rectTop);
+    const engine = document.getElementById("zoom-engine");
+    const padX = parseFloat(engine?.dataset.zoomPadX) || 0;
+    const padY = parseFloat(engine?.dataset.zoomPadY) || 0;
+    wrapper.scrollLeft = padX + anchor.x * stateZoom - (anchor.clientX - anchor.rectLeft);
+    wrapper.scrollTop = padY + anchor.y * stateZoom - (anchor.clientY - anchor.rectTop);
 }
 
 function applyZoom(options = {}) {
@@ -130,7 +136,7 @@ function applyZoom(options = {}) {
     const label = document.getElementById("zoom-label");
     const slider = document.getElementById("zoom-slider");
 
-    const anchor = options.preserveViewport ? getZoomAnchor(wrapper, options.anchorEvent) : null;
+    const anchor = options.anchor || (options.preserveViewport ? getZoomAnchor(wrapper, options.anchorEvent) : null);
 
     if (engine && wrapper) {
         if (isPresentationPlaying()) {
@@ -143,22 +149,27 @@ function applyZoom(options = {}) {
         const scaledW = slideW * stateZoom;
         const scaledH = slideH * stateZoom;
 
-        const left = Math.max(EDITOR_ZOOM_PADDING, (wrapper.clientWidth - scaledW) / 2);
-        const top = Math.max(EDITOR_ZOOM_PADDING, (wrapper.clientHeight - scaledH) / 2);
+        const padX = Math.max(EDITOR_ZOOM_PADDING, (wrapper.clientWidth - scaledW) / 2);
+        const padY = Math.max(EDITOR_ZOOM_PADDING, (wrapper.clientHeight - scaledH) / 2);
 
-        engine.style.width = `${scaledW}px`;
-        engine.style.height = `${scaledH}px`;
-        engine.style.left = `${left}px`;
-        engine.style.top = `${top}px`;
+        engine.style.width = `${scaledW + padX * 2}px`;
+        engine.style.height = `${scaledH + padY * 2}px`;
+        engine.style.left = "0";
+        engine.style.top = "0";
         engine.style.marginLeft = "0";
         engine.style.marginTop = "0";
-        engine.style.marginRight = `${EDITOR_ZOOM_PADDING}px`;
-        engine.style.marginBottom = `${EDITOR_ZOOM_PADDING}px`;
+        engine.style.marginRight = "0";
+        engine.style.marginBottom = "0";
+        engine.dataset.zoomPadX = String(padX);
+        engine.dataset.zoomPadY = String(padY);
         
         const revealEl = engine.querySelector(".reveal");
         if (revealEl) {
             setImportantStyle(revealEl, "width", `${slideW}px`);
             setImportantStyle(revealEl, "height", `${slideH}px`);
+            setImportantStyle(revealEl, "position", "absolute");
+            setImportantStyle(revealEl, "left", `${padX}px`);
+            setImportantStyle(revealEl, "top", `${padY}px`);
             setImportantStyle(revealEl, "transform", `scale(${stateZoom})`);
             setImportantStyle(revealEl, "transform-origin", "0 0");
             revealEl.style.maxWidth = "none";
@@ -181,15 +192,19 @@ function applyZoom(options = {}) {
 }
 
 function changeZoom(delta, options = {}) {
+    const wrapper = document.getElementById("canvas-wrapper");
+    const anchor = getZoomAnchor(wrapper, options.anchorEvent);
     zoomMode = "manual";
     stateZoom = clampZoom(stateZoom + delta);
-    applyZoom({ ...options, preserveViewport: true });
+    applyZoom({ ...options, preserveViewport: false, anchor });
 }
 
 function handleZoomSlider(val, options = {}) {
+    const wrapper = document.getElementById("canvas-wrapper");
+    const anchor = getZoomAnchor(wrapper, options.anchorEvent);
     zoomMode = "manual";
     stateZoom = clampZoom(val);
-    applyZoom({ ...options, preserveViewport: true });
+    applyZoom({ ...options, preserveViewport: false, anchor });
 }
 
 function calculateFitZoom() {
@@ -234,10 +249,8 @@ function centerSlide() {
     // after zoom changes or slide transitions.
     requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-            const engineLeft = parseFloat(engine.style.left) || 0;
-            const engineTop = parseFloat(engine.style.top) || 0;
-            const targetLeft = engineLeft + engine.offsetWidth / 2 - wrapper.clientWidth / 2;
-            const targetTop = engineTop + engine.offsetHeight / 2 - wrapper.clientHeight / 2;
+            const targetLeft = engine.offsetWidth / 2 - wrapper.clientWidth / 2;
+            const targetTop = engine.offsetHeight / 2 - wrapper.clientHeight / 2;
             wrapper.scrollTo({
                 left: Math.max(0, targetLeft),
                 top: Math.max(0, targetTop),
@@ -254,9 +267,11 @@ function suspendEditorZoom() {
         ["width", "height", "left", "top", "margin-left", "margin-top", "margin-right", "margin-bottom", "transform"].forEach(prop =>
             engine.style.removeProperty(prop),
         );
+        delete engine.dataset.zoomPadX;
+        delete engine.dataset.zoomPadY;
     }
     if (revealEl) {
-        ["width", "height", "transform", "transform-origin", "max-width", "max-height"].forEach(prop =>
+        ["width", "height", "position", "left", "top", "transform", "transform-origin", "max-width", "max-height"].forEach(prop =>
             revealEl.style.removeProperty(prop),
         );
     }

@@ -324,6 +324,7 @@ function updateEntryGate() {
     if (!hero) return;
     const dismissed = sessionStorage.getItem(ENTRY_GATE_DISMISSED_KEY) === "true";
     const shouldShow = !currentAuthUser && !dismissed;
+    document.body.classList.remove("entry-gate-pending");
     document.body.classList.toggle("entry-gate-active", shouldShow);
     hero.setAttribute("aria-hidden", shouldShow ? "false" : "true");
 }
@@ -614,6 +615,14 @@ function normalizeStateIds() {
                         }
                     : fallbackType === "shape"
                       ? {
+                            arrowHeadSize:
+                                typeof safeEl.shapeType === "string" && safeEl.shapeType.startsWith("arrow-")
+                                    ? Math.max(12, Math.min(80, Number(safeEl.arrowHeadSize) || 38))
+                                    : safeEl.arrowHeadSize,
+                            arrowShaftSize:
+                                typeof safeEl.shapeType === "string" && safeEl.shapeType.startsWith("arrow-")
+                                    ? Math.max(12, Math.min(90, Number(safeEl.arrowShaftSize) || 36))
+                                    : safeEl.arrowShaftSize,
                             themeManaged: safeEl.themeManaged ?? true,
                         }
                       : fallbackType === "connector"
