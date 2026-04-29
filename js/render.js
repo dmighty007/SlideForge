@@ -334,6 +334,11 @@ function createSlideBackgroundNode(background, { forPreview = false } = {}) {
     if (!normalized) return null;
     const wrapper = document.createElement("div");
     wrapper.className = "slide-background-media";
+    wrapper.style.opacity = String(normalized.opacity ?? 1);
+    wrapper.style.filter = `blur(${normalized.blur || 0}px) brightness(${normalized.brightness || 100}%) saturate(${normalized.saturate || 100}%)`;
+    if (normalized.blur) {
+        wrapper.style.transform = `scale(${1 + Math.min(40, normalized.blur) / 120})`;
+    }
     if (normalized.type === "video") {
         const video = document.createElement("video");
         video.className = "slide-background-video";
@@ -1032,6 +1037,7 @@ function _getTableCellDisplayStyles(tableData, rowIndex, colIndex, cellStyles = 
 
 function _renderTableDom(container, elData, { interactive = true } = {}) {
     const tableData = normalizeTableData(elData.tableData);
+    elData.tableData = tableData;
     container.innerHTML = "";
 
     const shell = document.createElement("div");
@@ -1044,16 +1050,31 @@ function _renderTableDom(container, elData, { interactive = true } = {}) {
     table.style.width = "100%";
     table.style.height = "100%";
     table.style.tableLayout = "fixed";
+    const colgroup = document.createElement("colgroup");
+    tableData.colWidths.forEach(width => {
+        const col = document.createElement("col");
+        col.style.width = `${Math.max(36, Number(width) || 140)}px`;
+        colgroup.appendChild(col);
+    });
+    table.appendChild(colgroup);
 
     const tbody = document.createElement("tbody");
     for (let rowIndex = 0; rowIndex < tableData.rows; rowIndex += 1) {
         const tr = document.createElement("tr");
+        tr.style.height = `${Math.max(24, Number(tableData.rowHeights[rowIndex]) || 44)}px`;
         for (let colIndex = 0; colIndex < tableData.cols; colIndex += 1) {
             const cellData = tableData.cells[rowIndex]?.[colIndex] || { text: "", styles: {} };
             const cell = document.createElement(rowIndex === 0 && tableData.headerRow ? "th" : "td");
             cell.className = "table-element-cell";
             cell.dataset.row = String(rowIndex);
             cell.dataset.col = String(colIndex);
+            const selection = tableData.selection;
+            const isSelectedCell = selection?.type === "cell" && selection.row === rowIndex && selection.col === colIndex;
+            const isSelectedRow = selection?.type === "row" && selection.row === rowIndex;
+            const isSelectedCol = selection?.type === "col" && selection.col === colIndex;
+            cell.classList.toggle("is-active", isSelectedCell);
+            cell.classList.toggle("is-row-selected", isSelectedRow);
+            cell.classList.toggle("is-col-selected", isSelectedCol);
             const cellStyles = _getTableCellDisplayStyles(tableData, rowIndex, colIndex, cellData.styles || {});
             cell.style.border = `${tableData.borderWidth}px solid ${tableData.borderColor}`;
             cell.style.padding = `${tableData.cellPadding}px`;
@@ -1069,9 +1090,7 @@ function _renderTableDom(container, elData, { interactive = true } = {}) {
                 cell.addEventListener("click", e => {
                     if (document.body.classList.contains("play-mode-active")) return;
                     e.stopPropagation();
-                    selectElement(elData.id, "replace");
-                    container.querySelectorAll(".table-element-cell.is-active").forEach(node => node.classList.remove("is-active"));
-                    cell.classList.add("is-active");
+                    setSelectedTablePart?.(elData.id, { type: "cell", row: rowIndex, col: colIndex });
                 });
                 cell.addEventListener("dblclick", e => {
                     if (document.body.classList.contains("play-mode-active")) return;
@@ -1129,6 +1148,128 @@ function _renderTableDom(container, elData, { interactive = true } = {}) {
     scroll.appendChild(table);
     shell.appendChild(scroll);
     container.appendChild(shell);
+    if (interactive) {
+        requestAnimationFrame(() => _renderTableSelectionControls(shell, table, elData));
+    }
+}
+
+function _renderTableSelectionControls(shell, table, elData) {
+    if (!shell || !table || !elData) return;
+    shell.querySelector(".table-selection-layer")?.remove();
+    const tableData = normalizeTableData(elData.tableData);
+    const layer = document.createElement("div");
+    layer.className = "table-selection-layer";
+    const shellRect = shell.getBoundingClientRect();
+    const rows = Array.from(table.querySelectorAll("tbody tr"));
+    const firstRowCells = Array.from(table.querySelectorAll("tbody tr:first-child > th, tbody tr:first-child > td"));
+
+    firstRowCells.forEach((cell, colIndex) => {
+        const rect = cell.getBoundingClientRect();
+        const left = rect.left - shellRect.left;
+        const width = rect.width;
+        const selector = document.createElement("button");
+        selector.className = "table-col-selector";
+        selector.style.left = `${left}px`;
+        selector.style.width = `${width}px`;
+        selector.title = `Select column ${colIndex + 1}`;
+        selector.addEventListener("mousedown", event => event.stopPropagation());
+        selector.addEventListener("click", event => {
+            event.stopPropagation();
+            setSelectedTablePart?.(elData.id, { type: "col", col: colIndex });
+        });
+        layer.appendChild(selector);
+
+        if (colIndex < firstRowCells.length - 1) {
+            const resizer = document.createElement("div");
+            resizer.className = "table-col-resizer";
+            resizer.style.left = `${left + width}px`;
+            resizer.title = "Resize column";
+            _bindTableResizeHandle(resizer, "col", colIndex, table, elData);
+            layer.appendChild(resizer);
+        }
+    });
+
+    rows.forEach((row, rowIndex) => {
+        const rect = row.getBoundingClientRect();
+        const top = rect.top - shellRect.top;
+        const height = rect.height;
+        const selector = document.createElement("button");
+        selector.className = "table-row-selector";
+        selector.style.top = `${top}px`;
+        selector.style.height = `${height}px`;
+        selector.title = `Select row ${rowIndex + 1}`;
+        selector.addEventListener("mousedown", event => event.stopPropagation());
+        selector.addEventListener("click", event => {
+            event.stopPropagation();
+            setSelectedTablePart?.(elData.id, { type: "row", row: rowIndex });
+        });
+        layer.appendChild(selector);
+
+        if (rowIndex < rows.length - 1) {
+            const resizer = document.createElement("div");
+            resizer.className = "table-row-resizer";
+            resizer.style.top = `${top + height}px`;
+            resizer.title = "Resize row";
+            _bindTableResizeHandle(resizer, "row", rowIndex, table, elData);
+            layer.appendChild(resizer);
+        }
+    });
+
+    shell.appendChild(layer);
+}
+
+function _bindTableResizeHandle(handle, axis, index, table, elData) {
+    handle.addEventListener("mousedown", event => {
+        if (document.body.classList.contains("play-mode-active")) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const tableData = normalizeTableData(elData.tableData);
+        const start = axis === "col" ? event.clientX : event.clientY;
+        const initial = axis === "col" ? tableData.colWidths[index] : tableData.rowHeights[index];
+        const host = table.closest(".canvas-element");
+        host?.classList.add("editing-table");
+        if (host) {
+            interact(host).draggable(false);
+            interact(host).resizable(false);
+        }
+
+        const onMove = moveEvent => {
+            const delta = (axis === "col" ? moveEvent.clientX : moveEvent.clientY) - start;
+            const next = Math.max(axis === "col" ? 36 : 24, Math.round(initial + delta));
+            if (axis === "col") {
+                table.querySelectorAll("col")[index].style.width = `${next}px`;
+            } else {
+                table.querySelectorAll("tbody tr")[index].style.height = `${next}px`;
+            }
+        };
+        const onUp = upEvent => {
+            window.removeEventListener("mousemove", onMove);
+            window.removeEventListener("mouseup", onUp);
+            const delta = (axis === "col" ? upEvent.clientX : upEvent.clientY) - start;
+            const next = Math.max(axis === "col" ? 36 : 24, Math.round(initial + delta));
+            saveStateToUndo();
+            const nextTableData = normalizeTableData(elData.tableData);
+            if (axis === "col") {
+                nextTableData.colWidths[index] = next;
+                nextTableData.selection = { type: "col", col: index };
+            } else {
+                nextTableData.rowHeights[index] = next;
+                nextTableData.selection = { type: "row", row: index };
+            }
+            updateElementState(elData.id, { tableData: nextTableData });
+            elData.tableData = nextTableData;
+            host?.classList.remove("editing-table");
+            if (host) {
+                interact(host).draggable(true);
+                interact(host).resizable(true);
+            }
+            renderSlidesFromState?.();
+            buildPropertiesPanel?.();
+            refreshPreviews?.();
+        };
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+    });
 }
 
 function _renderChartDom(container, elData) {

@@ -20,9 +20,15 @@ function _t(theme) {
 }
 
 function _presetMeta(theme) {
-    const fg = String(theme.defaultTextColor || "").toLowerCase();
-    const darkText = new Set(["#172033", "#10233b", "#2f261d", "#171717", "#1c1917", "#2c2417"]);
-    const isLightCanvas = darkText.has(fg);
+    const fg = String(theme.defaultTextColor || "").trim();
+    const hex = fg.match(/^#([0-9a-f]{6})$/i)?.[1];
+    const luminance = hex
+        ? [0, 2, 4]
+              .map(i => parseInt(hex.slice(i, i + 2), 16) / 255)
+              .map(v => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)))
+              .reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0)
+        : 0.2;
+    const isLightCanvas = luminance < 0.45;
     return {
         isLightCanvas,
         wash: isLightCanvas ? "rgba(255,255,255,0.68)" : "rgba(255,255,255,0.06)",
@@ -30,6 +36,89 @@ function _presetMeta(theme) {
         line: isLightCanvas ? "rgba(15,23,42,0.08)" : "rgba(255,255,255,0.12)",
         ghost: isLightCanvas ? "0.08" : "0.16",
     };
+}
+
+function _hexToRgb(hex) {
+    const raw = String(hex || "").trim().match(/^#([0-9a-f]{6})$/i)?.[1];
+    if (!raw) return null;
+    return {
+        r: parseInt(raw.slice(0, 2), 16),
+        g: parseInt(raw.slice(2, 4), 16),
+        b: parseInt(raw.slice(4, 6), 16),
+    };
+}
+
+function _alpha(hex, opacity) {
+    const rgb = _hexToRgb(hex);
+    if (!rgb) return hex;
+    return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity})`;
+}
+
+function _contentPresetStyle(theme) {
+    const { a, a2, fg } = _t(theme);
+    const meta = _presetMeta(theme);
+    const themeId = Object.entries(PRESENTATION_THEMES || {}).find(([, candidate]) => candidate === theme)?.[0] || "";
+    const isDark = !meta.isLightCanvas;
+    const base = {
+        themeId,
+        isDark,
+        header: isDark ? "rgba(255,255,255,0.045)" : theme.surfaceColor,
+        panel: isDark ? "rgba(255,255,255,0.075)" : "rgba(255,255,255,0.78)",
+        panelBorder: isDark ? _alpha(a, 0.34) : _alpha(a, 0.18),
+        titleSize: isDark ? "44px" : "40px",
+        eyebrowBg: isDark ? _alpha(a, 0.13) : _alpha(a, 0.10),
+        shadow: isDark ? "0 16px 42px rgba(0,0,0,0.28)" : "0 18px 42px rgba(31,41,55,0.08)",
+        topRuleOpacity: isDark ? 0.92 : 0.86,
+        accentWash: _alpha(a2, isDark ? 0.16 : 0.10),
+        bulletSize: isDark ? "23px" : "22px",
+    };
+    const overrides = {
+        afterglow: {
+            titleSize: "48px",
+            header: "rgba(245,247,255,0.052)",
+            panel: "rgba(245,247,255,0.082)",
+            panelBorder: _alpha(a, 0.42),
+            accentWash: "rgba(110,134,255,0.18)",
+        },
+        circuit: {
+            titleSize: "46px",
+            header: "rgba(99,230,216,0.055)",
+            panel: "rgba(236,247,245,0.065)",
+            panelBorder: _alpha(a, 0.44),
+            accentWash: "rgba(31,182,166,0.18)",
+        },
+        chalkboard: {
+            titleSize: "46px",
+            header: "rgba(248,243,231,0.050)",
+            panel: "rgba(248,243,231,0.070)",
+            panelBorder: "rgba(245,215,110,0.36)",
+            accentWash: "rgba(142,209,199,0.16)",
+        },
+        horizon: {
+            titleSize: "48px",
+            header: "rgba(238,244,255,0.050)",
+            panel: "rgba(238,244,255,0.075)",
+            panelBorder: "rgba(125,211,252,0.40)",
+            accentWash: "rgba(79,124,255,0.18)",
+        },
+        graphite: {
+            titleSize: "46px",
+            panelBorder: "rgba(34,211,238,0.38)",
+            accentWash: "rgba(56,189,248,0.15)",
+        },
+        midnightGarden: {
+            titleSize: "46px",
+            panelBorder: "rgba(154,230,180,0.36)",
+            accentWash: "rgba(95,175,121,0.18)",
+        },
+        retroPop: {
+            titleSize: "54px",
+            panelBorder: "rgba(239,71,111,0.28)",
+            shadow: "0 18px 0 rgba(239,71,111,0.12)",
+            topRuleOpacity: 1,
+        },
+    };
+    return { ...base, ...(overrides[themeId] || {}) };
 }
 
 function _bar(x, y, w, h, color, opacity, radius) {
@@ -88,6 +177,18 @@ function _box(x, y, w, h, color, border, radius) {
             ...(radius ? { borderRadius: radius } : {}),
             zIndex: 1
         }
+    };
+}
+
+function _table(x, y, w, h, tableData, styles = {}) {
+    return {
+        type: "table",
+        x,
+        y,
+        width: `${w}px`,
+        height: `${h}px`,
+        tableData,
+        styles: { zIndex: 2, ...styles },
     };
 }
 
@@ -164,30 +265,40 @@ const SLIDE_PRESETS = {
         icon: 'fa-solid fa-align-left',
         color: 'text-blue-400',
         build(theme) {
-            const { a, fg, mu, sf, hf, bf } = _t(theme);
-            const { card } = _presetMeta(theme);
+            const { a, a2, fg, mu, sf, hf, bf } = _t(theme);
+            const mood = _contentPresetStyle(theme);
             return [
-                _box(0, 0, 1024, 96, sf, undefined, undefined),
-                _bar(54, 20, 5, 56, a, undefined, '3px'),
-                _text(76, 4, 240, 'Argument / Evidence', {
-                    color: a, fontSize: '11px', fontFamily: bf, fontWeight: '700', letterSpacing: '0.16em'
+                _box(0, 0, 1024, 108, mood.header, undefined, undefined),
+                _bar(0, 0, 1024, 6, a, mood.topRuleOpacity, undefined),
+                _bar(54, 24, 6, 62, a, undefined, '999px'),
+                _box(76, 18, 236, 28, mood.eyebrowBg, `1px solid ${mood.panelBorder}`, '999px'),
+                _text(92, 24, 220, 'Argument / Evidence', {
+                    color: a, fontSize: '11px', fontFamily: bf, fontWeight: '800', letterSpacing: '0.18em'
                 }),
-                _text(76, 22, 880, 'Slide Title', {
-                    color: fg, fontSize: '38px', fontFamily: hf, fontWeight: '700'
+                _text(76, 44, 850, 'Slide Title', {
+                    color: fg, fontSize: mood.titleSize, fontFamily: hf, fontWeight: '800', lineHeight: '1.05',
+                    ...(mood.isDark ? { textShadow: '0 3px 18px rgba(0,0,0,0.42)' } : {})
                 }),
-                _text(54, 116, 916, 'One clear assertion that summarises the content on this slide', {
-                    color: mu, fontSize: '18px', fontFamily: bf,
-                    fontWeight: '400', lineHeight: '1.4'
+                _text(54, 126, 916, 'One clear assertion that summarises the content on this slide', {
+                    color: mu, fontSize: '19px', fontFamily: bf,
+                    fontWeight: '500', lineHeight: '1.4'
                 }),
-                _box(38, 144, 948, 440, card, `1px solid ${a}18`, '18px'),
-                _bullets(54, 160, 916, [
+                _box(38, 158, 948, 428, mood.panel, `1px solid ${mood.panelBorder}`, '22px'),
+                _bar(38, 158, 7, 428, a, undefined, '22px 0 0 22px'),
+                _box(772, 186, 158, 158, mood.accentWash, undefined, '28px'),
+                _bar(798, 236, 106, 7, a2, 0.72, '999px'),
+                _bar(798, 264, 74, 7, a, 0.72, '999px'),
+                _bullets(68, 184, 680, [
                     { text: 'First key point — keep each bullet to one idea', level: 0 },
                     { text: 'Supporting evidence or sub-detail', level: 1 },
                     { text: 'Second key point with data or reference', level: 0 },
                     { text: 'Third point — concrete and actionable', level: 0 },
                     { text: 'Optional fourth point', level: 0 },
                 ], {
-                    color: fg, fontSize: '22px', fontFamily: bf, lineHeight: '1.6'
+                    color: fg, fontSize: mood.bulletSize, fontFamily: bf, lineHeight: '1.62'
+                }),
+                _text(790, 384, 140, 'Signal', {
+                    color: a, fontSize: '18px', fontFamily: hf, fontWeight: '800', textAlign: 'center'
                 }),
             ];
         }
@@ -489,6 +600,229 @@ const SLIDE_PRESETS = {
                 _text(674, 410, 100, 'Launch', { color: fg, fontSize: '14px', fontWeight: '600', textAlign: 'center' }),
             ];
         }
+    },
+
+    'agenda': {
+        name: 'Agenda',
+        icon: 'fa-solid fa-list-check',
+        color: 'text-sky-400',
+        build(theme) {
+            const { a, a2, fg, mu, sf, hf, bf } = _t(theme);
+            const { card } = _presetMeta(theme);
+            const items = ['Context', 'Approach', 'Evidence', 'Decision'];
+            const els = [
+                _kicker(64, 62, 180, 'Today', theme),
+                _text(64, 100, 540, 'Agenda', { color: fg, fontSize: '54px', fontFamily: hf, fontWeight: '700' }),
+                _text(64, 170, 640, 'A clear path through the conversation.', { color: mu, fontSize: '20px', fontFamily: bf, lineHeight: '1.4' }),
+            ];
+            items.forEach((item, i) => {
+                const y = 260 + i * 92;
+                els.push(_box(64, y, 780, 66, card, `1px solid ${a}20`, '16px'));
+                els.push(_text(88, y + 14, 62, `0${i + 1}`, { color: a, fontSize: '26px', fontFamily: hf, fontWeight: '800' }));
+                els.push(_text(164, y + 17, 520, item, { color: fg, fontSize: '24px', fontFamily: bf, fontWeight: '700' }));
+                els.push(_bar(760, y + 28, 58, 4, i % 2 ? a2 : a, undefined, '999px'));
+            });
+            return els;
+        }
+    },
+
+    'big-number': {
+        name: 'Big Number',
+        icon: 'fa-solid fa-hashtag',
+        color: 'text-fuchsia-400',
+        build(theme) {
+            const { a, a2, fg, mu, sf, hf, bf } = _t(theme);
+            const { wash, card } = _presetMeta(theme);
+            return [
+                _box(52, 74, 920, 620, wash, `1px solid ${a}18`, '28px'),
+                _text(82, 98, 350, 'Impact metric', { color: a, fontSize: '13px', fontFamily: bf, fontWeight: '800', letterSpacing: '0.18em' }),
+                _text(82, 150, 620, '87%', { color: fg, fontSize: '150px', fontFamily: hf, fontWeight: '800', lineHeight: '0.95' }),
+                _bar(90, 320, 350, 9, a, undefined, '999px'),
+                _bar(90, 320, 250, 9, a2, undefined, '999px'),
+                _text(82, 364, 480, 'Reduction in processing time after introducing the new workflow.', { color: fg, fontSize: '28px', fontFamily: hf, fontWeight: '700', lineHeight: '1.18' }),
+                _box(640, 156, 250, 318, card, `1px solid ${a}22`, '20px'),
+                _text(666, 188, 204, 'Why it matters', { color: a, fontSize: '20px', fontFamily: hf, fontWeight: '700' }),
+                _text(666, 238, 204, 'Use this slide for a single statistic, KPI, or headline result that deserves room to breathe.', { color: mu, fontSize: '17px', fontFamily: bf, lineHeight: '1.5' }),
+            ];
+        }
+    },
+
+    'cards-grid': {
+        name: 'Cards Grid',
+        icon: 'fa-solid fa-grip',
+        color: 'text-violet-400',
+        build(theme) {
+            const { a, a2, fg, mu, sf, hf, bf } = _t(theme);
+            const { card } = _presetMeta(theme);
+            const cards = ['Discover', 'Design', 'Build', 'Measure', 'Learn', 'Scale'];
+            const els = [
+                _text(58, 44, 700, 'Six-Part Framework', { color: fg, fontSize: '42px', fontFamily: hf, fontWeight: '700' }),
+                _text(60, 100, 760, 'Use compact cards for themes, capabilities, pillars, or grouped recommendations.', { color: mu, fontSize: '17px', fontFamily: bf }),
+            ];
+            cards.forEach((label, i) => {
+                const col = i % 3;
+                const row = Math.floor(i / 3);
+                const x = 58 + col * 314;
+                const y = 164 + row * 214;
+                els.push(_box(x, y, 280, 168, card, `1px solid ${i % 2 ? a2 : a}24`, '18px'));
+                els.push(_text(x + 20, y + 18, 60, `0${i + 1}`, { color: i % 2 ? a2 : a, fontSize: '26px', fontFamily: hf, fontWeight: '800' }));
+                els.push(_text(x + 20, y + 68, 230, label, { color: fg, fontSize: '24px', fontFamily: hf, fontWeight: '700' }));
+                els.push(_text(x + 20, y + 106, 230, 'Short supporting description or evidence point.', { color: mu, fontSize: '14px', fontFamily: bf, lineHeight: '1.35' }));
+            });
+            return els;
+        }
+    },
+
+    'problem-solution': {
+        name: 'Problem / Solution',
+        icon: 'fa-solid fa-scale-balanced',
+        color: 'text-amber-400',
+        build(theme) {
+            const { a, a2, fg, mu, sf, hf, bf } = _t(theme);
+            const { card } = _presetMeta(theme);
+            return [
+                _text(58, 44, 820, 'From Friction to Flow', { color: fg, fontSize: '42px', fontFamily: hf, fontWeight: '700' }),
+                _box(58, 136, 420, 464, card, `1px solid ${a}25`, '22px'),
+                _box(546, 136, 420, 464, card, `1px solid ${a2}25`, '22px'),
+                _text(86, 166, 340, 'Problem', { color: a, fontSize: '30px', fontFamily: hf, fontWeight: '800' }),
+                _text(574, 166, 340, 'Solution', { color: a2, fontSize: '30px', fontFamily: hf, fontWeight: '800' }),
+                _bullets(86, 230, 340, [
+                    { text: 'Fragmented workflow', level: 0 },
+                    { text: 'Slow decisions', level: 0 },
+                    { text: 'Limited visibility', level: 0 },
+                ], { color: fg, fontSize: '20px', fontFamily: bf, lineHeight: '1.7' }),
+                _bullets(574, 230, 340, [
+                    { text: 'Unified workspace', level: 0 },
+                    { text: 'Clear ownership', level: 0 },
+                    { text: 'Live performance view', level: 0 },
+                ], { color: fg, fontSize: '20px', fontFamily: bf, lineHeight: '1.7' }),
+                _bar(492, 350, 40, 4, a, undefined, '999px'),
+            ];
+        }
+    },
+
+    'image-grid': {
+        name: 'Image Grid',
+        icon: 'fa-regular fa-images',
+        color: 'text-purple-400',
+        build(theme) {
+            const { a, fg, mu, sf, hf, bf } = _t(theme);
+            const { card } = _presetMeta(theme);
+            const els = [
+                _text(58, 42, 640, 'Visual Evidence', { color: fg, fontSize: '42px', fontFamily: hf, fontWeight: '700' }),
+                _text(60, 96, 720, 'Use this layout for samples, screenshots, comparative images, or mood boards.', { color: mu, fontSize: '17px', fontFamily: bf }),
+            ];
+            [[58, 150, 430, 230], [516, 150, 220, 230], [764, 150, 200, 230], [58, 408, 270, 210], [356, 408, 300, 210], [684, 408, 280, 210]].forEach((r, i) => {
+                els.push(_box(r[0], r[1], r[2], r[3], card, `1px dashed ${a}`, '18px'));
+                els.push(_text(r[0], r[1] + r[3] / 2 - 10, r[2], `Image ${i + 1}`, { color: mu, fontSize: '15px', fontFamily: bf, textAlign: 'center' }));
+            });
+            return els;
+        }
+    },
+
+    'dashboard': {
+        name: 'Dashboard',
+        icon: 'fa-solid fa-gauge-high',
+        color: 'text-cyan-400',
+        build(theme) {
+            const { a, a2, fg, mu, sf, hf, bf } = _t(theme);
+            const { card } = _presetMeta(theme);
+            const metrics = [['Revenue', '$2.4M'], ['Growth', '+18%'], ['Retention', '94%']];
+            const els = [
+                _text(58, 38, 640, 'Executive Snapshot', { color: fg, fontSize: '40px', fontFamily: hf, fontWeight: '700' }),
+                _text(60, 90, 680, 'A compact operating view for weekly updates or leadership reviews.', { color: mu, fontSize: '16px', fontFamily: bf }),
+            ];
+            metrics.forEach((m, i) => {
+                const x = 58 + i * 306;
+                els.push(_box(x, 136, 270, 128, card, `1px solid ${a}22`, '18px'));
+                els.push(_text(x + 20, 158, 220, m[0], { color: mu, fontSize: '14px', fontFamily: bf, fontWeight: '700' }));
+                els.push(_text(x + 20, 190, 220, m[1], { color: i === 1 ? a2 : a, fontSize: '42px', fontFamily: hf, fontWeight: '800' }));
+            });
+            els.push(_box(58, 304, 574, 310, card, `1px dashed ${a}`, '20px'));
+            els.push(_text(58, 442, 574, 'Chart Area', { color: mu, fontSize: '18px', fontFamily: bf, textAlign: 'center' }));
+            els.push(_box(662, 304, 300, 310, sf, `1px solid ${a}24`, '20px'));
+            els.push(_text(690, 332, 240, 'Notes', { color: fg, fontSize: '24px', fontFamily: hf, fontWeight: '700' }));
+            els.push(_bullets(690, 382, 236, [
+                { text: 'Momentum remains positive', level: 0 },
+                { text: 'Watch onboarding time', level: 0 },
+                { text: 'Next review in two weeks', level: 0 },
+            ], { color: fg, fontSize: '16px', fontFamily: bf, lineHeight: '1.5' }));
+            return els;
+        }
+    },
+
+    'swot': {
+        name: 'SWOT',
+        icon: 'fa-solid fa-border-all',
+        color: 'text-lime-400',
+        build(theme) {
+            const { a, a2, fg, mu, sf, hf, bf } = _t(theme);
+            const { card } = _presetMeta(theme);
+            const labels = [['S', 'Strengths'], ['W', 'Weaknesses'], ['O', 'Opportunities'], ['T', 'Threats']];
+            const els = [_text(58, 38, 700, 'SWOT Analysis', { color: fg, fontSize: '42px', fontFamily: hf, fontWeight: '700' })];
+            labels.forEach((item, i) => {
+                const x = 58 + (i % 2) * 462;
+                const y = 130 + Math.floor(i / 2) * 240;
+                els.push(_box(x, y, 420, 196, card, `1px solid ${(i % 2 ? a2 : a)}24`, '18px'));
+                els.push(_text(x + 22, y + 20, 56, item[0], { color: i % 2 ? a2 : a, fontSize: '44px', fontFamily: hf, fontWeight: '800' }));
+                els.push(_text(x + 92, y + 28, 280, item[1], { color: fg, fontSize: '24px', fontFamily: hf, fontWeight: '700' }));
+                els.push(_text(x + 92, y + 72, 280, 'Key observation or evidence point goes here.', { color: mu, fontSize: '15px', fontFamily: bf, lineHeight: '1.4' }));
+            });
+            return els;
+        }
+    },
+
+    'comparison-table': {
+        name: 'Comparison Table',
+        icon: 'fa-solid fa-table',
+        color: 'text-emerald-400',
+        build(theme) {
+            const { a, fg, mu, sf, hf, bf } = _t(theme);
+            return [
+                _text(58, 42, 720, 'Option Comparison', { color: fg, fontSize: '42px', fontFamily: hf, fontWeight: '700' }),
+                _text(60, 96, 720, 'Compare alternatives against decision criteria.', { color: mu, fontSize: '17px', fontFamily: bf }),
+                _table(58, 160, 888, 390, {
+                    rows: 5,
+                    cols: 4,
+                    headerRow: true,
+                    zebra: true,
+                    borderColor: a,
+                    borderWidth: 1,
+                    cellPadding: 10,
+                    rowHeights: [52, 70, 70, 70, 70],
+                    colWidths: [220, 220, 220, 220],
+                    headerFill: a,
+                    bodyFill: sf,
+                    altFill: `${a}12`,
+                    textColor: fg,
+                    headerTextColor: '#ffffff',
+                    cells: [
+                        [{ text: 'Criteria' }, { text: 'Option A' }, { text: 'Option B' }, { text: 'Option C' }],
+                        [{ text: 'Cost' }, { text: 'Low' }, { text: 'Medium' }, { text: 'High' }],
+                        [{ text: 'Speed' }, { text: 'Fast' }, { text: 'Medium' }, { text: 'Slow' }],
+                        [{ text: 'Risk' }, { text: 'Medium' }, { text: 'Low' }, { text: 'Low' }],
+                        [{ text: 'Fit' }, { text: 'Strong' }, { text: 'Good' }, { text: 'Selective' }],
+                    ],
+                }),
+            ];
+        }
+    },
+
+    'thank-you': {
+        name: 'Thank You',
+        icon: 'fa-regular fa-heart',
+        color: 'text-pink-400',
+        build(theme) {
+            const { a, a2, fg, mu, hf, bf } = _t(theme);
+            const { wash } = _presetMeta(theme);
+            return [
+                _box(112, 154, 800, 420, wash, `1px solid ${a}18`, '34px'),
+                _text(150, 226, 724, 'Thank You', { color: fg, fontSize: '82px', fontFamily: hf, fontWeight: '800', textAlign: 'center' }),
+                _bar(412, 334, 200, 4, a, undefined, '999px'),
+                _text(190, 376, 644, 'Questions, discussion, and next steps', { color: mu, fontSize: '24px', fontFamily: bf, textAlign: 'center' }),
+                _text(190, 452, 644, 'name@company.com · slideforge.ai', { color: a2, fontSize: '16px', fontFamily: bf, fontWeight: '700', textAlign: 'center' }),
+            ];
+        }
     }
 };
 
@@ -564,3 +898,19 @@ window.insertPresetSlide = insertPresetSlide;
 window.applyPresetLayoutToCurrentSlide = applyPresetLayoutToCurrentSlide;
 window.buildPresetSlideState = buildPresetSlideState;
 window.SLIDE_PRESETS = SLIDE_PRESETS;
+
+function renderPresetSlidePalette() {
+    const container = document.getElementById('preset-slides-list');
+    if (!container) return;
+    container.innerHTML = Object.entries(SLIDE_PRESETS)
+        .map(([id, preset]) => `
+            <button onclick="insertPresetSlide('${id}')" class="element-btn-sm" title="${preset.name}">
+                <i class="${preset.icon} ${preset.color}"></i>
+                <span class="text-[9px]">${preset.name.length > 12 ? preset.name.slice(0, 11) + '…' : preset.name}</span>
+            </button>
+        `)
+        .join('');
+}
+
+window.renderPresetSlidePalette = renderPresetSlidePalette;
+renderPresetSlidePalette();

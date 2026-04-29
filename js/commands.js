@@ -216,7 +216,12 @@ function aiCleanUpSlide() {
     const slide = state.slides[activeIndex];
     const elements = slide?.elements || [];
     const targetIds = state.selectedIds?.length ? new Set(state.selectedIds) : null;
-    const targetElements = targetIds ? elements.filter(el => targetIds.has(el.id)) : elements;
+    const targetElements = (targetIds ? elements.filter(el => targetIds.has(el.id)) : elements).filter(el => {
+        if (!el || el.type === "connector") return false;
+        const w = parseFloat(el.width) || 0;
+        const h = parseFloat(el.height) || 0;
+        return w > 0 && h > 0;
+    });
     if (!targetElements.length) {
         if (typeof setProjectSaveHint === "function") {
             setProjectSaveHint("Nothing to clean up", "muted");
@@ -229,36 +234,121 @@ function aiCleanUpSlide() {
     const slideH = Number(slideConfig.height) || 768;
     const centerX = slideW / 2;
     const centerY = slideH / 2;
-    const snapThreshold = 36;
+    const snapThreshold = 28;
     const grid = 10;
+    const edgeMargin = Math.round(Math.max(36, Math.min(slideW, slideH) * 0.05) / grid) * grid;
+    const gap = 16;
     let changedCount = 0;
+    const before = new Map(targetElements.map(el => [el.id, JSON.stringify({
+        x: el.x,
+        y: el.y,
+        width: el.width,
+        height: el.height,
+    })]));
 
     saveStateToUndo();
 
+    const snap = value => Math.round((Number(value) || 0) / grid) * grid;
+    const clamp = (value, min, max) => Math.max(min, Math.min(value, max));
+    const median = values => {
+        const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
+        if (!sorted.length) return 0;
+        return sorted[Math.floor(sorted.length / 2)];
+    };
+    const numericBounds = el => ({
+        x: Number(el.x) || 0,
+        y: Number(el.y) || 0,
+        w: Math.max(1, parseFloat(el.width) || 1),
+        h: Math.max(1, parseFloat(el.height) || 1),
+    });
+
     targetElements.forEach(el => {
-        const beforeX = Number(el.x) || 0;
-        const beforeY = Number(el.y) || 0;
-        const elW = Math.max(1, parseFloat(el.width) || 1);
-        const elH = Math.max(1, parseFloat(el.height) || 1);
-        let nx = Math.round(beforeX / grid) * grid;
-        let ny = Math.round(beforeY / grid) * grid;
+        const b = numericBounds(el);
+        let nx = snap(b.x);
+        let ny = snap(b.y);
 
-        if (Math.abs((nx + elW / 2) - centerX) < snapThreshold) {
-            nx = Math.round((centerX - elW / 2) / grid) * grid;
+        if (Math.abs((nx + b.w / 2) - centerX) < snapThreshold) {
+            nx = snap(centerX - b.w / 2);
         }
-        if (Math.abs((ny + elH / 2) - centerY) < snapThreshold) {
-            ny = Math.round((centerY - elH / 2) / grid) * grid;
+        if (Math.abs((ny + b.h / 2) - centerY) < snapThreshold) {
+            ny = snap(centerY - b.h / 2);
         }
+        if (Math.abs(nx - edgeMargin) < snapThreshold) nx = edgeMargin;
+        if (Math.abs(ny - edgeMargin) < snapThreshold) ny = edgeMargin;
+        if (Math.abs(nx + b.w - (slideW - edgeMargin)) < snapThreshold) nx = snap(slideW - edgeMargin - b.w);
+        if (Math.abs(ny + b.h - (slideH - edgeMargin)) < snapThreshold) ny = snap(slideH - edgeMargin - b.h);
 
-        nx = Math.max(0, Math.min(nx, Math.max(0, slideW - elW)));
-        ny = Math.max(0, Math.min(ny, Math.max(0, slideH - elH)));
+        el.x = clamp(nx, 0, Math.max(0, slideW - b.w));
+        el.y = clamp(ny, 0, Math.max(0, slideH - b.h));
+    });
 
-        if (nx !== beforeX || ny !== beforeY) changedCount += 1;
-        el.x = nx;
-        el.y = ny;
+    const alignCluster = (items, key, setter) => {
+        const buckets = [];
+        items.forEach(el => {
+            const b = numericBounds(el);
+            const value = key(b);
+            const bucket = buckets.find(group => Math.abs(group.value - value) <= snapThreshold);
+            if (bucket) {
+                bucket.items.push(el);
+                bucket.values.push(value);
+                bucket.value = median(bucket.values);
+            } else {
+                buckets.push({ value, values: [value], items: [el] });
+            }
+        });
+        buckets.filter(group => group.items.length >= 2).forEach(group => {
+            const target = snap(median(group.values));
+            group.items.forEach(el => setter(el, target));
+        });
+    };
+
+    alignCluster(targetElements, b => b.x, (el, value) => {
+        const b = numericBounds(el);
+        el.x = clamp(value, 0, Math.max(0, slideW - b.w));
+    });
+    alignCluster(targetElements, b => b.x + b.w / 2, (el, value) => {
+        const b = numericBounds(el);
+        el.x = clamp(snap(value - b.w / 2), 0, Math.max(0, slideW - b.w));
+    });
+    alignCluster(targetElements, b => b.y, (el, value) => {
+        const b = numericBounds(el);
+        el.y = clamp(value, 0, Math.max(0, slideH - b.h));
+    });
+
+    const sorted = [...targetElements].sort((a, b) => (Number(a.y) || 0) - (Number(b.y) || 0));
+    for (let i = 1; i < sorted.length; i += 1) {
+        const prev = sorted[i - 1];
+        const current = sorted[i];
+        const pb = numericBounds(prev);
+        const cb = numericBounds(current);
+        const overlapsX = cb.x < pb.x + pb.w - gap && cb.x + cb.w > pb.x + gap;
+        const overlapsY = cb.y < pb.y + pb.h + gap;
+        if (overlapsX && overlapsY && cb.y >= pb.y) {
+            current.y = clamp(snap(pb.y + pb.h + gap), 0, Math.max(0, slideH - cb.h));
+        }
+    }
+
+    targetElements.forEach(el => {
+        if (el.type === "text" && el.autoHeight !== false) {
+            const dom = document.getElementById(el.id);
+            if (dom && typeof syncTextBoxLayout === "function") {
+                const layout = syncTextBoxLayout(dom, el);
+                if (layout?.autoHeight && Number.isFinite(layout.height)) {
+                    el.height = `${layout.height}px`;
+                }
+            }
+        }
+        const after = JSON.stringify({
+            x: el.x,
+            y: el.y,
+            width: el.width,
+            height: el.height,
+        });
+        if (after !== before.get(el.id)) changedCount += 1;
     });
 
     renderSlidesFromState();
+    updateGroupBound?.();
     if (typeof refreshPreviews === "function") refreshPreviews();
     if (typeof buildPropertiesPanel === "function") buildPropertiesPanel();
     if (typeof setProjectSaveHint === "function") {
@@ -1020,6 +1110,21 @@ function setCurrentSlideBackgroundFit(fit) {
     schedulePresentationAutosave?.(150);
 }
 
+function setCurrentSlideBackgroundAdjustments(updates = {}) {
+    const activeIndex = ensureActiveSlideSync();
+    const slide = state.slides[activeIndex];
+    const current = normalizeSlideBackground(slide?.background);
+    if (!slide || !current) return;
+    saveStateToUndo();
+    slide.background = normalizeSlideBackground({
+        ...current,
+        ...updates,
+    });
+    renderSlidesFromState?.();
+    buildPropertiesPanel?.();
+    schedulePresentationAutosave?.(150);
+}
+
 async function setCurrentSlideBackgroundFromFile(file) {
     if (!file) return;
     const isImage = file.type.startsWith("image/");
@@ -1065,6 +1170,10 @@ function setCurrentSlideBackgroundFromUrl(url) {
         content: value,
         mimeType: "",
         fit: normalizeSlideBackground(state.slides?.[ensureActiveSlideSync()]?.background)?.fit || "cover",
+        opacity: normalizeSlideBackground(state.slides?.[ensureActiveSlideSync()]?.background)?.opacity ?? 1,
+        blur: normalizeSlideBackground(state.slides?.[ensureActiveSlideSync()]?.background)?.blur ?? 0,
+        brightness: normalizeSlideBackground(state.slides?.[ensureActiveSlideSync()]?.background)?.brightness ?? 100,
+        saturate: normalizeSlideBackground(state.slides?.[ensureActiveSlideSync()]?.background)?.saturate ?? 100,
     });
 }
 
@@ -1453,6 +1562,131 @@ function _bridgeVisualMeta(theme) {
     };
 }
 
+function _bridgeBuildPresetSlide(presetId, theme, mutator = null) {
+    if (typeof buildPresetSlideState === "function" && SLIDE_PRESETS?.[presetId]) {
+        const slideState = buildPresetSlideState(presetId, theme, {
+            slideId: generateId("slide"),
+            notes: "",
+            background: "",
+        });
+        if (mutator) mutator(slideState.elements || []);
+        return slideState;
+    }
+    return { id: generateId("slide"), layoutId: presetId, elements: [] };
+}
+
+function _bridgeTextPlain(value) {
+    return String(value || "").replace(/<[^>]*>/g, "").trim();
+}
+
+function _bridgeFindText(elements, matcher) {
+    return (elements || []).find(el => el.type === "text" && matcher(_bridgeTextPlain(el.content), el));
+}
+
+function _bridgeSetTextByPlaceholder(elements, placeholder, content) {
+    const el = _bridgeFindText(elements, text => text === placeholder);
+    if (el) el.content = content || "";
+    return el;
+}
+
+function _bridgeSetFirstBulletBlock(elements, content, options = {}) {
+    const el = (elements || []).find(item => item.type === "text" && Array.isArray(item.content));
+    if (!el) return null;
+    el.content = content;
+    if (options.x != null) el.x = options.x;
+    if (options.y != null) el.y = options.y;
+    if (options.width != null) el.width = `${options.width}px`;
+    if (options.fontSize) el.styles.fontSize = options.fontSize;
+    return el;
+}
+
+function _bridgeSlideSummary(slide) {
+    const direct = _bridgeNarrativeSummary(slide?.points, 1);
+    return direct || String(slide?.claim || slide?.goal || "Imported slide content");
+}
+
+function _bridgePresetForContentSlide(slide) {
+    const title = String(slide?.title || "");
+    const metrics = _bridgeSlideMetrics(slide);
+    if (/future|impact|implication|conclusion|summary|takeaway|limit|direction/i.test(title)) return "conclusion";
+    if (slide?.fig_path) return "figure-caption";
+    if (metrics.pointCount >= 4 || metrics.bulletCount >= 7 || metrics.wordCount >= 78) return "two-column";
+    if (/result|finding|data|performance|metric|accuracy|increase|decrease|effect/i.test(title)) return "results-data";
+    return "content-slide";
+}
+
+function _bridgeHydrateContentPreset(slideState, slide, theme) {
+    const elements = slideState.elements || [];
+    const title = String(slide?.title || "Imported Slide");
+    const summary = _bridgeWordClamp(_bridgeSlideSummary(slide), 18);
+    const bullets = _buildBulletContent(slide.points);
+    const presetId = slideState.layoutId;
+
+    if (presetId === "figure-caption") {
+        _bridgeSetTextByPlaceholder(elements, "Results / Figure", title);
+        _bridgeSetTextByPlaceholder(elements, "Key finding stated as a clear assertion — the figure supports this claim", summary);
+        _bridgeSetTextByPlaceholder(elements, "Figure 1. Descriptive caption explaining the figure content.", _bridgeWordClamp(String(slide.fig_cap || ""), 26));
+        _bridgeSetTextByPlaceholder(elements, "Key Insight", "Key Insight");
+        const insight = _bridgeFindText(elements, text => text.startsWith("Explain what this result means"));
+        if (insight) insight.content = _bridgeWordClamp(_bridgeNarrativeSummary(slide.points, 2), 34);
+        const stat = _bridgeFindText(elements, text => text === "p < 0.001");
+        if (stat) stat.content = _bridgeWordClamp((slide.points?.[0]?.heading || "Evidence"), 5);
+        const sig = _bridgeFindText(elements, text => text === "Statistical significance");
+        if (sig) sig.content = "Imported figure";
+        elements.push(
+            _makeImageElement({
+                x: 72,
+                y: 162,
+                width: 564,
+                height: slide.fig_cap ? 382 : 420,
+                content: _normalizeImportedImagePath(slide.fig_path),
+            }),
+        );
+        return;
+    }
+
+    if (presetId === "two-column") {
+        _bridgeSetTextByPlaceholder(elements, "Comparative Analysis", title);
+        const midpoint = Math.ceil(bullets.length / 2);
+        const left = bullets.slice(0, midpoint);
+        const right = bullets.slice(midpoint);
+        const textBlocks = elements.filter(item => item.type === "text" && Array.isArray(item.content));
+        if (textBlocks[0]) textBlocks[0].content = left.length ? left : bullets;
+        if (textBlocks[1]) textBlocks[1].content = right.length ? right : bullets.slice(0, 2);
+        _bridgeSetTextByPlaceholder(elements, "Column A", "Evidence");
+        _bridgeSetTextByPlaceholder(elements, "Column B", "Implication");
+        return;
+    }
+
+    if (presetId === "results-data") {
+        _bridgeSetTextByPlaceholder(elements, "Key Results", title);
+        _bridgeSetTextByPlaceholder(elements, "Main finding stated as a clear assertion — the chart below supports this", summary);
+        _bridgeSetTextByPlaceholder(elements, "Figure 1. Short caption for chart.", _bridgeWordClamp(String(slide.fig_cap || ""), 20));
+        const labels = _bridgePointsAsCards(slide.points, 3);
+        ["p < 0.001", "n = 1,024", "R² = 0.94"].forEach((placeholder, idx) => {
+            const el = _bridgeSetTextByPlaceholder(elements, placeholder, labels[idx]?.heading || placeholder);
+            if (el) el.styles.fontSize = "24px";
+        });
+        ["Statistical Significance", "Sample Size", "Model Fit"].forEach((placeholder, idx) => {
+            _bridgeSetTextByPlaceholder(elements, placeholder, labels[idx]?.body || placeholder);
+        });
+        return;
+    }
+
+    if (presetId === "conclusion") {
+        _bridgeSetTextByPlaceholder(elements, "Conclusions", title);
+        _bridgeSetFirstBulletBlock(elements, bullets);
+        _bridgeSetTextByPlaceholder(elements, "Acknowledgements · Funding · Grant Reference", summary);
+        _bridgeSetTextByPlaceholder(elements, "author@university.edu", "");
+        return;
+    }
+
+    _bridgeSetTextByPlaceholder(elements, "Slide Title", title);
+    _bridgeSetTextByPlaceholder(elements, "One clear assertion that summarises the content on this slide", summary);
+    _bridgeSetTextByPlaceholder(elements, "Signal", _bridgeWordClamp(slide.points?.[0]?.heading || "Takeaway", 3));
+    _bridgeSetFirstBulletBlock(elements, bullets);
+}
+
 function _makeBeamerHeader(theme, sectionTitle) {
     const ui = _bridgeVisualMeta(theme);
     return [
@@ -1491,6 +1725,15 @@ function _makeBeamerFooter(theme, presentationTitle, slideNumber, totalSlides) {
 }
 
 function _createBridgeTitleSlide(data, theme, presentationTitle, slideNumber, totalSlides) {
+    return _bridgeBuildPresetSlide("title-page", theme, elements => {
+        _bridgeSetTextByPlaceholder(elements, "RESEARCH PRESENTATION", data.journal_name || "Imported Presentation");
+        _bridgeSetTextByPlaceholder(elements, "Research Title Goes Here", presentationTitle);
+        _bridgeSetTextByPlaceholder(elements, "Author Name · Co-Author Name", data.authors || "");
+        const metaText = [data.journal_name, data.publish_date, data.doi ? `DOI: ${data.doi}` : ""].filter(Boolean).join(" · ");
+        _bridgeSetTextByPlaceholder(elements, "Department · University · Conference 2025", metaText || data.sub || "AI-generated research presentation");
+        _bridgeSetTextByPlaceholder(elements, "contact@university.edu", "");
+    });
+/*
     const ui = _bridgeVisualMeta(theme);
     const summary = String(data.sub || "AI-generated research presentation");
     const elements = [
@@ -1549,9 +1792,16 @@ function _createBridgeTitleSlide(data, theme, presentationTitle, slideNumber, to
         id: generateId("slide"),
         elements
     };
+*/
 }
 
 function _createBridgeSectionSlide(slide, theme, presentationTitle, slideNumber, totalSlides) {
+    return _bridgeBuildPresetSlide("section-divider", theme, elements => {
+        _bridgeSetTextByPlaceholder(elements, "02", String(Math.max(1, slideNumber - 1)).padStart(2, "0"));
+        _bridgeSetTextByPlaceholder(elements, "Section Title", String(slide.title || "Section"));
+        _bridgeSetTextByPlaceholder(elements, "A brief description of what this section covers", "Imported section from the source document");
+    });
+/*
     const ui = _bridgeVisualMeta(theme);
     return {
         id: generateId("slide"),
@@ -1573,9 +1823,14 @@ function _createBridgeSectionSlide(slide, theme, presentationTitle, slideNumber,
             ..._makeBeamerFooter(theme, presentationTitle, slideNumber, totalSlides)
         ],
     };
+*/
 }
 
 function _createBridgeEvidenceSlide(slide, theme, currentSectionName, presentationTitle, slideNumber, totalSlides) {
+    const slideState = _bridgeBuildPresetSlide("figure-caption", theme);
+    _bridgeHydrateContentPreset(slideState, slide, theme);
+    return slideState;
+/*
     const ui = _bridgeVisualMeta(theme);
     const hasFigure = Boolean(slide.fig_path);
     const bulletContent = _buildBulletContent(slide.points);
@@ -1615,9 +1870,15 @@ function _createBridgeEvidenceSlide(slide, theme, currentSectionName, presentati
     }
 
     return { id: generateId("slide"), elements };
+*/
 }
 
 function _createBridgeArgumentSlide(slide, theme, currentSectionName, presentationTitle, slideNumber, totalSlides) {
+    const presetId = _bridgePresetForContentSlide(slide);
+    const slideState = _bridgeBuildPresetSlide(presetId, theme);
+    _bridgeHydrateContentPreset(slideState, slide, theme);
+    return slideState;
+/*
     const ui = _bridgeVisualMeta(theme);
     const bulletContent = _buildBulletContent(slide.points);
     const hasFigure = Boolean(slide.fig_path);
@@ -1655,9 +1916,14 @@ function _createBridgeArgumentSlide(slide, theme, currentSectionName, presentati
         }
     }
     return { id: generateId("slide"), elements };
+*/
 }
 
 function _createBridgeSummarySlide(slide, theme, currentSectionName, presentationTitle, slideNumber, totalSlides) {
+    const slideState = _bridgeBuildPresetSlide("conclusion", theme);
+    _bridgeHydrateContentPreset(slideState, slide, theme);
+    return slideState;
+/*
     const ui = _bridgeVisualMeta(theme);
     const bulletContent = _buildBulletContent(slide.points);
     
@@ -1682,6 +1948,7 @@ function _createBridgeSummarySlide(slide, theme, currentSectionName, presentatio
             ..._makeBeamerFooter(theme, presentationTitle, slideNumber, totalSlides)
         ],
     };
+*/
 }
 
 function _createBridgeContentSlide(slide, theme, currentSectionName, presentationTitle, slideNumber, totalSlides) {

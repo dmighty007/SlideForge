@@ -113,6 +113,9 @@ function createDefaultTableData(rows = 3, cols = 4) {
         borderColor: "#cbd5e1",
         borderWidth: 1,
         cellPadding: 10,
+        rowHeights: Array.from({ length: safeRows }, () => 44),
+        colWidths: Array.from({ length: safeCols }, () => 140),
+        selection: null,
         headerFill: "#e2e8f0",
         bodyFill: "#ffffff",
         altFill: "#f8fafc",
@@ -128,6 +131,30 @@ function normalizeTableData(tableData) {
     const rows = Math.max(1, Number(tableData.rows) || fallback.rows);
     const cols = Math.max(1, Number(tableData.cols) || fallback.cols);
     const rawCells = Array.isArray(tableData.cells) ? tableData.cells : [];
+    const rawRowHeights = Array.isArray(tableData.rowHeights) ? tableData.rowHeights : [];
+    const rawColWidths = Array.isArray(tableData.colWidths) ? tableData.colWidths : [];
+    const rowHeights = Array.from({ length: rows }, (_, rowIndex) => {
+        const value = Number(rawRowHeights[rowIndex]);
+        return Number.isFinite(value) && value >= 24 ? value : fallback.rowHeights[rowIndex] || 44;
+    });
+    const colWidths = Array.from({ length: cols }, (_, colIndex) => {
+        const value = Number(rawColWidths[colIndex]);
+        return Number.isFinite(value) && value >= 36 ? value : fallback.colWidths[colIndex] || 140;
+    });
+    const rawSelection = tableData.selection && typeof tableData.selection === "object" ? tableData.selection : null;
+    const selectionType = ["cell", "row", "col"].includes(rawSelection?.type) ? rawSelection.type : "";
+    const selection =
+        selectionType === "row" && Number(rawSelection.row) >= 0 && Number(rawSelection.row) < rows
+            ? { type: "row", row: Number(rawSelection.row) }
+            : selectionType === "col" && Number(rawSelection.col) >= 0 && Number(rawSelection.col) < cols
+              ? { type: "col", col: Number(rawSelection.col) }
+              : selectionType === "cell" &&
+                  Number(rawSelection.row) >= 0 &&
+                  Number(rawSelection.row) < rows &&
+                  Number(rawSelection.col) >= 0 &&
+                  Number(rawSelection.col) < cols
+                ? { type: "cell", row: Number(rawSelection.row), col: Number(rawSelection.col) }
+                : null;
     const cells = Array.from({ length: rows }, (_, rowIndex) =>
         Array.from({ length: cols }, (_, colIndex) => {
             const rawCell = rawCells[rowIndex]?.[colIndex];
@@ -151,6 +178,9 @@ function normalizeTableData(tableData) {
         borderColor: typeof tableData.borderColor === "string" ? tableData.borderColor : fallback.borderColor,
         borderWidth: Math.max(0, Number(tableData.borderWidth) || fallback.borderWidth),
         cellPadding: Math.max(2, Number(tableData.cellPadding) || fallback.cellPadding),
+        rowHeights,
+        colWidths,
+        selection,
         headerFill: typeof tableData.headerFill === "string" ? tableData.headerFill : fallback.headerFill,
         bodyFill: typeof tableData.bodyFill === "string" ? tableData.bodyFill : fallback.bodyFill,
         altFill: typeof tableData.altFill === "string" ? tableData.altFill : fallback.altFill,
@@ -228,6 +258,10 @@ function normalizeSlideBackground(background) {
             content: trimmed,
             mimeType: "",
             fit: "cover",
+            opacity: 1,
+            blur: 0,
+            brightness: 100,
+            saturate: 100,
         };
     }
     if (typeof background !== "object") return null;
@@ -235,11 +269,19 @@ function normalizeSlideBackground(background) {
     if (!content) return null;
     const type = background.type === "video" ? "video" : "image";
     const fit = ["cover", "contain", "fill"].includes(background.fit) ? background.fit : "cover";
+    const opacity = Math.max(0, Math.min(1, Number(background.opacity ?? 1)));
+    const blur = Math.max(0, Math.min(40, Number(background.blur) || 0));
+    const brightness = Math.max(10, Math.min(200, Number(background.brightness ?? 100)));
+    const saturate = Math.max(0, Math.min(250, Number(background.saturate ?? 100)));
     return {
         type,
         content,
         mimeType: typeof background.mimeType === "string" ? background.mimeType : "",
         fit,
+        opacity,
+        blur,
+        brightness,
+        saturate,
     };
 }
 

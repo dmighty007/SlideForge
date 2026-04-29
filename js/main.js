@@ -102,6 +102,7 @@ window.onload = async () => {
         }
     });
 
+    populatePresentationThemeSelector?.();
     document.getElementById("theme-selector").addEventListener("change", e => {
         const previousTheme = state.presentationTheme;
         retintPresentationTheme(previousTheme, e.target.value);

@@ -1,5 +1,18 @@
 function buildTextPanel(panel, data) {
     const listState = getTextListState(data.content, data.bulletStyle);
+    const contentGrp = createGroup("Text Content");
+    contentGrp.classList.add("prop-group-compact");
+    contentGrp.appendChild(
+        createField(
+            "Content",
+            `
+        <textarea id="prop-text-content" class="prop-textarea" rows="5" spellcheck="true">${escapeHtml(getTextPanelEditableValue(data))}</textarea>
+        <div class="prop-field-hint">${listState.kind === "bulleted" ? "Use leading spaces or Tab in canvas edit mode for nested bullets." : "Line breaks are preserved on the slide."}</div>
+    `,
+        ),
+    );
+    panel.appendChild(contentGrp);
+
     const grp = createGroup("Typography");
 
     // Font Family - Top
@@ -7,15 +20,8 @@ function buildTextPanel(panel, data) {
         createField(
             "Font Family",
             `
-        <select id="prop-font" class="bg-white border border-slate-300 rounded-lg px-2 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-accent w-full shadow-sm">
-            <option value='"Manrope", sans-serif' ${data.styles.fontFamily === '"Manrope", sans-serif' ? "selected" : ""}>Manrope</option>
-            <option value='"DM Sans", sans-serif' ${data.styles.fontFamily === '"DM Sans", sans-serif' ? "selected" : ""}>DM Sans</option>
-            <option value='"Work Sans", sans-serif' ${data.styles.fontFamily === '"Work Sans", sans-serif' ? "selected" : ""}>Work Sans</option>
-            <option value='"Space Grotesk", sans-serif' ${data.styles.fontFamily === '"Space Grotesk", sans-serif' ? "selected" : ""}>Space Grotesk</option>
-            <option value='"Montserrat", sans-serif' ${data.styles.fontFamily === '"Montserrat", sans-serif' ? "selected" : ""}>Montserrat</option>
-            <option value='"Fraunces", serif' ${data.styles.fontFamily === '"Fraunces", serif' ? "selected" : ""}>Fraunces</option>
-            <option value='"Newsreader", serif' ${data.styles.fontFamily === '"Newsreader", serif' ? "selected" : ""}>Newsreader</option>
-            <option value="Inter, sans-serif" ${data.styles.fontFamily === "Inter, sans-serif" ? "selected" : ""}>Inter</option>
+        <select id="prop-font" class="prop-select">
+            ${buildFontOptions(data.styles.fontFamily)}
         </select>
     `,
         ),
@@ -29,21 +35,21 @@ function buildTextPanel(panel, data) {
     const sizeCol = document.createElement("div");
     sizeCol.className = "col-span-1";
     sizeCol.innerHTML = `<label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Size</label>
-        <input type="text" id="prop-fs" class="w-full text-xs p-1" value="${data.styles.fontSize || "32px"}">`;
+        <input type="text" id="prop-fs" class="prop-input-sm" value="${data.styles.fontSize || "32px"}">`;
 
     // Color
     const colorCol = document.createElement("div");
     colorCol.className = "col-span-1";
     colorCol.innerHTML = `<label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Color</label>
-        <input type="color" id="prop-tc" class="w-full h-7 cursor-pointer rounded-md p-0" value="${_normalizeColorForInput(data.styles.color, "#ffffff")}">`;
+        <input type="color" id="prop-tc" class="prop-color-input" value="${_normalizeColorForInput(data.styles.color, "#ffffff")}">`;
 
     // Format buttons
     const formatCol = document.createElement("div");
     formatCol.className = "col-span-2 flex gap-1";
     formatCol.innerHTML = `
-        <button id="prop-bold" class="flex-1 h-7 rounded bg-white border border-slate-200 text-[11px] font-bold ${data.styles.fontWeight === "bold" ? "bg-primary/10 border-primary text-primary" : "text-slate-600"}">B</button>
-        <button id="prop-italic" class="flex-1 h-7 rounded bg-white border border-slate-200 text-[11px] font-serif italic ${data.styles.fontStyle === "italic" ? "bg-primary/10 border-primary text-primary" : "text-slate-600"}">I</button>
-        <button id="prop-clear-format" class="flex-1 h-7 rounded bg-white border border-slate-200 text-[11px] text-slate-600" title="Clear formatting"><i class="fa-solid fa-eraser"></i></button>
+        <button id="prop-bold" class="prop-icon-btn ${data.styles.fontWeight === "bold" ? "active" : ""}" title="Bold">B</button>
+        <button id="prop-italic" class="prop-icon-btn italic ${data.styles.fontStyle === "italic" ? "active" : ""}" title="Italic">I</button>
+        <button id="prop-clear-format" class="prop-icon-btn" title="Clear formatting"><i class="fa-solid fa-eraser"></i></button>
     `;
 
     textToolsRow.appendChild(sizeCol);
@@ -62,19 +68,19 @@ function buildTextPanel(panel, data) {
         <div class="grid grid-cols-4 gap-2 items-end">
             <div>
                 <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">X</label>
-                <input type="number" id="prop-ts-x" class="w-full text-xs p-1" value="${shadowState.offsetX}" step="1">
+                <input type="number" id="prop-ts-x" class="prop-input-sm" value="${shadowState.offsetX}" step="1">
             </div>
             <div>
                 <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Y</label>
-                <input type="number" id="prop-ts-y" class="w-full text-xs p-1" value="${shadowState.offsetY}" step="1">
+                <input type="number" id="prop-ts-y" class="prop-input-sm" value="${shadowState.offsetY}" step="1">
             </div>
             <div>
                 <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Blur</label>
-                <input type="number" id="prop-ts-blur" class="w-full text-xs p-1" value="${shadowState.blur}" min="0" step="1">
+                <input type="number" id="prop-ts-blur" class="prop-input-sm" value="${shadowState.blur}" min="0" step="1">
             </div>
             <div>
                 <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Color</label>
-                <input type="color" id="prop-ts-color" class="w-full h-7 cursor-pointer rounded-md p-0" value="${shadowState.color}">
+                <input type="color" id="prop-ts-color" class="prop-color-input" value="${shadowState.color}">
             </div>
         </div>
     `,
@@ -88,11 +94,11 @@ function buildTextPanel(panel, data) {
         <div class="grid grid-cols-2 gap-2 items-end">
             <div>
                 <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Width</label>
-                <input type="number" id="prop-stroke-width" class="w-full text-xs p-1" value="${strokeWidth}" min="0" max="24" step="0.5">
+                <input type="number" id="prop-stroke-width" class="prop-input-sm" value="${strokeWidth}" min="0" max="24" step="0.5">
             </div>
             <div>
                 <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Color</label>
-                <input type="color" id="prop-stroke-color" class="w-full h-7 cursor-pointer rounded-md p-0" value="${strokeColor}">
+                <input type="color" id="prop-stroke-color" class="prop-color-input" value="${strokeColor}">
             </div>
         </div>
     `,
@@ -209,6 +215,31 @@ function buildTextPanel(panel, data) {
         if (window.refreshPreviews) window.refreshPreviews();
     };
 
+    const textContent = document.getElementById("prop-text-content");
+    if (textContent) {
+        bindInlineFormattingGuard(textContent);
+        let contentTimer = null;
+        let undoCaptured = false;
+        const commitTextContent = ({ forceUndo = false } = {}) => {
+            window.clearTimeout(contentTimer);
+            const nextValue = textContent.value;
+            if (nextValue === textContent.dataset.lastCommittedValue) return;
+            if (!undoCaptured || forceUndo) {
+                saveStateToUndo();
+                undoCaptured = true;
+            }
+            textContent.dataset.lastCommittedValue = nextValue;
+            applySidebarTextContent(data, nextValue);
+        };
+        textContent.dataset.lastCommittedValue = textContent.value;
+        textContent.addEventListener("input", () => {
+            window.clearTimeout(contentTimer);
+            contentTimer = window.setTimeout(() => commitTextContent(), 140);
+        });
+        textContent.addEventListener("change", () => commitTextContent({ forceUndo: false }));
+        textContent.addEventListener("blur", () => commitTextContent({ forceUndo: false }));
+    }
+
     const font = document.getElementById("prop-font");
     if (font) {
         bindInlineFormattingGuard(font);
@@ -254,8 +285,10 @@ function buildTextPanel(panel, data) {
     if (textColor) {
         bindInlineFormattingGuard(textColor);
         textColor.addEventListener("input", beginFormattingInteraction);
-        textColor.onchange = e => {
+        textColor.oninput = e => {
             applyTextFormatting("color", e.target.value, { inlineAction: "color" });
+        };
+        textColor.onchange = () => {
             endFormattingInteraction();
         };
         setTextControlActive(textColor, textColor.value.toLowerCase() !== _normalizeColorForInput(getThemeTextStyleDefaults().color, "#000000").toLowerCase());

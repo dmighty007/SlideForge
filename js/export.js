@@ -1675,6 +1675,13 @@ function createViewerSlideBackgroundNode(background) {
     if (!background || !background.content) return null;
     const wrapper = document.createElement('div');
     wrapper.className = 'slide-background-media';
+    const opacity = Math.max(0, Math.min(1, Number(background.opacity ?? 1)));
+    const blur = Math.max(0, Math.min(40, Number(background.blur) || 0));
+    const brightness = Math.max(10, Math.min(200, Number(background.brightness ?? 100)));
+    const saturate = Math.max(0, Math.min(250, Number(background.saturate ?? 100)));
+    wrapper.style.opacity = String(opacity);
+    wrapper.style.filter = 'blur(' + blur + 'px) brightness(' + brightness + '%) saturate(' + saturate + '%)';
+    if (blur) wrapper.style.transform = 'scale(' + (1 + blur / 120) + ')';
     if (background.type === 'video') {
         const video = document.createElement('video');
         video.className = 'slide-background-video';

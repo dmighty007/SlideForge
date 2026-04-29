@@ -163,6 +163,36 @@ function mutateSelectedTableData(mutator) {
     buildPropertiesPanel();
 }
 
+function setSelectedTablePart(tableId, selection) {
+    const data = state.slides[currentSlideIndex]?.elements?.find(e => e.id === tableId);
+    if (!data || data.type !== "table") return;
+    const tableData = normalizeTableData(data.tableData);
+    tableData.selection = selection || null;
+    updateElementState(tableId, { tableData });
+    data.tableData = tableData;
+    selectElement(tableId, "replace");
+    syncTableDomSelection(tableId, tableData.selection);
+    buildPropertiesPanel();
+}
+
+function syncTableDomSelection(tableId, selection = null) {
+    const dom = document.getElementById(tableId);
+    if (!dom) return;
+    dom.querySelectorAll(".table-element-cell").forEach(cell => {
+        const row = Number(cell.dataset.row);
+        const col = Number(cell.dataset.col);
+        cell.classList.toggle("is-active", selection?.type === "cell" && selection.row === row && selection.col === col);
+        cell.classList.toggle("is-row-selected", selection?.type === "row" && selection.row === row);
+        cell.classList.toggle("is-col-selected", selection?.type === "col" && selection.col === col);
+    });
+}
+
+function clearTablePartSelections() {
+    document
+        .querySelectorAll(".table-element-cell.is-active, .table-element-cell.is-row-selected, .table-element-cell.is-col-selected")
+        .forEach(node => node.classList.remove("is-active", "is-row-selected", "is-col-selected"));
+}
+
 function _renderTextEffectPresetButton(data, presetName, label) {
     const preset = _buildTextEffectPresetMap(data)[presetName];
     const baseColor = _normalizeColorForInput(data?.styles?.color, "#172033");
@@ -359,8 +389,13 @@ function applyTextFormatting(prop, value, options = {}) {
         );
         
         if (success) {
-            updateElementState(data.id, { content: inlineContext.editor.innerHTML });
-            data.content = inlineContext.editor.innerHTML;
+            const nextContent =
+                inlineContext.editor.dataset.structuredEdit === "true" &&
+                _getStructuredEditorMode(inlineContext.editor) === "list"
+                    ? parseStructuredBulletEditorHtml(inlineContext.editor)
+                    : inlineContext.editor.innerHTML;
+            updateElementState(data.id, { content: nextContent });
+            data.content = nextContent;
             markTextElementStyleAsLocal(data, prop);
             const layout = syncTextBoxLayout(inlineContext.dom, data);
             if (layout?.autoHeight && Number.isFinite(layout.height)) {
@@ -412,6 +447,17 @@ function selectElement(id, selectionMode = "replace") {
         // and updateGroupBound() with empty selectedIds before we've set the new ones.
         state.selectedIds.forEach(prevId => {
             document.getElementById(prevId)?.classList.remove("selected", "group-member-selected");
+            if (!idsToSelect.includes(prevId)) {
+                const prevData = state.slides[currentSlideIndex]?.elements?.find(e => e.id === prevId);
+                if (prevData?.type === "table") {
+                    const prevTableData = normalizeTableData(prevData.tableData);
+                    if (prevTableData.selection) {
+                        prevTableData.selection = null;
+                        updateElementState(prevId, { tableData: prevTableData });
+                        prevData.tableData = prevTableData;
+                    }
+                }
+            }
         });
         state.selectedIds = idsToSelect;
     }
@@ -422,6 +468,18 @@ function selectElement(id, selectionMode = "replace") {
 }
 
 function clearSelection() {
+    state.selectedIds.forEach(id => {
+        const data = state.slides[currentSlideIndex]?.elements?.find(e => e.id === id);
+        if (data?.type === "table") {
+            const tableData = normalizeTableData(data.tableData);
+            if (tableData.selection) {
+                tableData.selection = null;
+                updateElementState(id, { tableData });
+                data.tableData = tableData;
+            }
+        }
+    });
+    clearTablePartSelections();
     state.selectedIds.forEach(id => {
         const domEl = document.getElementById(id);
         if (domEl) {
@@ -569,6 +627,80 @@ function syncTextDomContent(data) {
         return;
     }
     dom.innerHTML = renderTextContent(data);
+}
+
+function getTextPanelEditableValue(data) {
+    if (!data || data.type !== "text") return "";
+    if (isStructuredBulletContent(data.content)) {
+        return structuredContentToEditableText(data.content, data.bulletStyle || "default");
+    }
+    return parseTextFromHtml(data.content || "");
+}
+
+function buildTextContentFromSidebarValue(data, value) {
+    const rawValue = String(value || "").replace(/\r/g, "");
+    const lines = rawValue.split("\n");
+    const listState = getTextListState(data.content, data.bulletStyle);
+
+    if (isStructuredBulletContent(data.content)) {
+        return {
+            content: parseEditableStructuredText(rawValue, data.content),
+            bulletStyle: data.bulletStyle || "default",
+        };
+    }
+
+    if (listState.kind === "numbered") {
+        const populatedLines = lines.map(line => line.trim()).filter(Boolean);
+        return {
+            content: buildNumberedListMarkup(listState.style || "decimal", populatedLines.length ? populatedLines : ["List item"]),
+            bulletStyle: "",
+        };
+    }
+
+    const html = lines
+        .map(line => escapeHtml(line))
+        .join("<br>")
+        .trim();
+    return {
+        content: html || "Double click to edit text",
+        bulletStyle: "",
+    };
+}
+
+function applySidebarTextContent(data, value) {
+    if (!data || data.type !== "text") return;
+    const next = buildTextContentFromSidebarValue(data, value);
+    const contentChanged = JSON.stringify(next.content) !== JSON.stringify(data.content);
+    const bulletStyleChanged = next.bulletStyle !== (data.bulletStyle || "");
+    if (!contentChanged && !bulletStyleChanged) return;
+
+    updateElementState(data.id, next);
+    data.content = next.content;
+    data.bulletStyle = next.bulletStyle;
+
+    const dom = document.getElementById(data.id);
+    const contentHost = dom?.querySelector(".text-element-content");
+    if (contentHost?.contentEditable === "true") {
+        if (isStructuredBulletContent(next.content)) {
+            contentHost.dataset.structuredEdit = "true";
+            contentHost.dataset.structuredEditMode = "list";
+            contentHost.dataset.structuredEditBulletStyle = next.bulletStyle || "default";
+            contentHost.innerHTML = buildStructuredBulletEditorHtml(next.content, next.bulletStyle || "default");
+        } else {
+            contentHost.innerHTML = renderTextContent(data);
+        }
+        if (typeof _focusEditableHost === "function") _focusEditableHost(contentHost);
+        if (typeof captureInlineSelection === "function") captureInlineSelection();
+    } else {
+        syncTextDomContent(data);
+    }
+
+    const layout = dom ? syncTextBoxLayout(dom, data) : null;
+    if (layout?.autoHeight && Number.isFinite(layout.height)) {
+        updateElementState(data.id, { height: `${layout.height}px` });
+        data.height = `${layout.height}px`;
+    }
+    if (window.refreshPreviews) window.refreshPreviews();
 }
 
 function applyTextBulletState(data, nextKind, nextStyle = "default") {
@@ -771,6 +903,36 @@ function _buildSlideWorkspacePanel(panel) {
                 <option value="contain" ${background?.fit === "contain" ? "selected" : ""}>Fit: Contain</option>
                 <option value="fill" ${background?.fit === "fill" ? "selected" : ""}>Fit: Stretch</option>
             </select>
+            <div class="grid grid-cols-2 gap-3">
+                <div class="flex flex-col gap-1">
+                    <div class="flex items-center justify-between">
+                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Opacity</label>
+                        <span id="prop-slide-bg-opacity-label" class="text-[10px] font-mono text-slate-500">${Math.round((background?.opacity ?? 1) * 100)}%</span>
+                    </div>
+                    <input id="prop-slide-bg-opacity" type="range" min="0" max="100" value="${Math.round((background?.opacity ?? 1) * 100)}" class="h-1.5 accent-primary cursor-pointer" ${background ? "" : "disabled"}>
+                </div>
+                <div class="flex flex-col gap-1">
+                    <div class="flex items-center justify-between">
+                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Blur</label>
+                        <span id="prop-slide-bg-blur-label" class="text-[10px] font-mono text-slate-500">${Math.round(background?.blur || 0)}px</span>
+                    </div>
+                    <input id="prop-slide-bg-blur" type="range" min="0" max="40" value="${Math.round(background?.blur || 0)}" class="h-1.5 accent-primary cursor-pointer" ${background ? "" : "disabled"}>
+                </div>
+                <div class="flex flex-col gap-1">
+                    <div class="flex items-center justify-between">
+                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Brightness</label>
+                        <span id="prop-slide-bg-brightness-label" class="text-[10px] font-mono text-slate-500">${Math.round(background?.brightness ?? 100)}%</span>
+                    </div>
+                    <input id="prop-slide-bg-brightness" type="range" min="10" max="200" value="${Math.round(background?.brightness ?? 100)}" class="h-1.5 accent-primary cursor-pointer" ${background ? "" : "disabled"}>
+                </div>
+                <div class="flex flex-col gap-1">
+                    <div class="flex items-center justify-between">
+                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Saturation</label>
+                        <span id="prop-slide-bg-saturate-label" class="text-[10px] font-mono text-slate-500">${Math.round(background?.saturate ?? 100)}%</span>
+                    </div>
+                    <input id="prop-slide-bg-saturate" type="range" min="0" max="250" value="${Math.round(background?.saturate ?? 100)}" class="h-1.5 accent-primary cursor-pointer" ${background ? "" : "disabled"}>
+                </div>
+            </div>
             <div class="grid grid-cols-3 gap-2">
                 <button id="prop-slide-bg-apply" class="py-2 rounded-lg bg-primary text-white text-xs font-semibold">Apply URL</button>
                 <button id="prop-slide-bg-upload" class="py-2 rounded-lg border border-slate-300 bg-white text-slate-700 text-xs font-semibold">Upload</button>
@@ -799,6 +961,12 @@ function _buildSlideWorkspacePanel(panel) {
         const bgApplyBtn = document.getElementById("prop-slide-bg-apply");
         const bgUploadBtn = document.getElementById("prop-slide-bg-upload");
         const bgClearBtn = document.getElementById("prop-slide-bg-clear");
+        const bgAdjustmentInputs = [
+            ["prop-slide-bg-opacity", "prop-slide-bg-opacity-label", "opacity", value => Math.max(0, Math.min(100, Number(value) || 0)) / 100, value => `${Math.round(value)}%`],
+            ["prop-slide-bg-blur", "prop-slide-bg-blur-label", "blur", value => Math.max(0, Math.min(40, Number(value) || 0)), value => `${Math.round(value)}px`],
+            ["prop-slide-bg-brightness", "prop-slide-bg-brightness-label", "brightness", value => Math.max(10, Math.min(200, Number(value) || 100)), value => `${Math.round(value)}%`],
+            ["prop-slide-bg-saturate", "prop-slide-bg-saturate-label", "saturate", value => Math.max(0, Math.min(250, Number(value) || 100)), value => `${Math.round(value)}%`],
+        ];
         const notesInput = document.getElementById("prop-slide-notes");
 
         if (applyBtn) {
@@ -833,6 +1001,28 @@ function _buildSlideWorkspacePanel(panel) {
                 clearCurrentSlideBackground?.();
             };
         }
+        bgAdjustmentInputs.forEach(([inputId, labelId, key, normalize, format]) => {
+            const input = document.getElementById(inputId);
+            const label = document.getElementById(labelId);
+            if (!input) return;
+            input.oninput = e => {
+                const value = Number(e.target.value);
+                if (label) label.textContent = format(value);
+                const normalized = normalize(value);
+                const bgNode = document.querySelector(".reveal .slides section.present .slide-background-media");
+                if (!bgNode) return;
+                if (key === "opacity") bgNode.style.opacity = String(normalized);
+                else {
+                    const currentBackground = normalizeSlideBackground(state.slides[currentSlideIndex]?.background);
+                    const nextBackground = { ...currentBackground, [key]: normalized };
+                    bgNode.style.filter = `blur(${nextBackground.blur || 0}px) brightness(${nextBackground.brightness || 100}%) saturate(${nextBackground.saturate || 100}%)`;
+                    bgNode.style.transform = nextBackground.blur ? `scale(${1 + Math.min(40, nextBackground.blur) / 120})` : "";
+                }
+            };
+            input.onchange = e => {
+                setCurrentSlideBackgroundAdjustments?.({ [key]: normalize(e.target.value) });
+            };
+        });
         if (notesInput) {
             let lastValue = notesInput.value;
             notesInput.oninput = e => updateCurrentSlideNotes(e.target.value);
@@ -1155,8 +1345,33 @@ function buildPropertiesPanel() {
 
         if (data.type === "table") {
             const tableData = normalizeTableData(data.tableData);
+            const tableSelection = tableData.selection;
+            const selectedRow = tableSelection?.type === "row" || tableSelection?.type === "cell" ? tableSelection.row : null;
+            const selectedCol = tableSelection?.type === "col" || tableSelection?.type === "cell" ? tableSelection.col : null;
             const tableGrp = createGroup("Table");
             tableGrp.innerHTML += `
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Table Width</label>
+                        <input type="number" id="prop-table-element-width" class="prop-input-sm" min="80" value="${Math.round(parseFloat(data.width) || 420)}">
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Table Height</label>
+                        <input type="number" id="prop-table-element-height" class="prop-input-sm" min="60" value="${Math.round(parseFloat(data.height) || 220)}">
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Selected Row H</label>
+                        <input type="number" id="prop-table-row-height" class="prop-input-sm" min="24" value="${selectedRow !== null ? Math.round(tableData.rowHeights[selectedRow] || 44) : ""}" placeholder="Select row">
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Selected Col W</label>
+                        <input type="number" id="prop-table-col-width" class="prop-input-sm" min="36" value="${selectedCol !== null ? Math.round(tableData.colWidths[selectedCol] || 140) : ""}" placeholder="Select column">
+                    </div>
+                </div>
+                <div class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
+                    <span>${tableSelection ? `Selected ${tableSelection.type}${selectedRow !== null ? ` R${selectedRow + 1}` : ""}${selectedCol !== null ? ` C${selectedCol + 1}` : ""}` : "No row, column, or cell selected"}</span>
+                    <button id="prop-table-clear-selection" class="font-semibold text-primary">Clear</button>
+                </div>
                 <div class="grid grid-cols-2 gap-3">
                     <div class="flex flex-col gap-1">
                         <label class="text-[10px] text-gray-500 uppercase font-semibold">Rows</label>
@@ -1754,9 +1969,66 @@ function buildPropertiesPanel() {
             }
 
             if (data.type === "table") {
+                const commitTableElementDimension = (inputId, key, min) => {
+                    const input = document.getElementById(inputId);
+                    if (!input) return;
+                    const commit = () => {
+                        const next = Math.max(min, Number(input.value) || min);
+                        saveStateToUndo();
+                        updateElementState(data.id, { [key]: `${next}px` });
+                        data[key] = `${next}px`;
+                        const dom = document.getElementById(data.id);
+                        if (dom) dom.style[key] = `${next}px`;
+                        updateGroupBound();
+                        refreshPreviews?.();
+                    };
+                    input.addEventListener("change", commit);
+                    input.addEventListener("blur", commit);
+                };
+                commitTableElementDimension("prop-table-element-width", "width", 80);
+                commitTableElementDimension("prop-table-element-height", "height", 60);
+
+                const rowHeightInput = document.getElementById("prop-table-row-height");
+                if (rowHeightInput) {
+                    const commit = () => {
+                        const tableData = normalizeTableData(data.tableData);
+                        const row = tableData.selection?.type === "row" || tableData.selection?.type === "cell" ? tableData.selection.row : null;
+                        if (row === null || row === undefined) return;
+                        mutateSelectedTableData(nextTableData => {
+                            nextTableData.rowHeights[row] = Math.max(24, Number(rowHeightInput.value) || 24);
+                            nextTableData.selection = tableData.selection;
+                        });
+                    };
+                    rowHeightInput.addEventListener("change", commit);
+                    rowHeightInput.addEventListener("blur", commit);
+                }
+
+                const colWidthInput = document.getElementById("prop-table-col-width");
+                if (colWidthInput) {
+                    const commit = () => {
+                        const tableData = normalizeTableData(data.tableData);
+                        const col = tableData.selection?.type === "col" || tableData.selection?.type === "cell" ? tableData.selection.col : null;
+                        if (col === null || col === undefined) return;
+                        mutateSelectedTableData(nextTableData => {
+                            nextTableData.colWidths[col] = Math.max(36, Number(colWidthInput.value) || 36);
+                            nextTableData.selection = tableData.selection;
+                        });
+                    };
+                    colWidthInput.addEventListener("change", commit);
+                    colWidthInput.addEventListener("blur", commit);
+                }
+
+                document.getElementById("prop-table-clear-selection")?.addEventListener("click", () => {
+                    mutateSelectedTableData(tableData => {
+                        tableData.selection = null;
+                    });
+                    clearTablePartSelections();
+                });
+
                 document.getElementById("prop-table-add-row")?.addEventListener("click", () => {
                     mutateSelectedTableData(tableData => {
                         tableData.rows += 1;
+                        tableData.rowHeights.push(44);
                         tableData.cells.push(
                             Array.from({ length: tableData.cols }, () => ({
                                 text: "",
@@ -1770,11 +2042,14 @@ function buildPropertiesPanel() {
                         if (tableData.rows <= 1) return;
                         tableData.rows -= 1;
                         tableData.cells = tableData.cells.slice(0, tableData.rows);
+                        tableData.rowHeights = tableData.rowHeights.slice(0, tableData.rows);
+                        tableData.selection = null;
                     });
                 });
                 document.getElementById("prop-table-add-col")?.addEventListener("click", () => {
                     mutateSelectedTableData(tableData => {
                         tableData.cols += 1;
+                        tableData.colWidths.push(140);
                         tableData.cells.forEach((row, rowIndex) => {
                             row.push({
                                 text: rowIndex === 0 ? `Header ${tableData.cols}` : "",
@@ -1788,6 +2063,8 @@ function buildPropertiesPanel() {
                         if (tableData.cols <= 1) return;
                         tableData.cols -= 1;
                         tableData.cells = tableData.cells.map(row => row.slice(0, tableData.cols));
+                        tableData.colWidths = tableData.colWidths.slice(0, tableData.cols);
+                        tableData.selection = null;
                     });
                 });
                 const bindTableValue = (id, key, normalize = value => value) => {
