@@ -3,7 +3,29 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SlideForge — Professional Presentation Builder</title>
+    
+    <!-- SEO & Metadata -->
+    <title>SlideForge — Professional AI-Powered Presentation Builder</title>
+    <meta name="description" content="SlideForge is a professional, AI-powered presentation builder designed for speed, beauty, and impact. Create stunning slides with our minimal SaaS editor, intelligent layouts, and high-quality exports." />
+    <meta name="keywords" content="presentation builder, slide maker, AI presentation, online slides, professional presentations, PowerPoint alternative, SlideForge" />
+    <meta name="author" content="SlideForge Team" />
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="assets/favicon_icon.png" />
+    <link rel="apple-touch-icon" href="assets/favicon_icon.png" />
+
+    <!-- Open Graph / Social -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://slideforge.ai/" />
+    <meta property="og:title" content="SlideForge — Professional AI-Powered Presentation Builder" />
+    <meta property="og:description" content="Design stunning presentations in minutes with SlideForge's minimal, intuitive AI-guided editor." />
+    <meta property="og:image" content="assets/favicon.png" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="SlideForge — Professional AI-Powered Presentation Builder" />
+    <meta name="twitter:description" content="Design stunning presentations in minutes with SlideForge's minimal, intuitive AI-guided editor." />
+    <meta name="twitter:image" content="assets/favicon.png" />
 
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -13,24 +35,33 @@
             theme: {
                 extend: {
                     colors: {
-                        surface: "#F8FAFC",
+                        surface: "#F5F6F8",
                         canvas: "#FFFFFF",
-                        primary: "#2563EB",
-                        "primary-hover": "#1D4ED8",
+                        primary: "#3B82F6",
+                        "primary-hover": "#2563EB",
                         accent: "#10B981",
-                        "text-main": "#0F172A",
-                        "text-sub": "#475569",
-                        border: "#E5E7EB",
-                        sidebar: "#FFFFFF",
-                        panel: "#FFFFFF",
+                        "text-main": "#2E2E2E",
+                        "text-sub": "#6B7280",
+                        border: "#D1D5DB",
+                        sidebar: "#E9ECF1",
+                        panel: "#E9ECF1",
+                        "pastel-blue": "#A7C7E7",
+                        "pastel-cyan": "#BFE3F5",
+                        "pastel-green": "#B7E4C7",
+                        "pastel-mint": "#95D5B2",
+                        "pastel-yellow": "#FFE8A1",
+                        "pastel-orange": "#F6C28B",
+                        "pastel-lavender": "#CDB4DB",
                     },
                     fontFamily: {
-                        sans: ["Inter", "system-ui", "sans-serif"],
+                        sans: ["Inter", "system-ui", "-apple-system", "sans-serif"],
+                        display: ["Manrope", "Inter", "sans-serif"],
                     },
                     boxShadow: {
-                        slide: "0 20px 50px rgba(0,0,0,0.08)",
-                        panel: "2px 0 8px rgba(0,0,0,0.04)",
-                        toolbar: "0 1px 4px rgba(0,0,0,0.06)",
+                        slide: "0 12px 30px rgba(0,0,0,0.08)",
+                        panel: "0 2px 8px rgba(0,0,0,0.04)",
+                        toolbar: "0 1px 4px rgba(0,0,0,0.03)",
+                        soft: "0 2px 6px rgba(0,0,0,0.05)",
                     },
                 },
             },
@@ -40,7 +71,7 @@
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=DM+Sans:wght@400;500;700&family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Manrope:wght@400;500;700;800&family=Montserrat:wght@500;700;800&family=Newsreader:opsz,wght@6..72,500;6..72,700&family=Space+Grotesk:wght@400;500;700&family=Work+Sans:wght@400;500;700&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=DM+Sans:wght@400;500;700&family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Manrope:wght@400;500;600;700;800&family=Montserrat:wght@500;600;700;800&family=Newsreader:opsz,wght@6..72,500;6..72,700&family=Space+Grotesk:wght@400;500;700&family=Work+Sans:wght@400;500;700&display=swap" />
 
     <!-- Reveal.js CSS -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reveal.min.css" />

@@ -15,6 +15,7 @@ urlpatterns = [
     re_path(r"^(?:index\.html)?$", spa_index, name="spa-index-html"),
     re_path(r"^js/(?P<path>.*)$", serve, {"document_root": settings.BASE_DIR / "js"}),
     re_path(r"^css/(?P<path>.*)$", serve, {"document_root": settings.BASE_DIR / "css"}),
+    re_path(r"^assets/(?P<path>.*)$", serve, {"document_root": settings.BASE_DIR / "assets"}),
     re_path(r"^bridge/(?P<path>.*)$", serve, {"document_root": settings.BASE_DIR / "bridge"}),
     re_path(r"^extracted_figures/(?P<path>.*)$", serve, {"document_root": settings.BASE_DIR / "extracted_figures"}),
     re_path(r"^static/(?P<path>.*)$", serve, {"document_root": settings.BASE_DIR / "static"}),

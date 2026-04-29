@@ -5,27 +5,27 @@
 
 /* ── Design Tokens ── */
 :root {
-    --bg:            #F8FAFC;
+    --bg:            #F5F6F8;
     --canvas:        #FFFFFF;
-    --primary:       #2563EB;
-    --primary-hover: #1D4ED8;
+    --primary:       #3B82F6;
+    --primary-hover: #2563EB;
     --accent:        #10B981;
-    --text-main:     #0F172A;
-    --text-sub:      #475569;
-    --border:        #E5E7EB;
-    --sidebar-bg:    #FFFFFF;
-    --panel-bg:      #FFFFFF;
-    --surface:       #F8FAFC;
+    --text-main:     #2E2E2E;
+    --text-sub:      #6B7280;
+    --border:        #D1D5DB;
+    --sidebar-bg:    #E9ECF1;
+    --panel-bg:      #E9ECF1;
+    --surface:       #F5F6F8;
 
     /* Slide theme vars (overridden by JS) */
-    --slide-bg:      radial-gradient(circle at 12% 14%, rgba(37,99,235,0.12), transparent 22%), radial-gradient(circle at 88% 18%, rgba(148,163,184,0.16), transparent 24%), linear-gradient(180deg, #fcfbf7 0%, #f4efe6 100%);
-    --slide-fg:      #172033;
-    --slide-muted:   #667085;
-    --slide-accent:  #2563eb;
-    --slide-accent-2:#94a3b8;
-    --slide-grid:    rgba(23,32,51,0.06);
-    --editor-accent: #2563EB;
-    --editor-accent-soft: rgba(37,99,235,0.16);
+    --slide-bg:      linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+    --slide-fg:      #2E2E2E;
+    --slide-muted:   #6B7280;
+    --slide-accent:  #3B82F6;
+    --slide-accent-2:#94A3B8;
+    --slide-grid:    rgba(46,46,46,0.03);
+    --editor-accent: #3B82F6;
+    --editor-accent-soft: rgba(59,130,246,0.12);
 }
 
 /* ── Base ── */
@@ -43,15 +43,12 @@ body {
     align-items: center;
     justify-content: space-between;
     gap: 18px;
-    min-height: 72px;
-    padding: 12px 18px;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.20);
-    background:
-        linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(248,250,252,0.98) 100%);
-    backdrop-filter: blur(14px);
-    box-shadow:
-        0 10px 30px rgba(15, 23, 42, 0.05),
-        inset 0 -1px 0 rgba(255,255,255,0.65);
+    min-height: 64px;
+    padding: 8px 18px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.02);
 }
 
 .toolbar-brand,
@@ -84,14 +81,14 @@ body {
 }
 
 .toolbar-logo {
-    width: 38px;
-    height: 38px;
-    border-radius: 14px;
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, #1d4ed8 0%, #0f766e 100%);
-    box-shadow: 0 12px 24px rgba(37, 99, 235, 0.22);
+    background: var(--primary);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
 }
 
 .toolbar-brand-copy {
@@ -128,10 +125,10 @@ body {
     align-items: center;
     gap: 4px;
     padding: 4px;
-    border-radius: 16px;
-    background: rgba(255, 255, 255, 0.72);
-    border: 1px solid rgba(226, 232, 240, 0.92);
-    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
+    border-radius: 12px;
+    background: #FFFFFF;
+    border: 1px solid var(--border);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.02);
 }
 
 .toolbar-cluster-muted {
@@ -158,11 +155,10 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 6px 8px;
-    border-radius: 16px;
-    border: 1px solid rgba(226, 232, 240, 0.96);
-    background: rgba(255,255,255,0.82);
-    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.05);
+    padding: 4px 8px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: #FFFFFF;
 }
 
 .toolbar-title-row {
@@ -191,15 +187,15 @@ body {
 .toolbar-title-input {
     width: 100%;
     min-width: 0;
-    border: 1px solid rgba(219, 234, 254, 0.98);
-    border-radius: 12px;
-    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-    padding: 9px 12px;
-    font-size: 15px;
-    font-weight: 800;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: #F9FAFB;
+    padding: 6px 10px;
+    font-size: 14px;
+    font-weight: 600;
     color: var(--text-main);
     outline: none;
-    transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+    transition: all 0.15s ease;
 }
 
 .toolbar-save-btn {
@@ -504,7 +500,7 @@ body {
 .element-btn:hover { 
     background: white; 
     border-color: var(--border);
-    box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
 }
 .element-btn i {
     font-size: 14px;
@@ -542,9 +538,9 @@ body {
 .element-btn-sm:hover { 
     border-color: var(--primary); 
     color: var(--primary); 
-    background: #F0F7FF;
+    background: #FFFFFF;
     transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(37,99,235,0.08);
+    box-shadow: 0 4px 12px rgba(59,130,246,0.12);
 }
 .element-btn-wide {
     flex-direction: row;
@@ -569,9 +565,9 @@ body {
     justify-content: center;
     gap: 10px;
     min-height: 96px;
-    border-radius: 14px;
+    border-radius: 12px;
     border: 1px solid var(--border);
-    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    background: #FFFFFF;
     color: var(--text-sub);
     font-size: 11px;
     font-weight: 700;
@@ -586,9 +582,9 @@ body {
 .shape-picker-item:hover {
     border-color: var(--primary);
     color: var(--primary);
-    background: #f0f7ff;
+    background: #FFFFFF;
     transform: translateY(-1px);
-    box-shadow: 0 8px 20px rgba(37, 99, 235, 0.10);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.12);
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -599,17 +595,17 @@ body {
     width: 100%;
     aspect-ratio: var(--slide-preview-aspect, 4 / 3);
     border-radius: 8px;
-    border: 2px solid var(--border);
+    border: 1px solid var(--border);
     background: #fff;
     cursor: pointer;
     overflow: hidden;
-    transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
 }
 .slide-preview-card:hover {
     border-color: var(--primary);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(37,99,235,0.15);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(59,130,246,0.12);
 }
 .slide-preview-card.active {
     border-color: var(--primary);
@@ -1607,7 +1603,7 @@ body {
 
 /* ── Properties Panel Premium Look ── */
 #properties-panel {
-    background: #F8FAFC;
+    background: var(--panel-bg);
     border-left: 1px solid var(--border);
 }
 
@@ -1616,18 +1612,22 @@ body {
     border: 1px solid var(--border);
     border-radius: 12px;
     padding: 12px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.02), 0 1px 2px rgba(0,0,0,0.04);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
     margin-bottom: 12px;
+    transition: all 0.2s ease;
+}
+.prop-group:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.06);
 }
 
 .prop-group-title {
     font-size: 9px;
     font-weight: 800;
-    color: #94A3B8;
+    color: var(--text-sub);
     text-transform: uppercase;
     letter-spacing: 0.1em;
     padding-bottom: 8px;
-    border-bottom: 1px solid #F1F5F9;
+    border-bottom: 1px solid var(--border);
     margin-bottom: 10px;
 }
 
@@ -1635,10 +1635,10 @@ body {
 .prop-btn-group {
     display: flex;
     gap: 1px;
-    background: #F1F5F9;
+    background: var(--bg);
     padding: 2px;
     border-radius: 8px;
-    border: 1px solid #E2E8F0;
+    border: 1px solid var(--border);
 }
 
 .prop-btn-group button {
@@ -1922,3 +1922,26 @@ body {
     outline-offset: 2px;
     box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
 }
+/* ── Micro-animations ── */
+@keyframes slideInUp {
+    from { transform: translateY(10px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+    from { transform: scale(0.98); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+
+.animate-slide-up { animation: slideInUp 0.3s ease forwards; }
+.animate-fade-in { animation: fadeIn 0.4s ease forwards; }
+.animate-scale-in { animation: scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+
+.toolbar-shell { animation: fadeIn 0.5s ease; }
+aside { animation: fadeIn 0.6s ease; }
+#canvas-wrapper { animation: scaleIn 0.6s ease; }
