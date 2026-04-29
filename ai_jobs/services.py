@@ -57,7 +57,9 @@ EVENT_PROGRESS = {
     "vision_candidate": 40,
     "vision": 48,
     "vision_start": 55,
-    "storyboard": 66,
+    "analysis": 58,
+    "brief": 64,
+    "storyboard": 68,
     "section": 80,
     "export": 95,
     "done": 100,
@@ -145,12 +147,18 @@ def _materialize_bridge_visuals(bridge_result: dict, job: ImportJob) -> dict:
             slide["fig_path"] = localize_path(slide["fig_path"])
         visuals = slide.get("visuals")
         if not isinstance(visuals, list):
-            continue
-        for visual in visuals:
-            if not isinstance(visual, dict):
-                continue
-            if isinstance(visual.get("path"), str):
-                visual["path"] = localize_path(visual["path"])
+            visuals = []
+        else:
+            for visual in visuals:
+                if not isinstance(visual, dict):
+                    continue
+                if isinstance(visual.get("path"), str):
+                    visual["path"] = localize_path(visual["path"])
+        equations = slide.get("equations")
+        if isinstance(equations, list):
+            for equation in equations:
+                if isinstance(equation, dict) and isinstance(equation.get("path"), str):
+                    equation["path"] = localize_path(equation["path"])
         if not slide.get("fig_path"):
             first_visual = next(
                 (item for item in visuals if isinstance(item, dict) and isinstance(item.get("path"), str) and item.get("path")),

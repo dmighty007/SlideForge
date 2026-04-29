@@ -270,6 +270,9 @@ function _setupElementInteract() {
                             height: h + "px",
                             ...(isText ? { autoHeight: false } : {}),
                         });
+                        if (isText && elementData.textFitMode === "autofit") {
+                            syncTextBoxLayout(target, elementData);
+                        }
                     }
 
                     // Real-time thumbnail update (throttled via requestAnimationFrame)

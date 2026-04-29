@@ -152,7 +152,7 @@ function _kicker(x, y, w, text, theme) {
 function _text(x, y, w, content, styles) {
     return {
         type: 'text', x, y,
-        width: `${w}px`, height: 'auto', content,
+        width: `${w}px`, height: 'auto', autoHeight: true, textFitMode: 'autoHeight', content,
         styles: { zIndex: 2, ...styles }
     };
 }
@@ -160,7 +160,7 @@ function _text(x, y, w, content, styles) {
 function _bullets(x, y, w, items, styles) {
     return {
         type: 'text', x, y,
-        width: `${w}px`, height: 'auto',
+        width: `${w}px`, height: 'auto', autoHeight: true, textFitMode: 'autoHeight',
         content: items.map(t => ({ text: t.text, level: t.level || 0 })),
         bulletStyle: 'default',
         styles: { zIndex: 2, ...styles }

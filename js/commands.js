@@ -159,6 +159,7 @@ function addElement(type, options = {}) {
             zIndex: getNextZIndex(),
             borderRadius: type === "shape" ? shapeBorderRadius : type === "video" || type === "pdf" ? "8px" : "0px",
         },
+        ...(type === "text" ? { textFitMode: "autoHeight" } : {}),
         animation: null,
     });
     renderSlidesFromState();
@@ -625,6 +626,7 @@ function _createClipboardTextElement(text, x = 100, y = 100) {
         width: "420px",
         height: "auto",
         autoHeight: true,
+        textFitMode: "autoHeight",
         content: _escapeClipboardText(text),
         styles: {
             color: theme.defaultTextColor,
@@ -1344,6 +1346,7 @@ function _makeTextElement({
         width: `${width}px`,
         height: height == null ? "auto" : `${height}px`,
         autoHeight,
+        textFitMode: autoHeight ? "autoHeight" : "fixed",
         content,
         styles: {
             color,
@@ -1826,7 +1829,13 @@ function _bridgeSlideSummary(slide) {
 
 function _bridgePresetForContentSlide(slide) {
     const title = String(slide?.title || "");
+    const hint = String(slide?.layout_hint || "").toLowerCase();
     const metrics = _bridgeSlideMetrics(slide);
+    if (/summary|conclusion|impact/.test(hint)) return "conclusion";
+    if (/comparison|compare|contrast/.test(hint)) return slide?.fig_path ? "results-data" : "two-column";
+    if (/results|data|metric|benchmark/.test(hint)) return "results-data";
+    if (/figure|mechanism|workflow/.test(hint) && slide?.fig_path) return "figure-caption";
+    if (/text|argument|setup|problem/.test(hint) && !slide?.fig_path) return metrics.pointCount >= 3 ? "two-column" : "content-slide";
     if (/future|impact|implication|conclusion|summary|takeaway|limit|direction/i.test(title)) return "conclusion";
     if (slide?.fig_path) return "figure-caption";
     if (metrics.pointCount >= 4 || metrics.bulletCount >= 7 || metrics.wordCount >= 78) return "two-column";
@@ -2197,9 +2206,16 @@ function _createBridgeContentSlide(slide, theme, currentSectionName, presentatio
     const pointCount = (Array.isArray(slide.points) ? slide.points.length : 0);
     const dense = _bridgeIsDenseSlide(slide);
     const summaryLike = /future|impact|implication|conclusion|limit|direction/i.test(String(slide.title || ""));
+    const hint = String(slide?.layout_hint || "").toLowerCase();
     
     if (summaryLike && pointCount >= 2) {
         return _createBridgeSummarySlide(slide, theme, currentSectionName, presentationTitle, slideNumber, totalSlides);
+    }
+    if (/text|summary/.test(hint) && !hasFigure) {
+        return _createBridgeArgumentSlide(slide, theme, currentSectionName, presentationTitle, slideNumber, totalSlides);
+    }
+    if (/comparison|results|data/.test(hint)) {
+        return _createBridgeArgumentSlide(slide, theme, currentSectionName, presentationTitle, slideNumber, totalSlides);
     }
     if (hasFigure && !dense && (slideNumber % 2 === 0 || pointCount <= 2)) {
         return _createBridgeEvidenceSlide(slide, theme, currentSectionName, presentationTitle, slideNumber, totalSlides);
@@ -2209,17 +2225,67 @@ function _createBridgeContentSlide(slide, theme, currentSectionName, presentatio
 
 function _attachBridgeEquations(slideState, slide) {
     const equations = Array.isArray(slide?.equations) ? slide.equations : [];
-    const first = equations.find(item => item && typeof item.latex === "string" && item.latex.trim());
-    if (!first) return slideState;
+    const usable = equations.filter(item => item && (
+        (typeof item.path === "string" && item.path.trim())
+        || (typeof item.latex === "string" && item.latex.trim())
+    )).slice(0, slide?.equation_slide ? 4 : 1);
+    if (!usable.length) return slideState;
+
+    if (slide?.equation_slide) {
+        const theme = typeof getPresentationTheme === "function" ? getPresentationTheme() : {};
+        const elements = (slideState.elements || []).filter(el => !(el.type === "text" && Array.isArray(el.content)));
+        usable.forEach((equation, idx) => {
+            elements.push(_makeTextElement({
+                x: 64,
+                y: 158 + idx * 132,
+                width: 190,
+                height: 34,
+                content: String(equation.label || `Equation ${idx + 1}`),
+                fontSize: 18,
+                fontWeight: "700",
+                color: theme.accentStrong || "#2563EB",
+                fontFamily: theme.headingFont || '"Manrope", sans-serif',
+                lineHeight: "1.2",
+                autoHeight: false,
+            }));
+            if (equation.path) {
+                elements.push(_makeImageElement({
+                    x: 274,
+                    y: 140 + idx * 132,
+                    width: 660,
+                    height: 92,
+                    content: _normalizeImportedImagePath(equation.path),
+                }));
+            } else {
+                elements.push(_makeEquationElement({
+                    x: 274,
+                    y: 140 + idx * 132,
+                    width: 660,
+                    height: 92,
+                    latexSrc: equation.latex,
+                }));
+            }
+        });
+        return _bridgeFinalizeSlide({ ...slideState, elements });
+    }
 
     const hasFigure = Boolean(slide?.fig_path);
-    const eqEl = _makeEquationElement({
-        x: hasFigure ? 590 : 660,
-        y: hasFigure ? 652 : 620,
-        width: hasFigure ? 300 : 280,
-        height: 70,
-        latexSrc: first.latex,
-    });
+    const first = usable[0];
+    const eqEl = first.path
+        ? _makeImageElement({
+            x: hasFigure ? 590 : 660,
+            y: hasFigure ? 652 : 620,
+            width: hasFigure ? 300 : 280,
+            height: 70,
+            content: _normalizeImportedImagePath(first.path),
+        })
+        : _makeEquationElement({
+            x: hasFigure ? 590 : 660,
+            y: hasFigure ? 652 : 620,
+            width: hasFigure ? 300 : 280,
+            height: 70,
+            latexSrc: first.latex,
+        });
     return {
         ...slideState,
         elements: [...(slideState.elements || []), eqEl],

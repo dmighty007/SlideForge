@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -21,17 +22,35 @@ class DesignSystem:
 
 
 class LLMProvider:
+    def provider_label(self) -> str:
+        model = getattr(self, "model", None)
+        if model:
+            return f"{self.__class__.__name__}:{model}"
+        models = getattr(self, "models", None)
+        if models:
+            return f"{self.__class__.__name__}:{','.join(str(item) for item in models)}"
+        return self.__class__.__name__
+
     def generate(self, prompt: str, system_prompt: str = "", json_mode: bool = False) -> str:
         raise NotImplementedError
 
 
 class OllamaProvider(LLMProvider):
-    def __init__(self, model: str | None = None, models: Iterable[str] | None = None, base_url: str | None = None):
+    def __init__(
+        self,
+        model: str | None = None,
+        models: Iterable[str] | None = None,
+        base_url: str | None = None,
+        options: Dict[str, Any] | None = None,
+        keep_alive: str | int | None = None,
+    ):
         configured = list(models or [])
         if model:
             configured.insert(0, model)
         self.models = [name for name in configured if name]
         self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")).rstrip("/")
+        self.options = dict(options or {})
+        self.keep_alive = keep_alive
 
     def generate(self, prompt: str, system_prompt: str = "", json_mode: bool = False) -> str:
         if not self.models:
@@ -47,6 +66,10 @@ class OllamaProvider(LLMProvider):
             }
             if json_mode:
                 payload["format"] = "json"
+            if self.options:
+                payload["options"] = self.options
+            if self.keep_alive is not None:
+                payload["keep_alive"] = self.keep_alive
             try:
                 response = requests.post(f"{self.base_url}/api/generate", json=payload, timeout=300)
                 response.raise_for_status()
@@ -74,13 +97,20 @@ class GroqProvider(LLMProvider):
         }
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
-        response = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
-            json=payload,
-            timeout=300,
-        )
-        response.raise_for_status()
+        attempts = _api_retry_attempts()
+        response = None
+        for attempt in range(attempts):
+            response = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
+                json=payload,
+                timeout=300,
+            )
+            if response.status_code != 429 or attempt == attempts - 1:
+                break
+            delay = _retry_after_seconds(response, attempt)
+            time.sleep(delay)
+        _raise_for_status_with_preview(response)
         body = response.json()
         return body["choices"][0]["message"]["content"]
 
@@ -100,16 +130,23 @@ class GeminiProvider(LLMProvider):
         payload: Dict[str, Any] = {"contents": [{"parts": parts}]}
         if json_mode:
             payload["generationConfig"] = {"responseMimeType": "application/json"}
-        response = requests.post(
-            (
-                "https://generativelanguage.googleapis.com/v1beta/models/"
-                f"{self.model}:generateContent?key={self.api_key}"
-            ),
-            headers={"Content-Type": "application/json"},
-            json=payload,
-            timeout=300,
-        )
-        response.raise_for_status()
+        attempts = _api_retry_attempts()
+        response = None
+        for attempt in range(attempts):
+            response = requests.post(
+                (
+                    "https://generativelanguage.googleapis.com/v1beta/models/"
+                    f"{self.model}:generateContent?key={self.api_key}"
+                ),
+                headers={"Content-Type": "application/json"},
+                json=payload,
+                timeout=300,
+            )
+            if response.status_code != 429 or attempt == attempts - 1:
+                break
+            delay = _retry_after_seconds(response, attempt)
+            time.sleep(delay)
+        _raise_for_status_with_preview(response)
         body = response.json()
         candidates = body.get("candidates") or []
         if not candidates:
@@ -119,6 +156,35 @@ class GeminiProvider(LLMProvider):
         if not text:
             raise RuntimeError(f"Gemini returned empty content: {body}")
         return text
+
+
+def _retry_after_seconds(response: requests.Response, attempt: int) -> float:
+    raw = response.headers.get("Retry-After", "").strip()
+    try:
+        return max(1.0, min(30.0, float(raw)))
+    except ValueError:
+        return min(30.0, 2.0 * (attempt + 1))
+
+
+def _api_retry_attempts() -> int:
+    try:
+        return max(1, min(8, int(os.getenv("PPTMAKER_API_RETRIES", "3"))))
+    except ValueError:
+        return 3
+
+
+def _raise_for_status_with_preview(response: requests.Response | None) -> None:
+    if response is None:
+        raise RuntimeError("Provider returned no response")
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        preview = ""
+        try:
+            preview = response.text[:500]
+        except Exception:
+            preview = ""
+        raise requests.HTTPError(f"{response.status_code} Error: {preview}", response=response) from exc
 
 
 class DeepSeekProvider(LLMProvider):
@@ -152,6 +218,8 @@ class DeepSeekProvider(LLMProvider):
 class SmartFallbackProvider(LLMProvider):
     def __init__(self, providers: Iterable[LLMProvider]):
         self.providers = [provider for provider in providers if provider]
+        self.trace: List[Dict[str, Any]] = []
+        self.last_provider: str | None = None
 
     def generate(self, prompt: str, system_prompt: str = "", json_mode: bool = False) -> str:
         if not self.providers:
@@ -159,10 +227,16 @@ class SmartFallbackProvider(LLMProvider):
 
         errors = []
         for provider in self.providers:
+            label = provider.provider_label()
             try:
-                return provider.generate(prompt, system_prompt, json_mode=json_mode)
+                result = provider.generate(prompt, system_prompt, json_mode=json_mode)
+                self.last_provider = label
+                self.trace.append({"provider": label, "status": "success", "json_mode": bool(json_mode)})
+                return result
             except Exception as exc:
-                errors.append(f"{provider.__class__.__name__}: {exc}")
+                error_text = str(exc)
+                errors.append(f"{label}: {error_text}")
+                self.trace.append({"provider": label, "status": "error", "error": error_text[:240], "json_mode": bool(json_mode)})
         raise RuntimeError("All LLM providers failed: " + " | ".join(errors))
 
 

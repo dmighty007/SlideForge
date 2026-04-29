@@ -285,6 +285,8 @@ const _symbols = [
 ];
 
 function openSymbolPicker() {
+    captureInlineSelection?.();
+    beginFormattingInteraction?.();
     const modal = document.getElementById('symbol-picker-modal');
     const grid = document.getElementById('symbol-grid');
     if (!modal || !grid) return;
@@ -296,6 +298,10 @@ function openSymbolPicker() {
         btn.style.cssText = 'aspect-ratio:1;border:1px solid #E5E7EB;border-radius:6px;background:white;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.15s;color:#0F172A;padding:4px;';
         btn.onmouseenter = () => { btn.style.background='#EFF6FF'; btn.style.borderColor='#2563EB'; };
         btn.onmouseleave = () => { btn.style.background='white'; btn.style.borderColor='#E5E7EB'; };
+        btn.onpointerdown = e => {
+            e.preventDefault();
+            restoreInlineSelection?.();
+        };
         btn.onclick = () => _insertSymbol(sym);
         grid.appendChild(btn);
     });
@@ -305,6 +311,7 @@ function openSymbolPicker() {
 function closeSymbolPicker() {
     const modal = document.getElementById('symbol-picker-modal');
     if (modal) modal.style.display = 'none';
+    requestAnimationFrame(() => endFormattingInteraction?.());
 }
 
 function openShapePicker() {
@@ -331,10 +338,31 @@ function _insertSymbol(sym) {
         const dom = document.getElementById(selectedTextEl.id);
         const editor = dom?.querySelector('.text-element-content');
         if (editor && editor.contentEditable === 'true') {
-            // Insert at cursor position in active text editor
-            editor.focus();
-            document.execCommand('insertText', false, sym);
+            saveStateToUndo();
+            restoreInlineSelection?.();
+            const inserted = document.execCommand?.('insertText', false, sym);
+            if (!inserted) {
+                const selection = window.getSelection?.();
+                if (selection && selection.rangeCount) {
+                    const range = selection.getRangeAt(0);
+                    range.deleteContents();
+                    const node = document.createTextNode(sym);
+                    range.insertNode(node);
+                    range.setStartAfter(node);
+                    range.collapse(true);
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                }
+            }
             updateElementState(selectedTextEl.id, { content: editor.innerHTML });
+            selectedTextEl.content = editor.innerHTML;
+            captureInlineSelection?.();
+            const layout = syncTextBoxLayout?.(dom, selectedTextEl);
+            if (layout?.autoHeight && Number.isFinite(layout.height)) {
+                updateElementState(selectedTextEl.id, { height: `${layout.height}px` });
+                selectedTextEl.height = `${layout.height}px`;
+            }
+            refreshPreviews?.();
         } else {
             // Append to end of content
             saveStateToUndo();
@@ -350,6 +378,7 @@ function _insertSymbol(sym) {
         state.slides[activeIndex].elements.push({
             id, type: 'text', x: 200, y: 200,
             width: '120px', height: 'auto', autoHeight: true,
+            textFitMode: 'autoHeight',
             content: sym,
             styles: { color: theme.defaultTextColor, fontSize: '48px', fontFamily: theme.bodyFont, zIndex: getNextZIndex() },
         });
@@ -506,6 +535,10 @@ window.toggleExportMenu = toggleExportMenu;
 window.closeExportMenu = closeExportMenu;
 window.closeUserMenu = closeUserMenu;
 window.submitAuthForm = submitAuthForm;
+window.submitEntryAuthForm = submitEntryAuthForm;
+window.switchEntryAuthMode = switchEntryAuthMode;
+window.toggleEntryAuthMode = toggleEntryAuthMode;
+window.continueAsGuest = continueAsGuest;
 window.logoutCurrentUser = logoutCurrentUser;
 window.triggerAIImportPicker = triggerAIImportPicker;
 window.addEquationElement = addEquationElement;

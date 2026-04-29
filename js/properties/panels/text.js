@@ -13,6 +13,30 @@ function buildTextPanel(panel, data) {
     );
     panel.appendChild(contentGrp);
 
+    const fitMode = data.textFitMode === "autofit" ? "autofit" : data.autoHeight === false || data.textFitMode === "fixed" ? "fixed" : "autoHeight";
+    const layoutGrp = createGroup("Text Box");
+    layoutGrp.appendChild(
+        createField(
+            "Fit",
+            `
+        <select id="prop-text-fit-mode" class="prop-select">
+            <option value="autoHeight" ${fitMode === "autoHeight" ? "selected" : ""}>Grow height to content</option>
+            <option value="fixed" ${fitMode === "fixed" ? "selected" : ""}>Fixed box</option>
+            <option value="autofit" ${fitMode === "autofit" ? "selected" : ""}>Auto fit text to box</option>
+        </select>
+    `,
+        ),
+    );
+    if (fitMode === "autofit") {
+        layoutGrp.appendChild(
+            createField(
+                "Minimum Size",
+                `<input type="number" id="prop-text-autofit-min" class="prop-input-sm" min="6" max="72" step="1" value="${Math.max(6, Number(data.minAutoFitFontSize) || 8)}">`,
+            ),
+        );
+    }
+    panel.appendChild(layoutGrp);
+
     const grp = createGroup("Typography");
 
     // Font Family - Top
@@ -292,6 +316,48 @@ function buildTextPanel(panel, data) {
             endFormattingInteraction();
         };
         setTextControlActive(textColor, textColor.value.toLowerCase() !== _normalizeColorForInput(getThemeTextStyleDefaults().color, "#000000").toLowerCase());
+    }
+
+    const textFitMode = document.getElementById("prop-text-fit-mode");
+    if (textFitMode) {
+        textFitMode.onchange = e => {
+            const nextMode = e.target.value === "autofit" ? "autofit" : e.target.value === "fixed" ? "fixed" : "autoHeight";
+            saveStateToUndo();
+            const updates = {
+                textFitMode: nextMode,
+                autoHeight: nextMode === "autoHeight",
+            };
+            if (nextMode !== "autofit") updates.minAutoFitFontSize = undefined;
+            updateElementState(data.id, updates);
+            data.textFitMode = nextMode;
+            data.autoHeight = updates.autoHeight;
+            if (updates.minAutoFitFontSize === undefined) delete data.minAutoFitFontSize;
+
+            const dom = document.getElementById(data.id);
+            const layout = dom ? syncTextBoxLayout(dom, data) : null;
+            if (layout?.autoHeight && Number.isFinite(layout.height)) {
+                updateElementState(data.id, { height: `${layout.height}px` });
+                data.height = `${layout.height}px`;
+            }
+            buildPropertiesPanel();
+            refreshPreviews?.();
+        };
+    }
+
+    const autoFitMin = document.getElementById("prop-text-autofit-min");
+    if (autoFitMin) {
+        const commitAutoFitMin = () => {
+            const next = Math.max(6, Math.min(72, Number(autoFitMin.value) || 8));
+            if (next === (Number(data.minAutoFitFontSize) || 8)) return;
+            saveStateToUndo();
+            updateElementState(data.id, { minAutoFitFontSize: next });
+            data.minAutoFitFontSize = next;
+            const dom = document.getElementById(data.id);
+            if (dom) syncTextBoxLayout(dom, data);
+            refreshPreviews?.();
+        };
+        autoFitMin.onchange = commitAutoFitMin;
+        autoFitMin.onblur = commitAutoFitMin;
     }
 
     const bindWholeTextStyleControl = (el, handler) => {

@@ -20,8 +20,8 @@ import requests
 _VISION_PRIORITY = [
     "gemma4:latest",
     "gemma4:31b",
-    # "llama3.2-vision:latest",
-    # "llama3.2-vision",
+    "llama3.2-vision:latest",
+    "llama3.2-vision",
     # "qwen2.5vl",
     # "qwen2.5-vl",
     # "llama3.2-vision:90b",
@@ -52,6 +52,7 @@ _LOW_SIGNAL_TEXT = (
 
 def _available_vision_model() -> str | None:
     """Return the first available Ollama vision model, or None."""
+    configured = os.getenv("OLLAMA_VISION_MODEL", "").strip()
     try:
         resp = requests.get(f"{_OLLAMA_BASE}/api/tags", timeout=5)
         resp.raise_for_status()
@@ -62,6 +63,8 @@ def _available_vision_model() -> str | None:
                 continue
             available.add(name)
             available.add(name.split(":")[0])
+        if configured:
+            return configured
         for name in _VISION_PRIORITY:
             if name in available:
                 return name
@@ -137,6 +140,12 @@ def _call_vision_model(image_path: str, prompt: str, model: str, cache_prefix: s
         "images": [img_b64],
         "stream": False,
         "format": "json",
+        "keep_alive": "2m",
+        "options": {
+            "num_ctx": int(os.getenv("PPTMAKER_VISION_NUM_CTX", "2048")),
+            "num_predict": int(os.getenv("PPTMAKER_VISION_NUM_PREDICT", "220")),
+            "temperature": float(os.getenv("PPTMAKER_VISION_TEMPERATURE", "0.1")),
+        },
     }
     resp = requests.post(
         f"{_OLLAMA_BASE}/api/generate",
@@ -241,10 +250,12 @@ def enrich_catalog(visual_catalog: list, status_cb=None) -> list:
                 if status_cb:
                     status_cb("vision_candidate", f"Screened {entry.get('id', path)}", {"current": idx, "total": total})
                 if _should_drop_candidate(new_entry):
+                    new_entry["low_value_visual"] = True
                     if status_cb:
                         status_cb(
                             "vision_candidate", f"Rejected {entry.get('id', path)}", {"current": idx, "total": total}
                         )
+                    enriched.append(new_entry)
                     continue
         if new_entry.get("vision"):
             enriched.append(new_entry)

@@ -70,7 +70,14 @@ function endFormattingInteraction() {
 function shouldKeepInlineEditorOpen(e) {
     if (formattingInteractionDepth > 0) return true;
     const target = (e && e.relatedTarget) || document.activeElement;
-    if (target && target.closest && (target.closest('#properties-panel') || target.closest('#floating-text-toolbar'))) {
+    if (
+        target &&
+        target.closest &&
+        (target.closest('#properties-panel') ||
+            target.closest('#floating-text-toolbar') ||
+            target.closest('#symbol-picker-modal') ||
+            target.closest('[data-preserve-inline-selection="true"]'))
+    ) {
         return true;
     }
     return false;

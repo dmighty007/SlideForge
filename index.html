@@ -27,11 +27,10 @@
     <meta name="twitter:description" content="Design stunning presentations in minutes with SlideForge's minimal, intuitive AI-guided editor." />
     <meta name="twitter:image" content="assets/favicon.png" />
 
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
+        window.tailwind = window.tailwind || {};
         tailwind.config = {
             theme: {
                 extend: {
@@ -68,6 +67,7 @@
             },
         };
     </script>
+    <script src="https://cdn.tailwindcss.com"></script>
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -87,7 +87,49 @@
     <!-- App Styles -->
     <link rel="stylesheet" href="css/styles.css" />
 </head>
-<body class="font-sans bg-surface text-text-main flex flex-col h-screen overflow-hidden select-none">
+<body class="entry-gate-active font-sans bg-surface text-text-main flex flex-col h-screen overflow-hidden select-none">
+    <section id="entry-hero" class="entry-hero" aria-label="SlideForge sign in">
+        <div class="entry-hero-content">
+            <div class="entry-hero-copy">
+                <div class="entry-brand">
+                    <span class="entry-brand-mark"><i class="fa-solid fa-layer-group"></i></span>
+                    <span>SlideForge</span>
+                </div>
+                <h1>SlideForge</h1>
+                <p class="entry-hero-lede">Build, import, refine, and present polished slide decks from one focused workspace.</p>
+                <div class="entry-hero-actions">
+                    <button type="button" class="entry-secondary-action" onclick="continueAsGuest()">
+                        Continue locally
+                    </button>
+                    <button type="button" class="entry-secondary-action" onclick="switchEntryAuthMode('register')">
+                        Create account
+                    </button>
+                </div>
+            </div>
+            <div class="entry-auth-panel">
+                <div class="entry-auth-header">
+                    <div>
+                        <div id="entry-auth-title" class="entry-auth-title">Sign in</div>
+                        <div id="entry-auth-subtitle" class="entry-auth-subtitle">Use your account to save projects and run AI imports.</div>
+                    </div>
+                    <span class="entry-auth-badge">Workspace</span>
+                </div>
+                <form class="entry-auth-form" onsubmit="submitEntryAuthForm(event)">
+                    <label>
+                        <span>Username</span>
+                        <input id="entry-auth-username" type="text" autocomplete="username" placeholder="Your username">
+                    </label>
+                    <label>
+                        <span>Password</span>
+                        <input id="entry-auth-password" type="password" autocomplete="current-password" placeholder="Your password">
+                    </label>
+                    <div id="entry-auth-error" class="entry-auth-error"></div>
+                    <button type="submit" id="entry-auth-submit" class="entry-primary-action">Sign in</button>
+                    <button type="button" id="entry-auth-toggle" class="entry-link-action" onclick="toggleEntryAuthMode()">Create a new account</button>
+                </form>
+            </div>
+        </div>
+    </section>
 
     <!-- ═══════════════════════════════════════════════════════════ TOP TOOLBAR -->
     <header id="app-toolbar" class="toolbar-shell z-30 shrink-0">
@@ -253,7 +295,7 @@
     </header>
 
     <!-- ═══════════════════════════════════════════════════════════ MAIN BODY -->
-    <div class="flex flex-1 min-h-0">
+    <div id="editor-shell" class="flex flex-1 min-h-0">
 
         <!-- ══════════════════════════════════════ LEFT SIDEBAR -->
         <aside class="w-56 bg-white border-r border-border flex flex-col z-20 shrink-0 shadow-panel">
@@ -275,7 +317,7 @@
                 <!-- Add Slide CTA -->
                 <div class="p-3 border-b border-border shrink-0">
                     <button onclick="addSlide()"
-                        class="w-full py-2 rounded-lg bg-primary text-white text-xs font-semibold hover:bg-primary-hover transition-colors flex items-center justify-center gap-2 shadow-sm">
+                        class="new-slide-btn">
                         <i class="fa-solid fa-plus"></i> New Slide
                     </button>
                 </div>
@@ -331,7 +373,7 @@
                             <i class="fa-solid fa-square-root-variable text-amber-500"></i>
                             <span>LaTeX</span>
                         </button>
-                        <button onclick="openSymbolPicker()" class="element-btn-sm">
+                        <button data-preserve-inline-selection="true" onmousedown="captureInlineSelection?.(); beginFormattingInteraction?.()" onclick="openSymbolPicker()" class="element-btn-sm">
                             <i class="fa-solid fa-omega text-amber-500"></i>
                             <span>Symbols</span>
                         </button>
@@ -552,7 +594,7 @@
                         <i class="fa-solid fa-eraser"></i>
                     </button>
                     <div class="floating-toolbar-divider"></div>
-                    <button id="floating-insert-symbol" class="floating-text-button" title="Insert Symbol" onclick="openSymbolPicker()">
+                    <button id="floating-insert-symbol" data-preserve-inline-selection="true" class="floating-text-button" title="Insert Symbol" onclick="openSymbolPicker()">
                         <i class="fa-solid fa-icons"></i>
                     </button>
                     <button id="floating-insert-equation" class="floating-text-button" title="Insert Equation" onclick="openEquationModal()">
@@ -589,8 +631,7 @@
                 </button>
                 <div class="flex flex-col items-center min-w-[60px]">
                     <span id="zoom-label" class="text-xs font-bold text-text-main">100%</span>
-                    <input type="range" id="zoom-slider" min="0.25" max="3" step="0.05" value="1" 
-                           class="w-24 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-primary" oninput="handleZoomSlider(this.value)">
+                    <input type="range" id="zoom-slider" min="0.25" max="3" step="0.05" value="1" oninput="handleZoomSlider(this.value)">
                 </div>
                 <button onclick="changeZoom(0.1)" class="w-8 h-8 rounded-xl hover:bg-surface flex items-center justify-center transition-colors">
                     <i class="fa-solid fa-plus text-xs"></i>
@@ -934,7 +975,6 @@
     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js-plugins@4.6.0/chalkboard/style.css" />
     <script src="https://cdn.jsdelivr.net/npm/reveal.js-plugins@4.6.0/chalkboard/plugin.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/js/all.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     

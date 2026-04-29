@@ -29,6 +29,7 @@ function buildDefaultPresentationState() {
                         width: "auto",
                         height: "auto",
                         autoHeight: true,
+                        textFitMode: "autoHeight",
                         content: "Interactive Builder",
                         styles: {
                             color: "#172033",
@@ -57,6 +58,7 @@ let currentPresentationAutosaveVersion = 0;
 let currentPresentationTitle = "Untitled Presentation";
 let currentAuthUser = null;
 let currentAuthMode = "login";
+let currentEntryAuthMode = "login";
 let _authReady = false;
 let _presentationPersistenceReady = false;
 let _presentationPersistenceEnabled = true;
@@ -65,6 +67,7 @@ let _autosaveTimer = null;
 let _lastPersistedFingerprint = "";
 let _backendApiAvailable = true;
 const PRESENTATION_STORAGE_KEY = "pptmaker_presentation_id";
+const ENTRY_GATE_DISMISSED_KEY = "pptmaker_entry_gate_dismissed";
 const PRESENTATION_ANIMATION_EFFECTS = [
     "fade-in",
     "slide-up",
@@ -316,6 +319,84 @@ function isBackendApiAvailable() {
     return _backendApiAvailable;
 }
 
+function updateEntryGate() {
+    const hero = document.getElementById("entry-hero");
+    if (!hero) return;
+    const dismissed = sessionStorage.getItem(ENTRY_GATE_DISMISSED_KEY) === "true";
+    const shouldShow = !currentAuthUser && !dismissed;
+    document.body.classList.toggle("entry-gate-active", shouldShow);
+    hero.setAttribute("aria-hidden", shouldShow ? "false" : "true");
+}
+
+function enterEditorWorkspace() {
+    sessionStorage.setItem(ENTRY_GATE_DISMISSED_KEY, "true");
+    updateEntryGate();
+    requestAnimationFrame(() => {
+        if (typeof Reveal !== "undefined" && Reveal.layout) Reveal.layout();
+        if (typeof applyZoom === "function") applyZoom();
+    });
+}
+
+function continueAsGuest() {
+    setProjectSaveHint("Local only mode", "warn");
+    enterEditorWorkspace();
+}
+
+function switchEntryAuthMode(mode = "login") {
+    currentEntryAuthMode = mode === "register" ? "register" : "login";
+    const title = document.getElementById("entry-auth-title");
+    const subtitle = document.getElementById("entry-auth-subtitle");
+    const submit = document.getElementById("entry-auth-submit");
+    const toggle = document.getElementById("entry-auth-toggle");
+    const error = document.getElementById("entry-auth-error");
+    const password = document.getElementById("entry-auth-password");
+    if (title) title.textContent = currentEntryAuthMode === "register" ? "Create account" : "Sign in";
+    if (subtitle) {
+        subtitle.textContent =
+            currentEntryAuthMode === "register"
+                ? "Create an account to save projects and keep imports attached to you."
+                : "Use your account to save projects and run AI imports.";
+    }
+    if (submit) submit.textContent = currentEntryAuthMode === "register" ? "Create account" : "Sign in";
+    if (toggle) toggle.textContent = currentEntryAuthMode === "register" ? "Use an existing account" : "Create a new account";
+    if (password) password.autocomplete = currentEntryAuthMode === "register" ? "new-password" : "current-password";
+    if (error) error.textContent = "";
+}
+
+function toggleEntryAuthMode() {
+    switchEntryAuthMode(currentEntryAuthMode === "login" ? "register" : "login");
+}
+
+async function submitEntryAuthForm(event) {
+    if (event) event.preventDefault();
+    if (!_backendApiAvailable) {
+        continueAsGuest();
+        return;
+    }
+    const username = document.getElementById("entry-auth-username")?.value?.trim() || "";
+    const password = document.getElementById("entry-auth-password")?.value || "";
+    const error = document.getElementById("entry-auth-error");
+    if (error) error.textContent = "";
+
+    try {
+        const path = currentEntryAuthMode === "register" ? "/api/auth/register/" : "/api/auth/login/";
+        const session = await _authRequest(path, {
+            method: "POST",
+            body: JSON.stringify({ username, password }),
+        });
+        sessionStorage.setItem(ENTRY_GATE_DISMISSED_KEY, "true");
+        setAuthState(session.user || null);
+        sessionStorage.setItem(ENTRY_GATE_DISMISSED_KEY, "true");
+        updateEntryGate();
+        closeAuthModal();
+        await initPresentationPersistence(true);
+        renderSlidesFromState?.();
+        updateSlideCounter?.();
+    } catch (err) {
+        if (error) error.textContent = err.message || "Authentication failed";
+    }
+}
+
 function closeUserMenu() {
     const menu = document.getElementById("auth-menu");
     if (!menu) return;
@@ -413,6 +494,7 @@ function setAuthState(user) {
     currentAuthUser = user || null;
     _authReady = true;
     updateAuthUi();
+    updateEntryGate();
     updateProjectTitleUi();
 }
 
@@ -514,7 +596,16 @@ function normalizeStateIds() {
                               typeof safeEl.bulletStyle === "string" && safeEl.bulletStyle
                                   ? safeEl.bulletStyle
                                   : "default",
-                          autoHeight: safeEl.autoHeight !== false,
+                          autoHeight: safeEl.textFitMode === "autofit" ? false : safeEl.autoHeight !== false,
+                          textFitMode:
+                              safeEl.textFitMode === "autofit"
+                                  ? "autofit"
+                                  : safeEl.textFitMode === "fixed" || safeEl.autoHeight === false
+                                    ? "fixed"
+                                    : "autoHeight",
+                          minAutoFitFontSize: Number.isFinite(Number(safeEl.minAutoFitFontSize))
+                              ? Math.max(6, Math.min(72, Number(safeEl.minAutoFitFontSize)))
+                              : undefined,
                           themeManaged: safeEl.themeManaged ?? true,
                       }
                     : fallbackType === "table"
@@ -846,6 +937,7 @@ async function submitAuthForm(event) {
 
 async function logoutCurrentUser() {
     await _authRequest("/api/auth/logout/", { method: "POST" });
+    sessionStorage.removeItem(ENTRY_GATE_DISMISSED_KEY);
     setAuthState(null);
     currentPresentationId = null;
     currentPresentationAutosaveVersion = 0;
@@ -853,7 +945,7 @@ async function logoutCurrentUser() {
     _presentationPersistenceReady = true;
     localStorage.removeItem(PRESENTATION_STORAGE_KEY);
     setProjectSaveHint("Sign in to save projects", "warn");
-    openAuthModal("login");
+    clearSelection?.();
 }
 
 function requireAuthenticatedAction(action, mode = "login") {
@@ -943,7 +1035,7 @@ async function initPresentationPersistence(force = false) {
             _presentationPersistenceEnabled = false;
             _presentationPersistenceReady = true;
             localStorage.removeItem(PRESENTATION_STORAGE_KEY);
-            if (_backendApiAvailable) openAuthModal("login");
+            setProjectSaveHint("Local only mode", "warn");
             return false;
         }
         const storedId = localStorage.getItem(PRESENTATION_STORAGE_KEY);

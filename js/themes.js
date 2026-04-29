@@ -53,7 +53,7 @@ function buildFontOptions(selectedFont = "") {
     const normalizedSelected = normalizeFontFamily(selectedFont);
     return FONT_MENU_OPTIONS.map(font => {
         const selected = normalizeFontFamily(font.value) === normalizedSelected ? "selected" : "";
-        return `<option value="${font.value}" ${selected}>${font.label}</option>`;
+        return `<option value="${escapeHtml(font.value)}" ${selected}>${escapeHtml(font.label)}</option>`;
     }).join("");
 }
 

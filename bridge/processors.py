@@ -13,9 +13,11 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 try:
     from standalone_pdf2ppt import PDFProcessor
     from llm_utils import _unload_ollama_models
+    from pdf_text_extractor import extract_equations_from_pdf, extract_structured_text
 except (ImportError, ModuleNotFoundError):
     from .standalone_pdf2ppt import PDFProcessor
     from .llm_utils import _unload_ollama_models
+    from .pdf_text_extractor import extract_equations_from_pdf, extract_structured_text
 
 _MINERU_VISUAL_TYPES = {"image", "figure", "chart", "diagram", "plot", "table", "picture"}
 _LOW_SIGNAL_CAPTION_RE = re.compile(
@@ -195,5 +197,11 @@ class LocalVisionPDFProcessor(PDFProcessor):
         return int(match.group(1)) + 1 if match else 1
 
     def extract_text(self, start: int = 0, end: int = -1) -> str:
-        if self.marker_markdown: return self.marker_markdown
-        return super().extract_text(start, end)
+        self.mineru_context["equations"] = extract_equations_from_pdf(self.filepath, start, end)
+        structured = extract_structured_text(self.filepath, start, end)
+        if len(structured.split()) >= 250:
+            return structured
+        if self.marker_markdown and len(self.marker_markdown.split()) > len(structured.split()):
+            return self.marker_markdown
+        plain = super().extract_text(start, end)
+        return structured or plain

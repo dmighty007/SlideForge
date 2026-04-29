@@ -51,8 +51,18 @@ def _figure_text_blob(figure: dict) -> str:
 
 def _figure_quality_score(figure: dict) -> float:
     vision = figure.get("vision", {}) or {}
+    screen = figure.get("screen", {}) or {}
     text_blob = _figure_text_blob(figure).lower()
     score = 0.0
+
+    if figure.get("low_value_visual"):
+        score -= 1.5
+    if isinstance(screen, dict) and not screen.get("is_figure") and float(screen.get("confidence") or 0.0) >= 0.55:
+        score -= 1.2
+    if isinstance(screen, dict):
+        screen_reason = str(screen.get("brief_reason") or "").lower()
+        if any(term in screen_reason for term in _LOW_VALUE_FIGURE_TERMS):
+            score -= 0.9
 
     if any(term in text_blob for term in _LOW_VALUE_FIGURE_TERMS):
         score -= 0.75
@@ -123,23 +133,27 @@ def _assign_figures_to_slides(slides: list[dict], candidate_figures: list[dict])
     slide_texts = {
         idx: _slide_content_text(slide.get("title", ""), slide.get("points", [])) for idx, slide in enumerate(slides)
     }
+    valid_figures = [figure for figure in candidate_figures if _figure_quality_score(figure) >= -0.8]
+    if not valid_figures:
+        return {idx: [] for idx in range(len(slides))}
+
     all_pairs = []
     for idx, slide_text in slide_texts.items():
-        for figure in candidate_figures:
+        for figure in valid_figures:
             match_score = _figure_match_score(slide_text, figure)
             quality_score = _figure_quality_score(figure)
             all_pairs.append((idx, figure["id"], match_score, quality_score, match_score + (quality_score * 0.35)))
     all_pairs.sort(key=lambda item: item[4], reverse=True)
 
     assignments = {idx: [] for idx in range(len(slides))}
-    figure_use_counts = {figure["id"]: 0 for figure in candidate_figures}
+    figure_use_counts = {figure["id"]: 0 for figure in valid_figures}
 
     for idx, slide in enumerate(slides):
         fids = slide.get("fig_ids", [])
         if not fids and slide.get("fig_id"):
             fids = [slide.get("fig_id")]
         for fid in fids:
-            if fid and fid in figure_use_counts:
+            if fid and fid in figure_use_counts and figure_use_counts[fid] == 0:
                 if fid not in assignments[idx]:
                     assignments[idx].append(fid)
                     figure_use_counts[fid] += 1
@@ -147,27 +161,63 @@ def _assign_figures_to_slides(slides: list[dict], candidate_figures: list[dict])
     for idx, figure_id, score, quality_score, combined_score in all_pairs:
         if assignments[idx] or figure_use_counts[figure_id] > 0:
             continue
-        if score < 0.08 or combined_score < 0.02 or quality_score < -0.8:
+        if score < 0.1 or combined_score < 0.08:
             continue
         assignments[idx].append(figure_id)
         figure_use_counts[figure_id] += 1
+
+    # Cover high-value figures at least once before allowing repeats.
+    high_value_figures = sorted(
+        valid_figures,
+        key=lambda figure: _figure_quality_score(figure),
+        reverse=True,
+    )
+    for figure in high_value_figures:
+        figure_id = figure["id"]
+        if figure_use_counts[figure_id] > 0:
+            continue
+        best = None
+        for idx, pair_figure_id, score, quality_score, combined_score in all_pairs:
+            if pair_figure_id != figure_id:
+                continue
+            if len(assignments[idx]) >= _MAX_FIGURES_PER_SLIDE:
+                continue
+            candidate = (combined_score, score, quality_score, idx)
+            if best is None or candidate > best:
+                best = candidate
+        if best and (best[1] >= 0.08 or best[2] >= 0.25):
+            idx = best[3]
+            assignments[idx].append(figure_id)
+            figure_use_counts[figure_id] += 1
 
     for idx, figure_id, score, quality_score, combined_score in all_pairs:
         if len(assignments[idx]) >= _MAX_FIGURES_PER_SLIDE:
             continue
         if figure_id in assignments[idx]:
             continue
-        if figure_use_counts[figure_id] >= 2:
+        if figure_use_counts[figure_id] >= 1:
             continue
-        if score < 0.16 or combined_score < 0.12 or quality_score < -0.4:
+        if score < 0.18 or combined_score < 0.18:
             continue
         assignments[idx].append(figure_id)
         figure_use_counts[figure_id] += 1
 
-    # Ensure every valid figure is used at least once somewhere in the deck.
-    for figure in candidate_figures:
+    # If there are more slides than figures, allow a small number of highly relevant repeats.
+    repeat_cap = 2 if len(slides) > len(valid_figures) else 1
+    for idx, figure_id, score, quality_score, combined_score in all_pairs:
+        if assignments[idx] or figure_use_counts[figure_id] >= repeat_cap:
+            continue
+        if score < 0.28 or combined_score < 0.24 or quality_score < 0.1:
+            continue
+        assignments[idx].append(figure_id)
+        figure_use_counts[figure_id] += 1
+
+    # Attach remaining important figures to the least-loaded relevant slide, but never logos/junk.
+    for figure in valid_figures:
         figure_id = figure["id"]
         if figure_use_counts[figure_id] > 0:
+            continue
+        if _figure_quality_score(figure) < 0.15:
             continue
 
         assigned = False
@@ -179,7 +229,7 @@ def _assign_figures_to_slides(slides: list[dict], candidate_figures: list[dict])
                 break
             if len(assignments[idx]) >= _MAX_FIGURES_PER_SLIDE:
                 continue
-            if quality_score < -0.8:
+            if score < 0.06 and quality_score < 0.25:
                 continue
             assignments[idx].append(figure_id)
             figure_use_counts[figure_id] += 1

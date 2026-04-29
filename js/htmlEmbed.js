@@ -67,7 +67,6 @@ function buildResponsiveStyles(mode) {
                 top: 0;
                 left: 0;
                 transform-origin: top left;
-                will-change: transform, left, top;
             }
         </style>
     `;

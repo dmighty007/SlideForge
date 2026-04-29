@@ -1301,13 +1301,20 @@ function _renderChartDom(container, elData) {
 function _createStaticNode(elData) {
     const el = document.createElement("div");
     el.className = "canvas-element";
+    el.setAttribute("data-type", elData.type);
     el.style.position = "absolute";
     el.style.transform = `translate(${elData.x}px, ${elData.y}px)`;
     if (elData.width) el.style.width = elData.width;
     if (elData.height) el.style.height = elData.height;
     _applyStylesToElement(el, elData.styles);
     if (elData.type === "text") {
-        el.innerHTML = renderTextContent(elData);
+        el.dataset.autoHeight = elData.autoHeight === false ? "false" : "true";
+        el.dataset.textFitMode = elData.textFitMode || (elData.autoHeight === false ? "fixed" : "autoHeight");
+        const contentHost = document.createElement("div");
+        contentHost.className = "text-element-content";
+        contentHost.innerHTML = renderTextContent(elData);
+        el.appendChild(contentHost);
+        requestAnimationFrame(() => syncTextBoxLayout(el, elData));
     } else if (elData.type === "connector") {
         renderConnectorContent(el, elData, { interactive: false });
     } else if (elData.type === "image") {
@@ -1357,6 +1364,7 @@ function createElementNode(elData) {
     if (elData.height) el.style.height = elData.height;
     if (elData.type === "text") {
         el.dataset.autoHeight = elData.autoHeight === false ? "false" : "true";
+        el.dataset.textFitMode = elData.textFitMode || (elData.autoHeight === false ? "fixed" : "autoHeight");
     }
     _applyStylesToElement(el, elData.styles);
 
