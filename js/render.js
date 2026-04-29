@@ -1098,7 +1098,12 @@ function _renderTableDom(container, elData, { interactive = true } = {}) {
                     if (!cell.isContentEditable) return;
                     const host = container.closest(".canvas-element");
                     const nextTableData = normalizeTableData(elData.tableData);
-                    nextTableData.cells[rowIndex][colIndex].text = cell.innerText.replace(/\r/g, "");
+                    const nextText = cell.innerText.replace(/\r/g, "");
+                    const previousText = nextTableData.cells[rowIndex][colIndex]?.text || "";
+                    if (nextText !== previousText) {
+                        saveStateToUndo();
+                    }
+                    nextTableData.cells[rowIndex][colIndex].text = nextText;
                     updateElementState(elData.id, { tableData: nextTableData });
                     elData.tableData = nextTableData;
                     cell.contentEditable = "false";
@@ -1289,8 +1294,11 @@ function _applyTypeContent(el, elData) {
             }
         });
 
-        el.addEventListener("dblclick", () => {
+        el.addEventListener("dblclick", event => {
             if (document.body.classList.contains("play-mode-active")) return;
+            event.preventDefault();
+            event.stopPropagation();
+            selectElement(elData.id, "replace");
             const isStructured = isStructuredBulletContent(elData.content);
             if (isStructured) {
                 contentHost.dataset.structuredEdit = "true";
@@ -1306,10 +1314,16 @@ function _applyTypeContent(el, elData) {
                 setActiveInlineEditor(contentHost);
             }
             syncTextBoxLayout(el, elData);
-            requestAnimationFrame(() => _focusEditableHost(contentHost));
             el.classList.add("cursor-text", "editing-text");
             interact(el).draggable(false);
             interact(el).resizable(false);
+            requestAnimationFrame(() => {
+                _focusEditableHost(contentHost);
+                if (!isStructured) {
+                    captureInlineSelection();
+                }
+                updateFloatingTextToolbar?.();
+            });
         });
         contentHost.addEventListener("mousedown", e => {
             if (!contentHost.isContentEditable) return;
@@ -1332,6 +1346,10 @@ function _applyTypeContent(el, elData) {
         contentHost.addEventListener("mouseup", captureInlineSelection);
         contentHost.addEventListener("input", () => {
             if (contentHost.dataset.structuredEdit === "true") return;
+            if (contentHost.dataset.undoSnapshotCaptured !== "true") {
+                saveStateToUndo();
+                contentHost.dataset.undoSnapshotCaptured = "true";
+            }
             updateElementState(el.id, { content: contentHost.innerHTML });
             captureInlineSelection();
             const layout = syncTextBoxLayout(el, elData);
@@ -1350,6 +1368,10 @@ function _applyTypeContent(el, elData) {
                         ? parseStructuredBulletEditorHtml(contentHost)
                         : parseEditableStructuredText(contentHost.textContent || "", elData.content);
                 const nextContent = nextStructured.length ? nextStructured : [normalizeStructuredBulletItem({ html: "List item", level: 0 })];
+                if (JSON.stringify(nextContent) !== JSON.stringify(elData.content) && contentHost.dataset.undoSnapshotCaptured !== "true") {
+                    saveStateToUndo();
+                    contentHost.dataset.undoSnapshotCaptured = "true";
+                }
                 updateElementState(el.id, { content: nextContent });
                 elData.content = nextContent;
                 delete contentHost.dataset.structuredEdit;
@@ -1372,6 +1394,7 @@ function _applyTypeContent(el, elData) {
                 updateElementState(el.id, { height: `${layout.height}px` });
                 elData.height = `${layout.height}px`;
             }
+            delete contentHost.dataset.undoSnapshotCaptured;
             contentHost.contentEditable = false;
             clearActiveInlineEditor(contentHost);
             el.classList.remove("cursor-text", "editing-text");

@@ -37,8 +37,13 @@ function initKeyboard() {
         if (document.body.classList.contains("play-mode-active")) return;
 
         const key = e.key.toLowerCase();
+        const isUndoShortcut = (e.ctrlKey || e.metaKey) && !e.shiftKey && key === "z";
+        const isRedoShortcut =
+            ((e.ctrlKey || e.metaKey) && e.shiftKey && key === "z") || ((e.ctrlKey || e.metaKey) && key === "y");
         const isEditingField =
             e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.isContentEditable;
+        const isInlineEditor =
+            e.target.closest?.(".text-element-content, .table-element-cell") && e.target.isContentEditable;
 
         // Ctrl/Cmd+S: Save current project
         if ((e.ctrlKey || e.metaKey) && key === "s") {
@@ -55,12 +60,21 @@ function initKeyboard() {
             return;
         }
 
-        // Do not trigger other shortcuts if user is typing in an input, textarea, or contenteditable element
-        // EXCEPT for Undo/Redo which we handle specifically
+        // Inline slide text/table edits are part of the presentation state, so
+        // Ctrl/Cmd+Z must use app undo. Plain form fields keep native undo.
+        if (isInlineEditor && (isUndoShortcut || isRedoShortcut)) {
+            e.preventDefault();
+            e.target.blur?.();
+            requestAnimationFrame(() => {
+                if (isUndoShortcut) undo();
+                else redo();
+            });
+            return;
+        }
+
+        // Let focused form fields keep native text undo/redo.
         if (isEditingField) {
-            if (!((e.ctrlKey || e.metaKey) && (key === "z" || key === "y"))) {
-                return;
-            }
+            return;
         }
 
         // Ctrl+A: Select all elements
@@ -106,15 +120,17 @@ function initKeyboard() {
         }
         
         // Ctrl+Z: Undo
-        if ((e.ctrlKey || e.metaKey) && !e.shiftKey && key === "z") {
+        if (isUndoShortcut) {
             e.preventDefault();
             undo();
+            return;
         }
         
         // Ctrl+Shift+Z or Ctrl+Y: Redo
-        if (((e.ctrlKey || e.metaKey) && e.shiftKey && key === "z") || ((e.ctrlKey || e.metaKey) && key === "y")) {
+        if (isRedoShortcut) {
             e.preventDefault();
             redo();
+            return;
         }
 
         // Ctrl+M: Add new slide

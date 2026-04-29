@@ -26,6 +26,26 @@ function getActiveInlineEditor() {
     return isEditorActive(activeEditor) ? activeEditor : null;
 }
 
+function findEditableTextHostFromSelection() {
+    const selection = _getNativeSelection();
+    const node = selection?.anchorNode;
+    if (!node) return null;
+    const host = (node.nodeType === 3 ? node.parentElement : node).closest?.(".text-element-content");
+    return isEditorActive(host) ? host : null;
+}
+
+function findEditableTextHostFromSelectedElement() {
+    if (!Array.isArray(state?.selectedIds) || state.selectedIds.length !== 1) return null;
+    const dom = document.getElementById(state.selectedIds[0]);
+    if (!dom?.classList?.contains("editing-text")) return null;
+    const host = dom.querySelector(".text-element-content");
+    return isEditorActive(host) ? host : null;
+}
+
+function getInlineEditorForFormatting() {
+    return getActiveInlineEditor() || findEditableTextHostFromSelection() || findEditableTextHostFromSelectedElement();
+}
+
 function setActiveInlineEditor(editor) {
     activeEditor = isEditorActive(editor) ? editor : null;
     if (!activeEditor) {
@@ -58,19 +78,22 @@ function shouldKeepInlineEditorOpen(e) {
 }
 
 function captureInlineSelection() {
-    const editor = getActiveInlineEditor();
+    const editor = getInlineEditorForFormatting();
     const selection = _getNativeSelection();
     if (!editor || !selection || selection.rangeCount === 0) return false;
     const range = selection.getRangeAt(0);
     if (!editor.contains(range.commonAncestorContainer)) return false;
+    activeEditor = editor;
     savedRange = range.cloneRange();
     return true;
 }
 
 function restoreInlineSelection() {
-    const editor = getActiveInlineEditor();
+    const editor = getInlineEditorForFormatting();
     const selection = _getNativeSelection();
     if (!editor || !selection || !savedRange) return false;
+    activeEditor = editor;
+    editor.focus();
     selection.removeAllRanges();
     selection.addRange(savedRange.cloneRange());
     return true;
@@ -87,7 +110,7 @@ function selectInsertedNode(node) {
 }
 
 function wrapSelectionWithStyledSpan(styleMap) {
-    const editor = getActiveInlineEditor();
+    const editor = getInlineEditorForFormatting();
     const selection = _getNativeSelection();
     if (!editor || !selection || selection.rangeCount === 0) return false;
     const range = selection.getRangeAt(0);
@@ -118,18 +141,15 @@ function wrapSelectionWithStyledSpan(styleMap) {
 }
 
 function applyInlineTextStyle(action, value) {
-    let editor = getActiveInlineEditor();
+    let editor = getInlineEditorForFormatting();
     
     // If no active editor found, try to find it from the current selection if possible
     if (!editor) {
-        const selection = _getNativeSelection();
-        const node = selection?.anchorNode;
-        if (node) {
-            editor = (node.nodeType === 3 ? node.parentElement : node).closest(".text-element-content");
-        }
+        editor = findEditableTextHostFromSelection();
     }
     
     if (!editor) return false;
+    activeEditor = editor;
     
     // Force re-enable if it was temporarily disabled
     if (editor.contentEditable !== "true") {

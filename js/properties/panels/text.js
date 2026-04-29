@@ -102,7 +102,10 @@ function buildTextPanel(panel, data) {
                 const font = document.getElementById("prop-font");
                 if (font) {
                     bindInlineFormattingGuard(font);
-                    font.onchange = e => applyTextFormatting("fontFamily", e.target.value, { inlineAction: "fontFamily" });
+                    font.onchange = e => {
+                        restoreInlineSelection?.();
+                        applyTextFormatting("fontFamily", e.target.value, { inlineAction: "fontFamily" });
+                    };
                 }
                 const bold = document.getElementById("prop-bold");
                 if (bold) {
@@ -138,6 +141,7 @@ function buildTextPanel(panel, data) {
                     const commitFontSize = () => {
                         if (fontSize.value === lastCommitted) return;
                         lastCommitted = fontSize.value;
+                        restoreInlineSelection?.();
                         applyTextFormatting("fontSize", _normalizePx(fontSize.value, "32px"), { inlineAction: "fontSize" });
                     };
                     
@@ -240,4 +244,3 @@ function buildTextPanel(panel, data) {
                     };
                 }
             
-

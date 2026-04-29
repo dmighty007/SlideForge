@@ -17,6 +17,12 @@ function getActiveInlineTextContext(data = getSelectedElementData()) {
                       (typeof getActiveInlineEditor === "function" && editor === getActiveInlineEditor());
 
     if (isEditing) {
+        if (editor.contentEditable !== "true") {
+            editor.contentEditable = "true";
+        }
+        if (typeof setActiveInlineEditor === "function") {
+            setActiveInlineEditor(editor);
+        }
         return { editor, dom, data };
     }
     return null;
@@ -218,6 +224,9 @@ function applyTextFormatting(prop, value, options = {}) {
     if (!data || data.type !== "text") return;
 
     const inlineContext = getActiveInlineTextContext(data);
+    const isInlineEditingSession = !!document.querySelector(
+        ".canvas-element.editing-text .text-element-content[contenteditable='true']"
+    );
     
     if (inlineContext) {
         // We have an active editor context. 
@@ -228,6 +237,7 @@ function applyTextFormatting(prop, value, options = {}) {
         }
 
         saveStateToUndo();
+        inlineContext.editor.dataset.undoSnapshotCaptured = "true";
         const success = applyInlineTextStyle(
             options.inlineAction || prop,
             options.inlineValue !== undefined ? options.inlineValue : value,
@@ -248,7 +258,12 @@ function applyTextFormatting(prop, value, options = {}) {
         }
     }
 
-    // Fallback: Apply to the entire element ONLY if not in edit mode or inline failed
+    if (isInlineEditingSession) {
+        setProjectSaveHint?.("Select text inside the box to style it", "muted");
+        return;
+    }
+
+    // Fallback: Apply to the entire element only outside inline edit mode.
     if (["fontWeight", "fontStyle", "fontFamily", "fontSize", "color"].includes(prop)) {
         applyStyle(prop, value);
     }
@@ -779,14 +794,20 @@ function updateFloatingTextToolbar() {
     }
     if (fontSelect) {
         bindInlineFormattingGuard(fontSelect);
-        fontSelect.onchange = e => applyTextFormatting("fontFamily", e.target.value, { inlineAction: "fontFamily" });
+        fontSelect.onchange = e => {
+            restoreInlineSelection?.();
+            applyTextFormatting("fontFamily", e.target.value, { inlineAction: "fontFamily" });
+        };
         fontSelect.value = data.styles.fontFamily || "Inter, sans-serif";
     }
     if (sizeInput) {
         bindInlineFormattingGuard(sizeInput);
         const commitFontSize = () => {
             const val = sizeInput.value.trim();
-            if (val) applyTextFormatting("fontSize", /^\d+$/.test(val) ? val + "px" : val, { inlineAction: "fontSize" });
+            if (val) {
+                restoreInlineSelection?.();
+                applyTextFormatting("fontSize", /^\d+$/.test(val) ? val + "px" : val, { inlineAction: "fontSize" });
+            }
         };
         sizeInput.onchange = commitFontSize;
         sizeInput.onblur = commitFontSize;
@@ -795,10 +816,15 @@ function updateFloatingTextToolbar() {
     }
     if (colorInput) {
         bindInlineFormattingGuard(colorInput);
-        colorInput.addEventListener("input", beginFormattingInteraction);
-        colorInput.oninput = e => applyTextFormatting("color", e.target.value, { inlineAction: "color" });
-        colorInput.onchange = e => {
+        colorInput.oninput = e => {
+            colorInput.dataset.lastAppliedInlineColor = e.target.value;
             applyTextFormatting("color", e.target.value, { inlineAction: "color" });
+        };
+        colorInput.onchange = e => {
+            if (colorInput.dataset.lastAppliedInlineColor !== e.target.value) {
+                applyTextFormatting("color", e.target.value, { inlineAction: "color" });
+            }
+            delete colorInput.dataset.lastAppliedInlineColor;
             endFormattingInteraction();
         };
         colorInput.value = _normalizeColorForInput(data.styles.color, "#000000");
@@ -812,6 +838,7 @@ function updateFloatingTextToolbar() {
             swatch.className = "w-4 h-4 rounded-full border border-slate-200 hover:scale-110 transition-transform shadow-sm";
             swatch.style.backgroundColor = color;
             swatch.title = color;
+            bindInlineFormattingGuard(swatch);
             swatch.onclick = () => {
                 applyTextFormatting("color", color, { inlineAction: "color" });
                 if (colorInput) colorInput.value = color;
@@ -1726,7 +1753,10 @@ function buildPropertiesPanel() {
                 const font = document.getElementById("prop-font");
                 if (font) {
                     bindInlineFormattingGuard(font);
-                    font.onchange = e => applyTextFormatting("fontFamily", e.target.value, { inlineAction: "fontFamily" });
+                    font.onchange = e => {
+                        restoreInlineSelection?.();
+                        applyTextFormatting("fontFamily", e.target.value, { inlineAction: "fontFamily" });
+                    };
                 }
                 const bold = document.getElementById("prop-bold");
                 if (bold) {
@@ -1746,8 +1776,10 @@ function buildPropertiesPanel() {
                 const fontSize = document.getElementById("prop-fs");
                 if (fontSize) {
                     bindInlineFormattingGuard(fontSize);
-                    const commitFontSize = () =>
+                    const commitFontSize = () => {
+                        restoreInlineSelection?.();
                         applyTextFormatting("fontSize", _normalizePx(fontSize.value, "32px"), { inlineAction: "fontSize" });
+                    };
                     fontSize.onchange = commitFontSize;
                     fontSize.onblur = commitFontSize;
                     fontSize.onfocus = () => fontSize.select();
@@ -2686,10 +2718,15 @@ document.addEventListener("selectionchange", () => {
 
 function bindInlineFormattingGuard(element) {
     if (!element) return;
-    element.addEventListener("pointerdown", () => {
+    if (element.dataset.inlineFormattingGuardBound === "true") return;
+    element.dataset.inlineFormattingGuardBound = "true";
+    element.addEventListener("pointerdown", event => {
         if (getActiveInlineEditor()) {
             captureInlineSelection();
             beginFormattingInteraction();
+        }
+        if (!["INPUT", "SELECT", "TEXTAREA"].includes(element.tagName)) {
+            event.preventDefault();
         }
         if (element.tagName === "INPUT" || element.tagName === "SELECT") {
             setTimeout(() => element.focus(), 0);
