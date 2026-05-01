@@ -5,44 +5,45 @@
 
 /* ── Design Tokens ── */
 :root {
-    --bg:            #F5F6F8;
-    --canvas:        #F8FAFC;
-    --primary:       #3B82F6;
-    --primary-hover: #2563EB;
-    --accent:        #95D5B2;
-    --text-main:     #2E2E2E;
-    --text-sub:      #6B7280;
-    --border:        #D1D5DB;
-    --sidebar-bg:    #E9ECF1;
-    --panel-bg:      #E9ECF1;
-    --surface:       #F5F6F8;
-    --surface-soft:  #E9ECF1;
-    --panel-card:    #F8FAFC;
-    --pastel-blue:   #A7C7E7;
-    --pastel-cyan:   #BFE3F5;
+    --bg:            #F8FAFC;
+    --canvas:        #FFFFFF;
+    --primary:       #748FFC; /* Premium Sky Blue */
+    --primary-hover: #5C7CFA;
+    --accent:        #B7E4C7; /* Mint */
+    --text-main:     #1A1B1E;
+    --text-sub:      #64748B;
+    --border:        #E2E8F0;
+    --sidebar-bg:    #F8FAFC;
+    --panel-bg:      #F8FAFC;
+    --surface:       #F8FAFC;
+    --surface-soft:  #F1F5F9;
+    --panel-card:    #FFFFFF;
+    --pastel-blue:   #A5D8FF;
+    --pastel-cyan:   #D0EBFF;
     --pastel-green:  #B7E4C7;
-    --pastel-mint:   #95D5B2;
-    --pastel-yellow: #FFE8A1;
-    --pastel-orange: #F6C28B;
-    --pastel-lavender:#CDB4DB;
-    --soft-shadow:   0 2px 6px rgba(0,0,0,0.05);
+    --pastel-mint:   #B7E4C7;
+    --pastel-yellow: #FFE8A3;
+    --pastel-orange: #FFD6A5;
+    --pastel-lavender:#C7C9F4;
+    --soft-shadow:   0 4px 12px rgba(0,0,0,0.03);
+    --premium-shadow: 0 10px 30px rgba(0,0,0,0.06);
 
     /* Slide theme vars (overridden by JS) */
-    --slide-bg:      linear-gradient(180deg, #F8FAFC 0%, #F5F6F8 100%);
-    --slide-fg:      #2E2E2E;
-    --slide-muted:   #6B7280;
-    --slide-accent:  #3B82F6;
-    --slide-accent-2:#A7C7E7;
-    --slide-grid:    rgba(46,46,46,0.03);
-    --editor-accent: #3B82F6;
-    --editor-accent-soft: rgba(59,130,246,0.12);
+    --slide-bg:      linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+    --slide-fg:      #1A1B1E;
+    --slide-muted:   #64748B;
+    --slide-accent:  #748FFC;
+    --slide-accent-2:#A5D8FF;
+    --slide-grid:    rgba(0,0,0,0.02);
+    --editor-accent: #748FFC;
+    --editor-accent-soft: rgba(116,143,252,0.12);
 }
 
 /* ── Base ── */
 * { box-sizing: border-box; }
 
 body {
-    font-family: "Inter", system-ui, sans-serif;
+    font-family: "Plus Jakarta Sans", "Inter", system-ui, sans-serif;
     background-color: var(--bg);
     color: var(--text-main);
     -webkit-font-smoothing: antialiased;
@@ -119,7 +120,7 @@ body.entry-gate-active .entry-hero {
 
 .entry-hero h1 {
     margin: 28px 0 0;
-    font-family: "Manrope", "Inter", system-ui, sans-serif;
+    font-family: "Outfit", "Manrope", "Inter", system-ui, sans-serif;
     font-size: clamp(52px, 8vw, 104px);
     line-height: 0.96;
     font-weight: 800;
@@ -154,7 +155,7 @@ body.entry-gate-active .entry-hero {
 .entry-primary-action {
     width: 100%;
     border-radius: 10px;
-    background: #2563eb;
+    background: var(--primary);
     color: #ffffff;
     font-size: 14px;
 }
@@ -170,7 +171,7 @@ body.entry-gate-active .entry-hero {
 .entry-link-action {
     width: 100%;
     background: transparent;
-    color: #2563eb;
+    color: var(--primary);
     font-size: 13px;
 }
 
@@ -207,8 +208,8 @@ body.entry-gate-active .entry-hero {
 .entry-auth-badge {
     padding: 5px 9px;
     border-radius: 8px;
-    background: #eff6ff;
-    color: #2563eb;
+    background: var(--pastel-cyan);
+    color: var(--primary);
     font-size: 11px;
     font-weight: 800;
 }
@@ -242,8 +243,8 @@ body.entry-gate-active .entry-hero {
 }
 
 .entry-auth-form input:focus {
-    border-color: #2563eb;
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--editor-accent-soft);
 }
 
 .entry-auth-error {
@@ -288,12 +289,12 @@ body.entry-gate-active .entry-hero {
     align-items: stretch;
     justify-content: center;
     gap: 0;
-    min-height: 54px;
-    padding: 6px 14px;
-    border-bottom: 1px solid rgba(203, 213, 225, 0.82);
-    background: rgba(245, 246, 248, 0.94);
-    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
-    backdrop-filter: blur(18px);
+    min-height: 56px;
+    padding: 6px 16px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.85);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.02);
+    backdrop-filter: blur(24px);
 }
 
 .toolbar-primary-row {
@@ -399,7 +400,7 @@ body.entry-gate-active .entry-hero {
 }
 
 .toolbar-product {
-    font-family: "Manrope", system-ui, sans-serif;
+    font-family: "Outfit", system-ui, sans-serif;
     font-size: 15px;
     font-weight: 800;
     letter-spacing: 0;
@@ -876,28 +877,31 @@ body.entry-gate-active .entry-hero {
 
 .new-slide-btn {
     width: 100%;
-    min-height: 38px;
+    min-height: 42px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
-    border: 1px solid #1d4ed8;
-    border-radius: 10px;
-    background: #2563eb;
-    color: #ffffff;
-    font-size: 12px;
-    font-weight: 800;
+    border: none;
+    border-radius: 12px;
+    background: var(--pastel-mint);
+    color: #2D4A3E;
+    font-size: 13px;
+    font-weight: 700;
     cursor: pointer;
-    box-shadow: 0 8px 18px rgba(37, 99, 235, 0.24);
-    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+    box-shadow: 0 4px 10px rgba(183, 228, 199, 0.3);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .new-slide-btn:hover {
-    background: #1d4ed8;
-    border-color: #1e40af;
-    color: #ffffff;
+    background: #A8D9B9;
     transform: translateY(-1px);
-    box-shadow: 0 10px 22px rgba(29, 78, 216, 0.28);
+    box-shadow: 0 6px 15px rgba(183, 228, 199, 0.4);
+}
+
+.new-slide-btn i {
+    color: inherit;
+    font-size: 13px;
 }
 
 .new-slide-btn:focus-visible {
@@ -2258,7 +2262,7 @@ body.entry-gate-active .entry-hero {
     background: rgba(124, 131, 239, 0.88);
     color: #fff;
     font-size: 10px;
-    font-family: 'Inter', sans-serif;
+    font-family: "Plus Jakarta Sans", sans-serif;
     font-weight: 600;
     padding: 2px 6px;
     border-radius: 4px;
