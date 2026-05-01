@@ -172,6 +172,29 @@ def _materialize_bridge_visuals(bridge_result: dict, job: ImportJob) -> dict:
     return bridge_result
 
 
+def check_bridge_dependencies() -> str | None:
+    cmd = _bridge_command(Path("dummy.pdf"), Path("dummy.json"))
+    
+    try:
+        idx = cmd.index("-i")
+        help_cmd = cmd[:idx] + ["--help"]
+    except ValueError:
+        help_cmd = cmd + ["--help"]
+        
+    try:
+        proc = subprocess.run(help_cmd, cwd=str(settings.BASE_DIR), capture_output=True, text=True, timeout=15)
+        if proc.returncode != 0:
+            error_msg = (proc.stderr or proc.stdout or "").strip()
+            return f"Bridge check failed: {error_msg}"
+    except Exception as e:
+        return f"Could not run bridge process: {e}"
+        
+    if not shutil.which("ollama"):
+        return "ollama is not installed or not in PATH."
+    
+    return None
+
+
 def queue_import_job(import_job: ImportJob):
     _IMPORT_EXECUTOR.submit(_run_import_job, import_job.id)
 
@@ -249,8 +272,11 @@ def _run_import_job(job_id):
     except Exception as exc:
         job.status = "failed"
         job.event = "failed"
-        job.message = "AI import failed"
-        job.error = str(exc)
+        if job.message and job.message not in ("Starting PDF bridge", "Running", "AI import complete"):
+            job.error = str(exc)
+        else:
+            job.message = "AI import failed"
+            job.error = str(exc)
         job.progress_percent = 100
         job.save(update_fields=["status", "event", "message", "error", "progress_percent", "updated_at"])
     finally:

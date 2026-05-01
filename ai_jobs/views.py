@@ -6,7 +6,7 @@ from django.utils.text import get_valid_filename
 from django.views.decorators.http import require_GET, require_POST
 
 from .models import ImportJob
-from .services import queue_import_job
+from .services import queue_import_job, check_bridge_dependencies
 
 
 def _auth_required(request):
@@ -46,6 +46,10 @@ def ai_import_start(request):
         return HttpResponseBadRequest("Empty upload")
     if not _looks_like_pdf(uploaded_file, raw_body):
         return HttpResponseBadRequest("Uploaded file is not a valid PDF")
+
+    missing_deps = check_bridge_dependencies()
+    if missing_deps:
+        return JsonResponse({"error": missing_deps}, status=500)
 
     job = ImportJob.objects.create(
         owner=request.user,

@@ -530,10 +530,13 @@ class PDF2PPTxBridge(PDF2PPTx):
             payload = dict(data or {})
             if "percent" not in payload:
                 s, e = stage_ranges.get(event, (0, 0))
-                curr, tot = payload.get("current"), payload.get("total")
-                if tot and float(tot) > 0:
-                    payload["percent"] = int(round(s + (e - s) * (float(curr) / float(tot))))
-                else:
+                try:
+                    curr, tot = payload.get("current"), payload.get("total")
+                    if tot and float(tot) > 0:
+                        payload["percent"] = int(round(s + (e - s) * (float(curr or 0) / float(tot))))
+                    else:
+                        payload["percent"] = e if event == "done" else s
+                except (TypeError, ValueError):
                     payload["percent"] = e if event == "done" else s
             if status_callback:
                 try: status_callback(event, message, payload)

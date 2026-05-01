@@ -2467,7 +2467,12 @@ async function runAIPdfImport(file) {
         body: formData,
     });
     if (!startResp.ok) {
-        throw new Error(`Upload failed (${startResp.status})`);
+        let msg = `Upload failed (${startResp.status})`;
+        try {
+            const errData = await startResp.json();
+            if (errData.error) msg = errData.error;
+        } catch (e) {}
+        throw new Error(msg);
     }
 
     const startData = await startResp.json();
