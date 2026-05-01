@@ -293,7 +293,7 @@ function appendElementOutlineControls(group, data) {
             `
         <div class="grid grid-cols-4 gap-2 items-end">
             <div>
-                <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Style</label>
+                <label class="text-xs font-bold text-slate-600 uppercase tracking-wide mb-1 block">Style</label>
                 <select id="prop-outline-style" class="prop-input-sm">
                     <option value="none" ${outline.style === "none" ? "selected" : ""}>None</option>
                     <option value="solid" ${outline.style === "solid" ? "selected" : ""}>Solid</option>
@@ -302,15 +302,15 @@ function appendElementOutlineControls(group, data) {
                 </select>
             </div>
             <div>
-                <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Width</label>
+                <label class="text-xs font-bold text-slate-600 uppercase tracking-wide mb-1 block">Width</label>
                 <input type="number" id="prop-outline-width" class="prop-input-sm" min="0" max="32" step="1" value="${parseFloat(outline.width) || 0}">
             </div>
             <div>
-                <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Color</label>
+                <label class="text-xs font-bold text-slate-600 uppercase tracking-wide mb-1 block">Color</label>
                 <input type="color" id="prop-outline-color" class="prop-color-input" value="${outline.color}">
             </div>
             <div>
-                <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Radius</label>
+                <label class="text-xs font-bold text-slate-600 uppercase tracking-wide mb-1 block">Radius</label>
                 <input type="number" id="prop-outline-radius" class="prop-input-sm" min="0" max="999" step="1" value="${parseFloat(outline.radius) || 0}">
             </div>
         </div>
@@ -989,10 +989,10 @@ function _buildSlideWorkspacePanel(panel) {
         <div class="space-y-2">
             <select id="prop-slide-layout" class="w-full text-xs">${presetOptions}</select>
             <div class="grid grid-cols-2 gap-2">
-                <button id="prop-apply-layout" class="py-2 rounded-lg bg-primary text-white text-xs font-semibold">Apply Layout</button>
-                <button id="prop-insert-layout-slide" class="py-2 rounded-lg border border-slate-300 bg-white text-slate-700 text-xs font-semibold">New Slide</button>
+                <button id="prop-apply-layout" class="prop-action-btn prop-action-primary">Apply Layout</button>
+                <button id="prop-insert-layout-slide" class="prop-action-btn prop-action-secondary">New Slide</button>
             </div>
-            <div class="text-[10px] text-slate-500">Applying a layout replaces the current slide contents but keeps its notes and slide identity.</div>
+            <div class="text-xs text-slate-600">Applying a layout replaces the current slide contents but keeps its notes and slide identity.</div>
         </div>
     `;
     panel.appendChild(layoutGrp);
@@ -1009,28 +1009,28 @@ function _buildSlideWorkspacePanel(panel) {
             <div class="grid grid-cols-2 gap-3">
                 <div class="flex flex-col gap-1">
                     <div class="flex items-center justify-between">
-                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Opacity</label>
+                        <label class="text-xs font-bold text-slate-600 uppercase tracking-wide">Opacity</label>
                         <span id="prop-slide-bg-opacity-label" class="text-[10px] font-mono text-slate-500">${Math.round((background?.opacity ?? 1) * 100)}%</span>
                     </div>
                     <input id="prop-slide-bg-opacity" type="range" min="0" max="100" value="${Math.round((background?.opacity ?? 1) * 100)}" class="h-1.5 accent-primary cursor-pointer" ${background ? "" : "disabled"}>
                 </div>
                 <div class="flex flex-col gap-1">
                     <div class="flex items-center justify-between">
-                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Blur</label>
+                        <label class="text-xs font-bold text-slate-600 uppercase tracking-wide">Blur</label>
                         <span id="prop-slide-bg-blur-label" class="text-[10px] font-mono text-slate-500">${Math.round(background?.blur || 0)}px</span>
                     </div>
                     <input id="prop-slide-bg-blur" type="range" min="0" max="40" value="${Math.round(background?.blur || 0)}" class="h-1.5 accent-primary cursor-pointer" ${background ? "" : "disabled"}>
                 </div>
                 <div class="flex flex-col gap-1">
                     <div class="flex items-center justify-between">
-                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Brightness</label>
+                        <label class="text-xs font-bold text-slate-600 uppercase tracking-wide">Brightness</label>
                         <span id="prop-slide-bg-brightness-label" class="text-[10px] font-mono text-slate-500">${Math.round(background?.brightness ?? 100)}%</span>
                     </div>
                     <input id="prop-slide-bg-brightness" type="range" min="10" max="200" value="${Math.round(background?.brightness ?? 100)}" class="h-1.5 accent-primary cursor-pointer" ${background ? "" : "disabled"}>
                 </div>
                 <div class="flex flex-col gap-1">
                     <div class="flex items-center justify-between">
-                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Saturation</label>
+                        <label class="text-xs font-bold text-slate-600 uppercase tracking-wide">Saturation</label>
                         <span id="prop-slide-bg-saturate-label" class="text-[10px] font-mono text-slate-500">${Math.round(background?.saturate ?? 100)}%</span>
                     </div>
                     <input id="prop-slide-bg-saturate" type="range" min="0" max="250" value="${Math.round(background?.saturate ?? 100)}" class="h-1.5 accent-primary cursor-pointer" ${background ? "" : "disabled"}>
@@ -1041,7 +1041,7 @@ function _buildSlideWorkspacePanel(panel) {
                 <button id="prop-slide-bg-upload" class="py-2 rounded-lg border border-slate-300 bg-white text-slate-700 text-xs font-semibold">Upload</button>
                 <button id="prop-slide-bg-clear" class="py-2 rounded-lg border border-slate-300 bg-white text-slate-700 text-xs font-semibold">Clear</button>
             </div>
-            <div class="text-[10px] text-slate-500">Supports PNG, GIF, and MP4/WebM backgrounds. Media is rendered behind slide content.</div>
+            <div class="text-xs text-slate-600">Supports PNG, GIF, and MP4/WebM backgrounds. Media is rendered behind slide content.</div>
         </div>
     `;
     panel.appendChild(bgGrp);
@@ -1050,7 +1050,7 @@ function _buildSlideWorkspacePanel(panel) {
     notesGrp.innerHTML += `
         <div class="space-y-2">
             <textarea id="prop-slide-notes" class="w-full min-h-[140px] text-xs leading-5" placeholder="Presenter notes for this slide...">${slide.notes || ""}</textarea>
-            <div class="text-[10px] text-slate-500">Notes are visible in presenter view and hidden from the audience.</div>
+            <div class="text-xs text-slate-600">Notes are visible in presenter view and hidden from the audience.</div>
         </div>
     `;
     panel.appendChild(notesGrp);
@@ -1285,7 +1285,7 @@ function createGroup(title) {
 function createField(label, inputHTML) {
     const div = document.createElement("div");
     div.className = "flex flex-col gap-1";
-    div.innerHTML = `<label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide">${label}</label>${inputHTML}`;
+    div.innerHTML = `<label class="text-xs font-bold text-slate-600 uppercase tracking-wide">${label}</label>${inputHTML}`;
     return div;
 }
 
@@ -1334,14 +1334,14 @@ function buildPropertiesPanel() {
     const isSingle = state.selectedIds.length === 1;
     selGrp.innerHTML = `
         <div class="flex items-center justify-between mb-2">
-            <h3 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">${state.selectedIds.length} Object${isSingle ? "" : "s"}</h3>
+            <h3 class="text-xs font-bold text-slate-700 uppercase tracking-widest">${state.selectedIds.length} Object${isSingle ? "" : "s"}</h3>
             ${!isSingle ? `<span class="text-[10px] text-accent font-bold px-2 py-0.5 rounded bg-accent/10 border border-accent/20">${isGrouped ? "GROUPED" : "MULTIPLE"}</span>` : ""}
         </div>
         <div class="flex gap-2">
-            <button id="prop-group" class="flex-1 py-2 rounded-lg bg-accent text-white font-bold text-[10px] hover:bg-accent/80 transition-all flex items-center justify-center gap-2">
+            <button id="prop-group" class="prop-action-btn prop-action-primary flex-1">
                 <i class="fa-solid fa-object-group"></i> GROUP
             </button>
-            <button id="prop-ungroup" class="flex-1 py-2 rounded-lg bg-white border border-slate-300 text-slate-600 font-bold text-[10px] hover:bg-slate-50 transition-all flex items-center justify-center gap-2">
+            <button id="prop-ungroup" class="prop-action-btn prop-action-secondary flex-1">
                 <i class="fa-solid fa-object-ungroup"></i> UNGROUP
             </button>
         </div>
@@ -1370,7 +1370,7 @@ function buildPropertiesPanel() {
         opField.className = "flex-1 flex flex-col gap-1";
         opField.innerHTML = `
             <div class="flex items-center justify-between">
-                <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Opacity</label>
+                <label class="text-xs font-bold text-slate-600 uppercase tracking-wide">Opacity</label>
                 <span id="prop-op-label" class="text-[10px] font-mono text-slate-500">${opacityVal}%</span>
             </div>
             <input type="range" id="prop-op" min="0" max="100" step="1" value="${opacityVal}" class="h-1.5 accent-primary cursor-pointer">
@@ -1386,7 +1386,7 @@ function buildPropertiesPanel() {
         zRow.className = "flex items-center gap-2 mt-2";
         zRow.innerHTML = `
             <div class="flex-1">
-                <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Layer Order (Z)</label>
+                <label class="text-xs font-bold text-slate-600 uppercase tracking-wide mb-1 block">Layer Order (Z)</label>
                 <input type="number" id="prop-zindex" class="w-full text-xs" value="${zVal}" min="0" max="9999">
             </div>
             <div class="flex gap-1 pt-4">
@@ -1433,7 +1433,7 @@ function buildPropertiesPanel() {
                 <div class="space-y-3">
                     <div class="grid grid-cols-[1fr_auto] gap-2 items-end">
                         <label class="flex flex-col gap-1">
-                            <span class="text-[10px] text-gray-500 uppercase font-semibold">Type</span>
+                            <span class="text-xs text-slate-600 uppercase font-semibold">Type</span>
                             <select id="prop-shape-type" class="prop-select">
                                 <option value="rectangle" ${data.shapeType === "rectangle" ? "selected" : ""}>Rectangle</option>
                                 <option value="circle" ${data.shapeType === "circle" ? "selected" : ""}>Circle</option>
@@ -1451,11 +1451,11 @@ function buildPropertiesPanel() {
                     </div>
                     <div class="grid grid-cols-2 gap-2">
                         <label class="flex flex-col gap-1">
-                            <span class="text-[10px] text-gray-500 uppercase font-semibold">Width</span>
+                            <span class="text-xs text-slate-600 uppercase font-semibold">Width</span>
                             <input type="number" id="prop-shape-width" class="prop-input-sm" min="12" max="3000" step="1" value="${Math.round(parseFloat(data.width) || 150)}">
                         </label>
                         <label class="flex flex-col gap-1">
-                            <span class="text-[10px] text-gray-500 uppercase font-semibold">Height</span>
+                            <span class="text-xs text-slate-600 uppercase font-semibold">Height</span>
                             <input type="number" id="prop-shape-height" class="prop-input-sm" min="12" max="3000" step="1" value="${Math.round(parseFloat(data.height) || 150)}">
                         </label>
                     </div>
@@ -1491,19 +1491,19 @@ function buildPropertiesPanel() {
             tableGrp.innerHTML += `
                 <div class="grid grid-cols-2 gap-3">
                     <div class="flex flex-col gap-1">
-                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Table Width</label>
+                        <label class="text-xs text-slate-600 uppercase font-semibold">Table Width</label>
                         <input type="number" id="prop-table-element-width" class="prop-input-sm" min="80" value="${Math.round(parseFloat(data.width) || 420)}">
                     </div>
                     <div class="flex flex-col gap-1">
-                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Table Height</label>
+                        <label class="text-xs text-slate-600 uppercase font-semibold">Table Height</label>
                         <input type="number" id="prop-table-element-height" class="prop-input-sm" min="60" value="${Math.round(parseFloat(data.height) || 220)}">
                     </div>
                     <div class="flex flex-col gap-1">
-                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Selected Row H</label>
+                        <label class="text-xs text-slate-600 uppercase font-semibold">Selected Row H</label>
                         <input type="number" id="prop-table-row-height" class="prop-input-sm" min="24" value="${selectedRow !== null ? Math.round(tableData.rowHeights[selectedRow] || 44) : ""}" placeholder="Select row">
                     </div>
                     <div class="flex flex-col gap-1">
-                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Selected Col W</label>
+                        <label class="text-xs text-slate-600 uppercase font-semibold">Selected Col W</label>
                         <input type="number" id="prop-table-col-width" class="prop-input-sm" min="36" value="${selectedCol !== null ? Math.round(tableData.colWidths[selectedCol] || 140) : ""}" placeholder="Select column">
                     </div>
                 </div>
@@ -1513,49 +1513,49 @@ function buildPropertiesPanel() {
                 </div>
                 <div class="grid grid-cols-2 gap-3">
                     <div class="flex flex-col gap-1">
-                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Rows</label>
+                        <label class="text-xs text-slate-600 uppercase font-semibold">Rows</label>
                         <div class="flex gap-2">
                             <button id="prop-table-add-row" class="flex-1 py-2 rounded-lg bg-white border border-slate-300 text-slate-600 text-xs font-semibold hover:bg-slate-50">Add</button>
                             <button id="prop-table-remove-row" class="flex-1 py-2 rounded-lg bg-white border border-slate-300 text-slate-600 text-xs font-semibold hover:bg-slate-50" ${tableData.rows <= 1 ? "disabled" : ""}>Remove</button>
                         </div>
                     </div>
                     <div class="flex flex-col gap-1">
-                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Columns</label>
+                        <label class="text-xs text-slate-600 uppercase font-semibold">Columns</label>
                         <div class="flex gap-2">
                             <button id="prop-table-add-col" class="flex-1 py-2 rounded-lg bg-white border border-slate-300 text-slate-600 text-xs font-semibold hover:bg-slate-50">Add</button>
                             <button id="prop-table-remove-col" class="flex-1 py-2 rounded-lg bg-white border border-slate-300 text-slate-600 text-xs font-semibold hover:bg-slate-50" ${tableData.cols <= 1 ? "disabled" : ""}>Remove</button>
                         </div>
                     </div>
                     <div class="flex flex-col gap-1">
-                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Border</label>
+                        <label class="text-xs text-slate-600 uppercase font-semibold">Border</label>
                         <input type="color" id="prop-table-border-color" class="w-full h-8 cursor-pointer rounded-md p-0" value="${_normalizeColorForInput(tableData.borderColor, "#cbd5e1")}">
                     </div>
                     <div class="flex flex-col gap-1">
-                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Border W</label>
+                        <label class="text-xs text-slate-600 uppercase font-semibold">Border W</label>
                         <input type="number" id="prop-table-border-width" class="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm" min="0" max="8" value="${tableData.borderWidth}">
                     </div>
                     <div class="flex flex-col gap-1">
-                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Header Fill</label>
+                        <label class="text-xs text-slate-600 uppercase font-semibold">Header Fill</label>
                         <input type="color" id="prop-table-header-fill" class="w-full h-8 cursor-pointer rounded-md p-0" value="${_normalizeColorForInput(tableData.headerFill, "#e2e8f0")}">
                     </div>
                     <div class="flex flex-col gap-1">
-                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Body Fill</label>
+                        <label class="text-xs text-slate-600 uppercase font-semibold">Body Fill</label>
                         <input type="color" id="prop-table-body-fill" class="w-full h-8 cursor-pointer rounded-md p-0" value="${_normalizeColorForInput(tableData.bodyFill, "#ffffff")}">
                     </div>
                     <div class="flex flex-col gap-1">
-                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Alt Fill</label>
+                        <label class="text-xs text-slate-600 uppercase font-semibold">Alt Fill</label>
                         <input type="color" id="prop-table-alt-fill" class="w-full h-8 cursor-pointer rounded-md p-0" value="${_normalizeColorForInput(tableData.altFill, "#f8fafc")}">
                     </div>
                     <div class="flex flex-col gap-1">
-                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Padding</label>
+                        <label class="text-xs text-slate-600 uppercase font-semibold">Padding</label>
                         <input type="number" id="prop-table-padding" class="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm" min="2" max="24" value="${tableData.cellPadding}">
                     </div>
                     <div class="flex flex-col gap-1">
-                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Text</label>
+                        <label class="text-xs text-slate-600 uppercase font-semibold">Text</label>
                         <input type="color" id="prop-table-text-color" class="w-full h-8 cursor-pointer rounded-md p-0" value="${_normalizeColorForInput(tableData.textColor, "#172033")}">
                     </div>
                     <div class="flex flex-col gap-1">
-                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Header Text</label>
+                        <label class="text-xs text-slate-600 uppercase font-semibold">Header Text</label>
                         <input type="color" id="prop-table-header-text-color" class="w-full h-8 cursor-pointer rounded-md p-0" value="${_normalizeColorForInput(tableData.headerTextColor, "#172033")}">
                     </div>
                 </div>
@@ -1573,7 +1573,7 @@ function buildPropertiesPanel() {
                     </div>
                     <span class="text-xs text-gray-400">Zebra Rows</span>
                 </label>
-                <p class="text-[10px] text-slate-500 leading-snug mt-2">Double click a cell on the slide to edit it.</p>
+                <p class="text-xs text-slate-600 leading-snug mt-2">Double click a cell on the slide to edit it.</p>
             `;
             panel.appendChild(tableGrp);
         }
@@ -1583,7 +1583,7 @@ function buildPropertiesPanel() {
             connectorGrp.innerHTML += `
                 <div class="grid grid-cols-2 gap-3">
                     <div class="flex flex-col gap-1">
-                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Type</label>
+                        <label class="text-xs text-slate-600 uppercase font-semibold">Type</label>
                         <select id="prop-connector-type" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-sm text-slate-700 shadow-sm focus:outline-none focus:border-accent">
                             <option value="line" ${data.connectorType === "line" ? "selected" : ""}>Line</option>
                             <option value="curve" ${data.connectorType === "curve" ? "selected" : ""}>Curve</option>
@@ -1591,11 +1591,11 @@ function buildPropertiesPanel() {
                         </select>
                     </div>
                     <div class="flex flex-col gap-1">
-                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Stroke</label>
+                        <label class="text-xs text-slate-600 uppercase font-semibold">Stroke</label>
                         <input type="number" id="prop-connector-width" class="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm" min="1" max="24" value="${Math.max(1, Number(data.styles?.strokeWidth) || 4)}">
                     </div>
                     <div class="flex flex-col gap-1">
-                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Start</label>
+                        <label class="text-xs text-slate-600 uppercase font-semibold">Start</label>
                         <select id="prop-connector-start" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-sm text-slate-700 shadow-sm focus:outline-none focus:border-accent">
                             <option value="none" ${(data.connectorStart || "none") === "none" ? "selected" : ""}>None</option>
                             <option value="arrow" ${data.connectorStart === "arrow" ? "selected" : ""}>Arrow</option>
@@ -1608,7 +1608,7 @@ function buildPropertiesPanel() {
                         </select>
                     </div>
                     <div class="flex flex-col gap-1">
-                        <label class="text-[10px] text-gray-500 uppercase font-semibold">End</label>
+                        <label class="text-xs text-slate-600 uppercase font-semibold">End</label>
                         <select id="prop-connector-end" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-sm text-slate-700 shadow-sm focus:outline-none focus:border-accent">
                             <option value="none" ${data.connectorEnd === "none" ? "selected" : ""}>None</option>
                             <option value="arrow" ${(data.connectorEnd || "arrow") === "arrow" ? "selected" : ""}>Arrow</option>
@@ -1621,26 +1621,26 @@ function buildPropertiesPanel() {
                         </select>
                     </div>
                     <div class="flex flex-col gap-1">
-                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Color</label>
+                        <label class="text-xs text-slate-600 uppercase font-semibold">Color</label>
                         <input type="color" id="prop-connector-color" class="w-full h-8 cursor-pointer rounded-md p-0" value="${_normalizeColorForInput(data.styles?.color, "#2563eb")}">
                     </div>
                     <div class="flex flex-col gap-1">
-                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Head W</label>
+                        <label class="text-xs text-slate-600 uppercase font-semibold">Head W</label>
                         <input type="number" id="prop-connector-head-width" class="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm" min="4" max="40" value="${Math.max(4, Number(data.connectorHeadWidth) || 14)}">
                     </div>
                     <div class="flex flex-col gap-1">
-                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Head L</label>
+                        <label class="text-xs text-slate-600 uppercase font-semibold">Head L</label>
                         <input type="number" id="prop-connector-head-length" class="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm" min="4" max="40" value="${Math.max(4, Number(data.connectorHeadLength) || 14)}">
                     </div>
                     <div class="flex flex-col gap-1">
-                        <label class="text-[10px] text-gray-500 uppercase font-semibold">Nodes</label>
+                        <label class="text-xs text-slate-600 uppercase font-semibold">Nodes</label>
                         <div class="flex gap-2">
                             <button id="prop-connector-add-node" class="flex-1 py-2 rounded-lg bg-white border border-slate-300 text-slate-600 text-xs font-semibold hover:bg-slate-50">Add</button>
                             <button id="prop-connector-remove-node" class="flex-1 py-2 rounded-lg bg-white border border-slate-300 text-slate-600 text-xs font-semibold hover:bg-slate-50">Remove</button>
                         </div>
                     </div>
                 </div>
-                <p class="text-[10px] text-slate-500 leading-snug mt-2">Select the connector, then drag its points on the canvas to reshape it.</p>
+                <p class="text-xs text-slate-600 leading-snug mt-2">Select the connector, then drag its points on the canvas to reshape it.</p>
             `;
             panel.appendChild(connectorGrp);
         }
@@ -1659,12 +1659,12 @@ function buildPropertiesPanel() {
                     <div class="flex flex-col gap-2">
                         <input type="text" id="prop-video-url" class="w-full text-xs" value="${data.content?.startsWith("data:") ? "Local File (Base64 Data)" : data.content || ""}" placeholder="https://..." ${data.content?.startsWith("data:") ? "disabled" : ""}>
                         <button onclick="document.getElementById('video-file-upload').click()" class="w-full py-1.5 px-3 bg-gray-900 border border-gray-700 rounded-lg text-[11px] text-gray-300 hover:bg-gray-800 transition-colors flex items-center justify-center gap-2">
-                            <i class="fa-solid fa-upload text-emerald-400"></i> ${data.content?.startsWith("data:") ? "Change Local File" : "Upload Local File"}
+                            <i class="fa-solid fa-upload text-primary"></i> ${data.content?.startsWith("data:") ? "Change Local File" : "Upload Local File"}
                         </button>
                         ${
                             data.content?.startsWith("data:")
                                 ? `
-                            <button id="prop-video-clear-local" class="text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors flex items-center gap-1 mt-1">
+                            <button id="prop-video-clear-local" class="text-xs text-primary hover:text-primary-hover transition-colors flex items-center gap-1 mt-1">
                                 <i class="fa-solid fa-link"></i> Switch to URL source
                             </button>
                         `
@@ -1712,11 +1712,11 @@ function buildPropertiesPanel() {
             imgGrp.innerHTML += `
                 <div class="flex gap-2 mt-2">
                     <div class="flex-1 flex flex-col gap-1">
-                        <label class="text-[10px] text-gray-500 uppercase font-semibold tracking-wider">Width</label>
+                        <label class="text-xs text-slate-600 uppercase font-semibold tracking-wider">Width</label>
                         <input type="number" id="prop-img-w" class="w-full text-xs" value="${parseFloat(data.width) || 0}">
                     </div>
                     <div class="flex-1 flex flex-col gap-1">
-                        <label class="text-[10px] text-gray-500 uppercase font-semibold tracking-wider">Height</label>
+                        <label class="text-xs text-slate-600 uppercase font-semibold tracking-wider">Height</label>
                         <input type="number" id="prop-img-h" class="w-full text-xs" value="${parseFloat(data.height) || 0}">
                     </div>
                 </div>
@@ -1802,11 +1802,11 @@ function buildPropertiesPanel() {
                     </button>
                     <div class="flex gap-2">
                         <div class="flex-1 flex flex-col gap-1">
-                            <label class="text-[10px] text-gray-500 uppercase font-semibold">Size</label>
+                            <label class="text-xs text-slate-600 uppercase font-semibold">Size</label>
                             <input type="number" id="prop-eq-fs" class="w-full text-xs" value="${parseInt(data.styles?.fontSize) || 24}">
                         </div>
                         <div class="flex-1 flex flex-col gap-1">
-                            <label class="text-[10px] text-gray-500 uppercase font-semibold">Color</label>
+                            <label class="text-xs text-slate-600 uppercase font-semibold">Color</label>
                             <input type="color" id="prop-eq-color" class="w-full h-8 cursor-pointer rounded bg-transparent p-0 border-none" value="${data.styles?.color || "#ffffff"}">
                         </div>
                     </div>
@@ -1826,7 +1826,7 @@ function buildPropertiesPanel() {
                     </label>
                     <div id="prop-anim-controls" class="space-y-2 ${animation ? "" : "hidden"}">
                         <div class="flex flex-col gap-1">
-                            <label class="text-[10px] text-gray-500 uppercase font-semibold tracking-wider">Effect</label>
+                            <label class="text-xs text-slate-600 uppercase font-semibold tracking-wider">Effect</label>
                             <select id="prop-anim-effect" class="w-full text-xs">
                                 ${PRESENTATION_ANIMATION_EFFECTS.map(effect => `
                                     <option value="${effect}" ${(animation?.effect || "fade-in") === effect ? "selected" : ""}>${describeAnimationEffect(effect)}</option>
@@ -1834,28 +1834,28 @@ function buildPropertiesPanel() {
                             </select>
                         </div>
                         <div class="flex flex-col gap-1">
-                            <label class="text-[10px] text-gray-500 uppercase font-semibold tracking-wider">Trigger</label>
+                            <label class="text-xs text-slate-600 uppercase font-semibold tracking-wider">Trigger</label>
                             <select id="prop-anim-trigger" class="w-full text-xs">
                                 <option value="on-slide" ${(animation?.trigger || "on-slide") === "on-slide" ? "selected" : ""}>With Slide</option>
                                 <option value="on-click" ${animation?.trigger === "on-click" ? "selected" : ""}>On Click</option>
                             </select>
                         </div>
                         <div id="prop-anim-order-wrap" class="flex flex-col gap-1 ${(animation?.trigger || "on-slide") === "on-click" ? "" : "hidden"}">
-                            <label class="text-[10px] text-gray-500 uppercase font-semibold tracking-wider">Click Order</label>
+                            <label class="text-xs text-slate-600 uppercase font-semibold tracking-wider">Click Order</label>
                             <input type="number" id="prop-anim-order" class="w-full text-xs" min="0" max="99" value="${animation?.order ?? 0}">
                         </div>
                         <div class="grid grid-cols-2 gap-2">
                             <div class="flex flex-col gap-1">
-                                <label class="text-[10px] text-gray-500 uppercase font-semibold tracking-wider">Duration</label>
+                                <label class="text-xs text-slate-600 uppercase font-semibold tracking-wider">Duration</label>
                                 <input type="number" id="prop-anim-duration" class="w-full text-xs" min="100" step="50" value="${animation?.durationMs ?? 800}">
                             </div>
                             <div class="flex flex-col gap-1">
-                                <label class="text-[10px] text-gray-500 uppercase font-semibold tracking-wider">Delay</label>
+                                <label class="text-xs text-slate-600 uppercase font-semibold tracking-wider">Delay</label>
                                 <input type="number" id="prop-anim-delay" class="w-full text-xs" min="0" step="50" value="${animation?.delayMs ?? 0}">
                             </div>
                         </div>
                         <div class="flex flex-col gap-1">
-                            <label class="text-[10px] text-gray-500 uppercase font-semibold tracking-wider">Easing</label>
+                            <label class="text-xs text-slate-600 uppercase font-semibold tracking-wider">Easing</label>
                             <select id="prop-anim-easing" class="w-full text-xs">
                                 <option value="ease-out" ${(animation?.easing || "ease-out") === "ease-out" ? "selected" : ""}>Ease Out</option>
                                 <option value="ease-in-out" ${animation?.easing === "ease-in-out" ? "selected" : ""}>Ease In-Out</option>
@@ -1907,7 +1907,7 @@ function buildPropertiesPanel() {
         notesGrp.innerHTML += `
             <div class="space-y-2">
                 <textarea id="prop-slide-notes" class="w-full min-h-[120px] text-xs leading-5" placeholder="Presenter notes for this slide...">${slide.notes || ""}</textarea>
-                <div class="text-[10px] text-slate-500">Notes are saved with the slide and used in presenter view only.</div>
+                <div class="text-xs text-slate-600">Notes are saved with the slide and used in presenter view only.</div>
             </div>
         `;
         panel.appendChild(notesGrp);
@@ -1924,7 +1924,7 @@ function buildPropertiesPanel() {
                         <div class="flex items-center justify-between gap-2">
                             <div class="min-w-0">
                                 <div class="text-[11px] font-semibold text-slate-700">${describeAnimationEffect(entry.animation.effect)}</div>
-                                <div class="text-[10px] text-slate-500">${entry.animation.trigger === "on-click" ? `On click #${entry.animation.order}` : "With slide"}</div>
+                                <div class="text-xs text-slate-600">${entry.animation.trigger === "on-click" ? `On click #${entry.animation.order}` : "With slide"}</div>
                             </div>
                             <div class="flex items-center gap-1">
                                 <button class="prop-anim-move-up rounded border border-slate-200 bg-white px-2 py-1 text-[10px]" data-anim-id="${entry.el.id}" title="Move earlier">Up</button>

@@ -13,21 +13,21 @@ function buildSelectionPanel(panel) {
 
     selGrp.innerHTML = `
         <div class="flex items-center justify-between mb-2">
-            <h3 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">${state.selectedIds.length} Objects</h3>
+            <h3 class="text-xs font-bold text-slate-700 uppercase tracking-widest">${state.selectedIds.length} Objects</h3>
             <span class="text-[10px] text-accent font-bold px-2 py-0.5 rounded bg-accent/10 border border-accent/20">${isGrouped ? "GROUPED" : "MULTIPLE"}</span>
         </div>
         <div class="flex gap-2">
-            <button class="prop-group flex-1 py-2 rounded-lg bg-accent text-white font-bold text-[10px] hover:bg-accent/80 transition-all flex items-center justify-center gap-2">
+            <button class="prop-group-action prop-action-btn prop-action-primary flex-1">
                 <i class="fa-solid fa-object-group"></i> GROUP
             </button>
-            <button class="prop-ungroup flex-1 py-2 rounded-lg bg-white border border-slate-300 text-slate-600 font-bold text-[10px] hover:bg-slate-50 transition-all flex items-center justify-center gap-2">
+            <button class="prop-ungroup prop-action-btn prop-action-secondary flex-1">
                 <i class="fa-solid fa-object-ungroup"></i> UNGROUP
             </button>
         </div>
     `;
     panel.appendChild(selGrp);
 
-    const btnGroup = selGrp.querySelector(".prop-group");
+    const btnGroup = selGrp.querySelector(".prop-group-action");
     const btnUngroup = selGrp.querySelector(".prop-ungroup");
     if (btnGroup) btnGroup.onclick = groupSelected;
     if (btnUngroup) btnUngroup.onclick = ungroupSelected;

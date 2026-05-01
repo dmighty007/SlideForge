@@ -58,13 +58,13 @@ function buildTextPanel(panel, data) {
     // Size
     const sizeCol = document.createElement("div");
     sizeCol.className = "col-span-1";
-    sizeCol.innerHTML = `<label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Size</label>
+    sizeCol.innerHTML = `<label class="text-xs font-bold text-slate-600 uppercase tracking-wide mb-1 block">Size</label>
         <input type="text" id="prop-fs" class="prop-input-sm" value="${data.styles.fontSize || "32px"}">`;
 
     // Color
     const colorCol = document.createElement("div");
     colorCol.className = "col-span-1";
-    colorCol.innerHTML = `<label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Color</label>
+    colorCol.innerHTML = `<label class="text-xs font-bold text-slate-600 uppercase tracking-wide mb-1 block">Color</label>
         <input type="color" id="prop-tc" class="prop-color-input" value="${_normalizeColorForInput(data.styles.color, "#ffffff")}">`;
 
     // Format buttons
@@ -91,19 +91,19 @@ function buildTextPanel(panel, data) {
             `
         <div class="grid grid-cols-4 gap-2 items-end">
             <div>
-                <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">X</label>
+                <label class="text-xs font-bold text-slate-600 uppercase tracking-wide mb-1 block">X</label>
                 <input type="number" id="prop-ts-x" class="prop-input-sm" value="${shadowState.offsetX}" step="1">
             </div>
             <div>
-                <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Y</label>
+                <label class="text-xs font-bold text-slate-600 uppercase tracking-wide mb-1 block">Y</label>
                 <input type="number" id="prop-ts-y" class="prop-input-sm" value="${shadowState.offsetY}" step="1">
             </div>
             <div>
-                <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Blur</label>
+                <label class="text-xs font-bold text-slate-600 uppercase tracking-wide mb-1 block">Blur</label>
                 <input type="number" id="prop-ts-blur" class="prop-input-sm" value="${shadowState.blur}" min="0" step="1">
             </div>
             <div>
-                <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Color</label>
+                <label class="text-xs font-bold text-slate-600 uppercase tracking-wide mb-1 block">Color</label>
                 <input type="color" id="prop-ts-color" class="prop-color-input" value="${shadowState.color}">
             </div>
         </div>
@@ -117,11 +117,11 @@ function buildTextPanel(panel, data) {
             `
         <div class="grid grid-cols-2 gap-2 items-end">
             <div>
-                <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Width</label>
+                <label class="text-xs font-bold text-slate-600 uppercase tracking-wide mb-1 block">Width</label>
                 <input type="number" id="prop-stroke-width" class="prop-input-sm" value="${strokeWidth}" min="0" max="24" step="0.5">
             </div>
             <div>
-                <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 block">Color</label>
+                <label class="text-xs font-bold text-slate-600 uppercase tracking-wide mb-1 block">Color</label>
                 <input type="color" id="prop-stroke-color" class="prop-color-input" value="${strokeColor}">
             </div>
         </div>

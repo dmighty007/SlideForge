@@ -37,14 +37,14 @@
                     colors: {
                         surface: "#F5F6F8",
                         canvas: "#FFFFFF",
-                        primary: "#748FFC",
-                        "primary-hover": "#5C7CFA",
-                        accent: "#10B981",
-                        "text-main": "#2E2E2E",
-                        "text-sub": "#6B7280",
-                        border: "#D1D5DB",
-                        sidebar: "#E9ECF1",
-                        panel: "#E9ECF1",
+                        primary: "#4F46E5",
+                        "primary-hover": "#4338CA",
+                        accent: "#0F766E",
+                        "text-main": "#0F172A",
+                        "text-sub": "#475569",
+                        border: "#CBD5E1",
+                        sidebar: "#F8FAFC",
+                        panel: "#F1F5F9",
                         "pastel-blue": "#A5D8FF",
                         "pastel-cyan": "#D0EBFF",
                         "pastel-green": "#B7E4C7",
@@ -196,7 +196,7 @@
                             <span class="toolbar-btn-label">Export</span>
                             <i class="fa-solid fa-chevron-down text-[10px] ml-1"></i>
                         </button>
-                        <div id="export-menu-dropdown" style="display:none; position:absolute; top:calc(100% + 8px); right:0; z-index:9999; min-width:210px; padding:8px; border-radius:16px; border:1px solid rgba(226,232,240,0.96); background:rgba(255,255,255,0.98); box-shadow:0 18px 40px rgba(15,23,42,0.14); flex-direction:column; gap:4px;">
+                        <div id="export-menu-dropdown" class="export-menu-dropdown">
                             <button onclick="closeExportMenu(); exportPresentationZip()" class="toolbar-user-menu-item">
                                 <i class="fa-solid fa-file-zipper w-4 text-center"></i> Web (ZIP)
                             </button>
@@ -222,7 +222,7 @@
                             <i class="fa-regular fa-user"></i>
                         </span>
                         <span id="auth-status" class="toolbar-auth-status">Guest</span>
-                        <i class="fa-solid fa-chevron-down text-[10px] text-slate-400"></i>
+                        <i class="fa-solid fa-chevron-down text-[10px] text-slate-600"></i>
                     </button>
                     <div id="auth-menu" class="toolbar-user-menu hidden">
                         <div id="auth-menu-header" class="toolbar-user-menu-header">Not signed in</div>
@@ -248,7 +248,7 @@
                     <button onclick="redo()" title="Redo (Ctrl+Y)" class="toolbar-btn" id="btn-redo">
                         <i class="fa-solid fa-rotate-right text-sm"></i>
                     </button>
-                    <button onclick="aiCleanUpSlide()" title="AI Clean Up (Auto-align)" class="toolbar-btn text-indigo-500 hover:text-indigo-600 bg-indigo-50/50 hover:bg-indigo-50 border-indigo-100/50">
+                    <button onclick="aiCleanUpSlide()" title="AI Clean Up (Auto-align)" class="toolbar-btn toolbar-btn-ai">
                         <i class="fa-solid fa-wand-magic-sparkles text-sm"></i>
                     </button>
                 </div>
@@ -339,20 +339,20 @@
                             <span>Text Block</span>
                         </button>
                         <button onclick="addElement('table')" class="element-btn">
-                            <i class="fa-solid fa-table w-5 text-emerald-500"></i>
+                            <i class="fa-solid fa-table w-5 text-primary"></i>
                             <span>Table</span>
                         </button>
                         <div class="h-px bg-border my-1 mx-2"></div>
                         <button onclick="addChart('bar')" class="element-btn">
-                            <i class="fa-solid fa-chart-bar w-5 text-indigo-500"></i>
+                            <i class="fa-solid fa-chart-bar w-5 text-primary"></i>
                             <span>Bar Chart</span>
                         </button>
                         <button onclick="addChart('line')" class="element-btn">
-                            <i class="fa-solid fa-chart-line w-5 text-indigo-500"></i>
+                            <i class="fa-solid fa-chart-line w-5 text-primary"></i>
                             <span>Line Chart</span>
                         </button>
                         <button onclick="addChart('pie')" class="element-btn">
-                            <i class="fa-solid fa-chart-pie w-5 text-indigo-500"></i>
+                            <i class="fa-solid fa-chart-pie w-5 text-primary"></i>
                             <span>Pie Chart</span>
                         </button>
                         <div class="h-px bg-border my-1 mx-2"></div>
@@ -361,7 +361,7 @@
                             <span>Image</span>
                         </button>
                         <button onclick="document.getElementById('html-file-upload').click()" class="element-btn">
-                            <i class="fa-solid fa-code w-5 text-violet-500"></i>
+                            <i class="fa-solid fa-code w-5 text-primary"></i>
                             <span>HTML Embed</span>
                         </button>
                     </div>
@@ -383,11 +383,11 @@
                     <p class="element-section-label mt-2">Media</p>
                     <div class="element-grid">
                         <button onclick="addElement('video')" class="element-btn-sm">
-                            <i class="fa-solid fa-link text-blue-500"></i>
+                            <i class="fa-solid fa-link text-primary"></i>
                             <span>Video URL</span>
                         </button>
                         <button onclick="document.getElementById('video-file-upload').click()" class="element-btn-sm">
-                            <i class="fa-solid fa-file-video text-blue-500"></i>
+                            <i class="fa-solid fa-file-video text-primary"></i>
                             <span>Local Video</span>
                         </button>
                         <button onclick="addElement('pdf')" class="element-btn-sm">
@@ -427,48 +427,7 @@
 
                     <!-- Section: Preset Slides -->
                     <p class="element-section-label mt-2">Slide Presets</p>
-                    <div class="grid grid-cols-2 gap-1.5" id="preset-slides-list">
-                        <button onclick="insertPresetSlide('title-page')" class="element-btn-sm">
-                            <i class="fa-solid fa-star text-yellow-400"></i>
-                            <span class="text-[9px]">Title Page</span>
-                        </button>
-                        <button onclick="insertPresetSlide('section-divider')" class="element-btn-sm">
-                            <i class="fa-solid fa-grip-lines text-indigo-400"></i>
-                            <span class="text-[9px]">Divider</span>
-                        </button>
-                        <button onclick="insertPresetSlide('content-slide')" class="element-btn-sm">
-                            <i class="fa-solid fa-align-left text-blue-400"></i>
-                            <span class="text-[9px]">Content</span>
-                        </button>
-                        <button onclick="insertPresetSlide('two-column')" class="element-btn-sm">
-                            <i class="fa-solid fa-table-columns text-emerald-400"></i>
-                            <span class="text-[9px]">2 Column</span>
-                        </button>
-                        <button onclick="insertPresetSlide('figure-caption')" class="element-btn-sm">
-                            <i class="fa-solid fa-image text-purple-400"></i>
-                            <span class="text-[9px]">Figure</span>
-                        </button>
-                        <button onclick="insertPresetSlide('methodology')" class="element-btn-sm">
-                            <i class="fa-solid fa-diagram-project text-cyan-400"></i>
-                            <span class="text-[9px]">Method</span>
-                        </button>
-                        <button onclick="insertPresetSlide('results-data')" class="element-btn-sm">
-                            <i class="fa-solid fa-chart-bar text-orange-400"></i>
-                            <span class="text-[9px]">Results</span>
-                        </button>
-                        <button onclick="insertPresetSlide('conclusion')" class="element-btn-sm">
-                            <i class="fa-solid fa-flag-checkered text-green-400"></i>
-                            <span class="text-[9px]">Conclusion</span>
-                        </button>
-                        <button onclick="insertPresetSlide('bibliography')" class="element-btn-sm">
-                            <i class="fa-solid fa-book-open text-rose-400"></i>
-                            <span class="text-[9px]">Refs</span>
-                        </button>
-                        <button onclick="insertPresetSlide('blank-titled')" class="element-btn-sm">
-                            <i class="fa-regular fa-square text-gray-400"></i>
-                            <span class="text-[9px]">Blank</span>
-                        </button>
-                    </div>
+                    <div class="preset-palette" id="preset-slides-list"></div>
                 </div>
             </div>
         </aside>
@@ -637,7 +596,7 @@
                     <i class="fa-solid fa-plus text-xs"></i>
                 </button>
                 <div class="w-px h-4 bg-border mx-1"></div>
-                <button onclick="resetZoom()" class="px-3 py-1 text-[10px] font-bold text-primary bg-primary/10 rounded-lg hover:bg-primary/20 transition-colors">
+                <button onclick="resetZoom()" class="zoom-fit-btn">
                     Fit
                 </button>
             </div>
@@ -648,10 +607,10 @@
                     <span id="ctx-element-type" class="text-[10px] font-bold text-text-sub uppercase tracking-widest">Element</span>
                 </div>
                 <button onclick="ctxAction('bring-forward')" class="w-full flex items-center gap-3 px-4 py-2 text-sm text-text-main hover:bg-surface transition-colors">
-                    <i class="fa-solid fa-layer-group text-blue-500 w-4"></i> Bring Forward
+                    <i class="fa-solid fa-layer-group text-primary w-4"></i> Bring Forward
                 </button>
                 <button onclick="ctxAction('send-backward')" class="w-full flex items-center gap-3 px-4 py-2 text-sm text-text-main hover:bg-surface transition-colors">
-                    <i class="fa-solid fa-layer-group rotate-180 text-blue-500 w-4"></i> Send Backward
+                    <i class="fa-solid fa-layer-group rotate-180 text-primary w-4"></i> Send Backward
                 </button>
                 <div class="h-px bg-border my-1"></div>
                 <button onclick="ctxAction('duplicate')" class="w-full flex items-center gap-3 px-4 py-2 text-sm text-text-main hover:bg-surface transition-colors">
@@ -659,14 +618,14 @@
                 </button>
                 <div class="h-px bg-border my-1"></div>
                 <button id="ctx-group-btn" onclick="ctxAction('group')" class="w-full flex items-center gap-3 px-4 py-2 text-sm text-text-main hover:bg-surface transition-colors">
-                    <i class="fa-solid fa-object-group text-indigo-500 w-4"></i> Group Elements
+                    <i class="fa-solid fa-object-group text-primary w-4"></i> Group Elements
                 </button>
                 <button id="ctx-ungroup-btn" onclick="ctxAction('ungroup')" class="w-full flex items-center gap-3 px-4 py-2 text-sm text-text-main hover:bg-surface transition-colors">
-                    <i class="fa-solid fa-object-ungroup text-indigo-500 w-4"></i> Ungroup Elements
+                    <i class="fa-solid fa-object-ungroup text-primary w-4"></i> Ungroup Elements
                 </button>
                 <div class="h-px bg-border my-1"></div>
                 <button onclick="ctxAction('lock')" class="w-full flex items-center gap-3 px-4 py-2 text-sm text-text-main hover:bg-surface transition-colors">
-                    <i class="fa-solid fa-lock text-slate-400 w-4"></i> Lock Element
+                    <i class="fa-solid fa-lock text-slate-600 w-4"></i> Lock Element
                 </button>
                 <div class="h-px bg-border my-1"></div>
                 <button onclick="ctxAction('delete')" class="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors">
@@ -705,7 +664,7 @@
                     <div id="ai-import-progress-title" class="text-sm font-semibold text-slate-900">AI Import In Progress</div>
                     <div id="ai-import-progress-message" class="text-sm text-slate-500 mt-1">Preparing PDF processing…</div>
                 </div>
-                <button type="button" onclick="hideAIImportProgress()" class="text-slate-400 hover:text-slate-600" title="Hide progress">
+                <button type="button" onclick="hideAIImportProgress()" class="text-slate-600 hover:text-slate-800" title="Hide progress">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
@@ -746,7 +705,7 @@
                     <div class="text-sm font-semibold text-slate-900">Saved Projects</div>
                     <div class="text-sm text-slate-500 mt-1">Open a previously saved presentation.</div>
                 </div>
-                <button type="button" onclick="closeProjectsModal()" class="text-slate-400 hover:text-slate-600" title="Close">
+                <button type="button" onclick="closeProjectsModal()" class="text-slate-600 hover:text-slate-800" title="Close">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>

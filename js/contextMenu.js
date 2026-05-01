@@ -48,8 +48,8 @@ function initContextMenu() {
         if (lockBtn && elData) {
             const isLocked = elData.locked === true;
             lockBtn.innerHTML = isLocked 
-                ? '<i class="fa-solid fa-unlock text-slate-400 w-4"></i> Unlock Element'
-                : '<i class="fa-solid fa-lock text-slate-400 w-4"></i> Lock Element';
+                ? '<i class="fa-solid fa-unlock text-slate-600 w-4"></i> Unlock Element'
+                : '<i class="fa-solid fa-lock text-slate-600 w-4"></i> Lock Element';
         }
 
         // Position menu

@@ -8,12 +8,12 @@ function buildMediaPanel(panel, data) {
                 <div class="flex flex-col gap-2">
                     <input type="text" id="prop-video-url" class="w-full text-xs" value="${data.content?.startsWith("data:") ? "Local File (Base64 Data)" : data.content || ""}" placeholder="https://..." ${data.content?.startsWith("data:") ? "disabled" : ""}>
                     <button onclick="document.getElementById('video-file-upload').click()" class="w-full py-1.5 px-3 bg-gray-900 border border-gray-700 rounded-lg text-[11px] text-gray-300 hover:bg-gray-800 transition-colors flex items-center justify-center gap-2">
-                        <i class="fa-solid fa-upload text-emerald-400"></i> ${data.content?.startsWith("data:") ? "Change Local File" : "Upload Local File"}
+                        <i class="fa-solid fa-upload text-primary"></i> ${data.content?.startsWith("data:") ? "Change Local File" : "Upload Local File"}
                     </button>
                     ${
                         data.content?.startsWith("data:")
                             ? `
-                        <button id="prop-video-clear-local" class="text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors flex items-center gap-1 mt-1">
+                        <button id="prop-video-clear-local" class="text-xs text-primary hover:text-primary-hover transition-colors flex items-center gap-1 mt-1">
                             <i class="fa-solid fa-link"></i> Switch to URL source
                         </button>
                     `
@@ -61,11 +61,11 @@ function buildMediaPanel(panel, data) {
         imgGrp.innerHTML += `
             <div class="flex gap-2 mt-2">
                 <div class="flex-1 flex flex-col gap-1">
-                    <label class="text-[10px] text-gray-500 uppercase font-semibold tracking-wider">Width</label>
+                    <label class="text-xs text-slate-600 uppercase font-semibold tracking-wider">Width</label>
                     <input type="number" id="prop-img-w" class="w-full text-xs" value="${parseFloat(data.width) || 0}">
                 </div>
                 <div class="flex-1 flex flex-col gap-1">
-                    <label class="text-[10px] text-gray-500 uppercase font-semibold tracking-wider">Height</label>
+                    <label class="text-xs text-slate-600 uppercase font-semibold tracking-wider">Height</label>
                     <input type="number" id="prop-img-h" class="w-full text-xs" value="${parseFloat(data.height) || 0}">
                 </div>
             </div>
