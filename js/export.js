@@ -36,93 +36,142 @@ async function exportZip() {
 /**
  * Exports the presentation as a PDF using html2canvas and jsPDF.
  */
+function getActiveExportSlideElement() {
+    return (
+        document.querySelector(".reveal .slides section.present") ||
+        document.querySelector(".presentation-slide.present") ||
+        document.querySelector(".presentation-slide")
+    );
+}
+
+function hideExportEditorUi() {
+    const hiddenNodes = Array.from(
+        document.querySelectorAll('.resize-handle, .crop-handle, .connector-point-handle, #group-bound, .anim-badge'),
+    ).map(el => ({ el, display: el.style.display }));
+    hiddenNodes.forEach(({ el }) => {
+        el.style.display = 'none';
+    });
+
+    const selectedNodes = Array.from(document.querySelectorAll('.canvas-element.selected, .canvas-element.group-member-selected')).map(el => ({
+        el,
+        selected: el.classList.contains('selected'),
+        groupMemberSelected: el.classList.contains('group-member-selected'),
+    }));
+    selectedNodes.forEach(({ el }) => el.classList.remove('selected', 'group-member-selected'));
+
+    return () => {
+        hiddenNodes.forEach(({ el, display }) => {
+            el.style.display = display;
+        });
+        selectedNodes.forEach(({ el, selected, groupMemberSelected }) => {
+            el.classList.toggle('selected', selected);
+            el.classList.toggle('group-member-selected', groupMemberSelected);
+        });
+        if (typeof updateGroupBound === 'function') updateGroupBound();
+    };
+}
+
+const DEFAULT_EXPORT_PAGE_SIZE = Object.freeze({
+    defaultWidth: 1024,
+    defaultHeight: 768,
+});
+
+function getExportPageSetup() {
+    const config = typeof getPresentationPageSetupConfig === "function"
+        ? getPresentationPageSetupConfig()
+        : {};
+    const width = Number(config.width) || DEFAULT_EXPORT_PAGE_SIZE.defaultWidth;
+    const height = Number(config.height) || DEFAULT_EXPORT_PAGE_SIZE.defaultHeight;
+    return {
+        width,
+        height,
+        orientation: width >= height ? "landscape" : "portrait",
+    };
+}
+
 async function exportPDF() {
+    const page = getExportPageSetup();
+    const pdf = new jspdf.jsPDF({
+        orientation: page.orientation,
+        unit: "px",
+        format: [page.width, page.height]
+    });
+    const originalIndex = currentSlideIndex;
+
     try {
         setProjectSaveHint?.("Generating PDF...", "success");
-        const pdf = new jspdf.jsPDF({
-            orientation: "landscape",
-            unit: "px",
-            format: [1024, 768]
-        });
 
-        const originalIndex = currentSlideIndex;
         for (let i = 0; i < state.slides.length; i++) {
-            // Use the globally exposed switchSlide
             if (typeof window.switchSlide === "function") {
                 window.switchSlide(i);
             } else if (typeof Reveal !== "undefined" && Reveal.slide) {
                 Reveal.slide(i);
             }
-            // Wait for assets to load / animations to settle
             await new Promise(r => setTimeout(r, 800));
 
-            const container = document.getElementById("slides-container");
-            // Hide selection UI before capturing
-            document.querySelectorAll('.resize-handle, .crop-handle, .connector-point-handle, #group-bound')
-                .forEach(el => el.style.display = 'none');
-            document.querySelectorAll('.canvas-element')
-                .forEach(el => el.classList.remove('selected', 'group-member-selected'));
-
-            const canvas = await html2canvas(container, {
-                scale: 3, // Higher resolution
-                useCORS: true,
-                allowTaint: true,
-                backgroundColor: "#ffffff",
-                logging: false,
-                width: 1024,
-                height: 768
-            });
-            // Restore UI
-            document.querySelectorAll('.resize-handle, .crop-handle, .connector-point-handle, #group-bound')
-                .forEach(el => el.style.display = '');
+            const slide = getActiveExportSlideElement();
+            if (!slide) throw new Error("Active slide not found for export");
+            const restoreUi = hideExportEditorUi();
+            let canvas;
+            try {
+                canvas = await html2canvas(slide, {
+                    scale: 3,
+                    useCORS: true,
+                    allowTaint: true,
+                    backgroundColor: "#ffffff",
+                    logging: false,
+                    width: page.width,
+                    height: page.height,
+                    windowWidth: page.width,
+                    windowHeight: page.height
+                });
+            } finally {
+                restoreUi();
+            }
 
             const imgData = canvas.toDataURL("image/jpeg", 0.95);
-            if (i > 0) pdf.addPage([1024, 768], "landscape");
-            pdf.addImage(imgData, "JPEG", 0, 0, 1024, 768);
+            if (i > 0) pdf.addPage([page.width, page.height], page.orientation);
+            pdf.addImage(imgData, "JPEG", 0, 0, page.width, page.height);
             setProjectSaveHint?.(`Generated slide ${i + 1}/${state.slides.length}`, "success");
         }
 
-        // Restore original slide
-        if (typeof window.switchSlide === "function") {
-            window.switchSlide(originalIndex);
-        } else if (typeof Reveal !== "undefined" && Reveal.slide) {
-            Reveal.slide(originalIndex);
-        }
         pdf.save("presentation.pdf");
         setProjectSaveHint?.("PDF Exported!", "success");
     } catch (err) {
         console.error(err);
         setProjectSaveHint?.(err?.message || "PDF export failed", "danger");
+    } finally {
+        if (typeof window.switchSlide === "function") {
+            window.switchSlide(originalIndex);
+        } else if (typeof Reveal !== "undefined" && Reveal.slide) {
+            Reveal.slide(originalIndex);
+        }
     }
 }
 
 async function exportPNG() {
     try {
         setProjectSaveHint?.("Generating Image...", "success");
-        const container = document.getElementById("slides-container");
-        
-        // Hide UI
-        const handles = document.querySelectorAll('.resize-handle, .crop-handle, .connector-point-handle, #group-bound, .anim-badge');
-        handles.forEach(el => el.style.display = 'none');
-        document.querySelectorAll('.canvas-element').forEach(el => el.classList.remove('selected', 'group-member-selected'));
+        const page = getExportPageSetup();
+        const slide = getActiveExportSlideElement();
+        if (!slide) throw new Error("Active slide not found for export");
 
-        const canvas = await html2canvas(container, {
-            scale: 4, // Very high res
-            useCORS: true,
-            allowTaint: true,
-            backgroundColor: "#ffffff",
-            logging: false,
-            width: 1024,
-            height: 768
-        });
-
-        // Restore UI
-        handles.forEach(el => el.style.display = '');
-        if (state.selectedIds.length) {
-            state.selectedIds.forEach(id => {
-                document.getElementById(id)?.classList.add('selected');
+        const restoreUi = hideExportEditorUi();
+        let canvas;
+        try {
+            canvas = await html2canvas(slide, {
+                scale: 4,
+                useCORS: true,
+                allowTaint: true,
+                backgroundColor: "#ffffff",
+                logging: false,
+                width: page.width,
+                height: page.height,
+                windowWidth: page.width,
+                windowHeight: page.height
             });
-            if (typeof updateGroupBound === 'function') updateGroupBound();
+        } finally {
+            restoreUi();
         }
 
         const link = document.createElement('a');
@@ -133,7 +182,7 @@ async function exportPNG() {
         setProjectSaveHint?.("PNG Exported!", "success");
     } catch (err) {
         console.error(err);
-        setProjectSaveHint?.("Image export failed", "danger");
+        setProjectSaveHint?.(err?.message || "Image export failed", "danger");
     }
 }
 

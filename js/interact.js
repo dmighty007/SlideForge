@@ -44,19 +44,30 @@ function initInteract() {
 function _setupElementInteract() {
     interact(".canvas-element")
         .draggable({
-            ignoreFrom: ".resize-handle, .crop-handle, .connector-point-handle, .pdf-annotation-layer, .pdf-annotation-layer *, .canvas-element.cropping img, .editing-text, .editing-text *, .editing-table, .editing-table *",
+            ignoreFrom: ".resize-handle, .crop-handle, .connector-point-handle, .pdf-annotation-layer, .pdf-annotation-layer *, .canvas-element.cropping img, .editing-text, .editing-text *, .editing-table, .editing-table *, .table-element-cell, .table-element-cell *",
             listeners: {
                 start(event) {
                     if (document.body.classList.contains("play-mode-active")) return;
                     const canvasTarget = getInteractCanvasTarget(event.target);
                     if (!canvasTarget) return false;
                     if (event.target.isContentEditable || isElementInTextEditMode(event.target)) return false;
+
+                    const elementData = state.slides[currentSlideIndex].elements.find(item => item.id === canvasTarget.id);
+                    if (elementData?.locked) return false;
                     
                     const sourceEvent = event.sourceEvent || event;
                     const isMultiSelect = sourceEvent.shiftKey || sourceEvent.metaKey || sourceEvent.ctrlKey;
                     
-                    if (!state.selectedIds.includes(canvasTarget.id)) {
+                    const isAlreadySelected = state.selectedIds.includes(canvasTarget.id);
+                    if (!isAlreadySelected) {
                         selectElement(canvasTarget.id, isMultiSelect ? "add" : "replace");
+                        // If we weren't already selected, we don't start the drag immediately.
+                        // This allows the marquee logic to take over if the user continues to drag.
+                        // They can drag the element once it is selected.
+                        if (!isMultiSelect) {
+                            event.interaction.stop();
+                            return;
+                        }
                     }
                     
                     saveStateToUndo();
@@ -75,6 +86,9 @@ function _setupElementInteract() {
                     state.selectedIds.forEach(id => {
                         const el = document.getElementById(id);
                         if (!el) return;
+                        
+                        const elData = state.slides[currentSlideIndex].elements.find(item => item.id === id);
+                        if (elData?.locked) return;
                         
                         const rawX = (parseFloat(el.getAttribute("data-x")) || 0) + dx;
                         const rawY = (parseFloat(el.getAttribute("data-y")) || 0) + dy;
@@ -188,6 +202,10 @@ function _setupElementInteract() {
                     const canvasTarget = getInteractCanvasTarget(event.target);
                     if (!canvasTarget) return false;
                     if (isElementInTextEditMode(event.target)) return false;
+
+                    const elementData = state.slides[currentSlideIndex].elements.find(item => item.id === canvasTarget.id);
+                    if (elementData?.locked) return false;
+
                     selectElement(canvasTarget.id, "replace");
                     saveStateToUndo();
                 },
@@ -321,6 +339,10 @@ function _setupGroupBoundInteract() {
                 state.selectedIds.forEach(id => {
                     const el = document.getElementById(id);
                     if (!el) return;
+
+                    const elData = state.slides[currentSlideIndex].elements.find(item => item.id === id);
+                    if (elData?.locked) return;
+
                     const x = (parseFloat(el.getAttribute("data-x")) || 0) + dx;
                     const y = (parseFloat(el.getAttribute("data-y")) || 0) + dy;
                     el.style.transform = `translate(${x}px, ${y}px)`;
@@ -399,7 +421,7 @@ function _setupGroupBoundInteract() {
 
         active.elementStarts.forEach(s => {
             const target = document.getElementById(s.id);
-            if (!target) return;
+            if (!target || s.locked) return;
             const fx = newX + (s.x - active.start.x) * ratioW;
             const fy = newY + (s.y - active.start.y) * ratioH;
             const fw = Math.max(24, parseFloat(s.width) * ratioW);
@@ -500,73 +522,115 @@ function _setupGroupBoundInteract() {
 
 function _setupMarquee() {
     const canvasWrapper = document.getElementById("canvas-wrapper");
+    if (!canvasWrapper) return;
+
+    const dragThreshold = 4;
     let marqueeStart = null;
+    let marqueeActive = false;
+
+    const getActiveSlideElements = () => {
+        const activeSlide = document.querySelector(".reveal .slides section.present");
+        return Array.from(activeSlide?.querySelectorAll(":scope > .canvas-element") || []);
+    };
+
+    const getSelectionRect = (event) => ({
+        left: Math.min(event.clientX, marqueeStart.x),
+        right: Math.max(event.clientX, marqueeStart.x),
+        top: Math.min(event.clientY, marqueeStart.y),
+        bottom: Math.max(event.clientY, marqueeStart.y),
+    });
+
+    const isElementInsideRect = (el, rect) => {
+        const elementRect = el.getBoundingClientRect();
+        return (
+            elementRect.left >= rect.left &&
+            elementRect.right <= rect.right &&
+            elementRect.top >= rect.top &&
+            elementRect.bottom <= rect.bottom
+        );
+    };
+
+    const updateMarqueeBox = (event) => {
+        const marquee = document.getElementById("marquee");
+        if (!marquee) return;
+        const wrapperRect = canvasWrapper.getBoundingClientRect();
+        const left = Math.min(event.clientX, marqueeStart.x) - wrapperRect.left + canvasWrapper.scrollLeft;
+        const top = Math.min(event.clientY, marqueeStart.y) - wrapperRect.top + canvasWrapper.scrollTop;
+        marquee.style.left = `${left}px`;
+        marquee.style.top = `${top}px`;
+        marquee.style.width = `${Math.abs(event.clientX - marqueeStart.x)}px`;
+        marquee.style.height = `${Math.abs(event.clientY - marqueeStart.y)}px`;
+    };
+
+    const resetMarquee = () => {
+        document.getElementById("marquee")?.classList.add("hidden");
+        getActiveSlideElements().forEach(el => el.classList.remove("marquee-hover"));
+        marqueeStart = null;
+        marqueeActive = false;
+    };
 
     canvasWrapper.addEventListener("mousedown", e => {
-        if (e.target.closest(".canvas-element")) return;
+        if (e.button !== 0) return;
         if (e.target.closest("#group-bound")) return;
         if (e.target.closest("#floating-text-toolbar")) return;
+        if (e.target.closest(".canvas-element")) return;
         if (document.body.classList.contains("play-mode-active")) return;
 
-        marqueeStart = { x: e.clientX, y: e.clientY };
+        marqueeStart = {
+            x: e.clientX,
+            y: e.clientY,
+            additive: e.shiftKey || e.ctrlKey || e.metaKey,
+        };
         const marquee = document.getElementById("marquee");
-        marquee.classList.remove("hidden");
-        marquee.style.width = "0px";
-        marquee.style.height = "0px";
-        if (!e.shiftKey && !e.ctrlKey && !e.metaKey) clearSelection();
+        if (marquee) {
+            marquee.classList.add("hidden");
+            marquee.style.width = "0px";
+            marquee.style.height = "0px";
+            updateMarqueeBox(e);
+        }
     });
 
     window.addEventListener("mousemove", e => {
         if (!marqueeStart) return;
         const marquee = document.getElementById("marquee");
-        const rect = canvasWrapper.getBoundingClientRect();
-        marquee.style.left = Math.min(e.clientX, marqueeStart.x) - rect.left + "px";
-        marquee.style.top = Math.min(e.clientY, marqueeStart.y) - rect.top + "px";
-        marquee.style.width = Math.abs(e.clientX - marqueeStart.x) + "px";
-        marquee.style.height = Math.abs(e.clientY - marqueeStart.y) + "px";
+        if (!marquee) return;
 
-        const mRect = marquee.getBoundingClientRect();
-        const isLeftToRight = e.clientX > marqueeStart.x;
-        document.querySelectorAll(".canvas-element").forEach(el => {
-            const r = el.getBoundingClientRect();
-            let isSelected = false;
-            if (isLeftToRight) {
-                isSelected = (r.left >= mRect.left && r.right <= mRect.right && r.top >= mRect.top && r.bottom <= mRect.bottom);
-            } else {
-                isSelected = !(r.left > mRect.right || r.right < mRect.left || r.top > mRect.bottom || r.bottom < mRect.top);
-            }
-            if (isSelected) {
-                el.classList.add("marquee-hover");
-            } else {
-                el.classList.remove("marquee-hover");
-            }
+        const dx = Math.abs(e.clientX - marqueeStart.x);
+        const dy = Math.abs(e.clientY - marqueeStart.y);
+        if (!marqueeActive && Math.max(dx, dy) < dragThreshold) return;
+
+        if (!marqueeActive) {
+            marqueeActive = true;
+            marquee.classList.remove("hidden");
+            if (!marqueeStart.additive) clearSelection();
+        }
+
+        updateMarqueeBox(e);
+        const selectionRect = getSelectionRect(e);
+        getActiveSlideElements().forEach(el => {
+            el.classList.toggle("marquee-hover", isElementInsideRect(el, selectionRect));
         });
     });
 
     window.addEventListener("mouseup", e => {
         if (!marqueeStart) return;
-        const marquee = document.getElementById("marquee");
-        const mRect = marquee.getBoundingClientRect();
+        if (!marqueeActive) {
+            resetMarquee();
+            return;
+        }
+
+        const selectionRect = getSelectionRect(e);
         const newlySelected = [];
-        const isLeftToRight = e.clientX > marqueeStart.x;
-        
-        document.querySelectorAll(".canvas-element").forEach(el => {
+        getActiveSlideElements().forEach(el => {
             el.classList.remove("marquee-hover");
-            const r = el.getBoundingClientRect();
-            let isSelected = false;
-            if (isLeftToRight) {
-                isSelected = (r.left >= mRect.left && r.right <= mRect.right && r.top >= mRect.top && r.bottom <= mRect.bottom);
-            } else {
-                isSelected = !(r.left > mRect.right || r.right < mRect.left || r.top > mRect.bottom || r.bottom < mRect.top);
-            }
-            if (isSelected) {
+            if (isElementInsideRect(el, selectionRect)) {
                 newlySelected.push(el.id);
             }
         });
-        
+
         if (newlySelected.length > 0) {
             let combined = newlySelected;
-            if (e.shiftKey || e.ctrlKey || e.metaKey) {
+            if (marqueeStart.additive) {
                 const toggled = new Set(state.selectedIds);
                 newlySelected.forEach(id => {
                     if (toggled.has(id)) toggled.delete(id);
@@ -578,9 +642,10 @@ function _setupMarquee() {
             state.selectedIds.forEach(id => document.getElementById(id)?.classList.add("selected"));
             buildPropertiesPanel();
             updateGroupBound();
+        } else if (!marqueeStart.additive) {
+            clearSelection();
         }
-        marqueeStart = null;
-        marquee.classList.add("hidden");
+        resetMarquee();
     });
 }
 

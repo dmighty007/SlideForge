@@ -453,15 +453,27 @@ function deleteSelectedElements() {
     if (!state.selectedIds.length) return;
     saveStateToUndo();
     state.slides[activeIndex].elements = state.slides[activeIndex].elements.filter(
-        el => !state.selectedIds.includes(el.id),
+        el => !state.selectedIds.includes(el.id) || el.locked === true,
     );
-    clearSelection();
+    // Keep selection only for elements that were NOT deleted (because they were locked)
+    state.selectedIds = state.selectedIds.filter(id => {
+        const el = state.slides[activeIndex].elements.find(e => e.id === id);
+        return !!el;
+    });
+    if (state.selectedIds.length === 0) {
+        clearSelection();
+    } else {
+        buildPropertiesPanel();
+        updateGroupBound();
+    }
     renderSlidesFromState();
 }
 
 function deleteElement(id) {
     const activeIndex = ensureActiveSlideSync();
-    saveStateToUndo();
+    const el = state.slides[activeIndex].elements.find(e => e.id === id);
+    if (el?.locked) return;
+
     state.slides[activeIndex].elements = state.slides[activeIndex].elements.filter(el => el.id !== id);
     clearSelection();
     renderSlidesFromState();
@@ -528,7 +540,7 @@ function nudgeSelectedElements(dx, dy) {
     saveStateToUndo();
     state.selectedIds.forEach(id => {
         const el = state.slides[activeIndex].elements.find(e => e.id === id);
-        if (!el) return;
+        if (!el || el.locked === true) return;
         const nextX = (Number(el.x) || 0) + dx;
         const nextY = (Number(el.y) || 0) + dy;
         el.x = nextX;

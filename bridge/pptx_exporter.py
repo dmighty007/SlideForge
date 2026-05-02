@@ -20,9 +20,10 @@ class DesignSystem:
     BG_COLOR = RGBColor(255, 255, 255)
 
 class PPTXExporter:
-    def __init__(self, state: Dict[str, Any]):
+    def __init__(self, state: Dict[str, Any], project_root: Optional[Path | str] = None):
         self.state = state
         self.prs = Presentation()
+        self.project_root = self._resolve_project_root(project_root)
         
         # Mapping from SlideForge page setup to PPTX dimensions
         setup = state.get("pageSetup", "standard-4-3")
@@ -38,6 +39,19 @@ class PPTXExporter:
             self.prs.slide_width = Inches(10.666)
             self.prs.slide_height = Inches(8.0)
             self.base_w, self.base_h = 1024, 768
+
+    def _resolve_project_root(self, project_root: Optional[Path | str] = None) -> Path:
+        if project_root:
+            return Path(project_root).expanduser().resolve()
+        try:
+            from django.conf import settings
+
+            base_dir = getattr(settings, "BASE_DIR", None)
+            if base_dir:
+                return Path(base_dir).expanduser().resolve()
+        except Exception:
+            pass
+        return Path(__file__).resolve().parent.parent
 
     def _px_to_inches_w(self, px: float) -> Inches:
         # Scale pixels relative to the logical canvas width
@@ -78,19 +92,15 @@ class PPTXExporter:
         
         # Resolve local paths
         try:
-            # Common prefixes in this project
-            # Base directory for resolution
-            project_root = Path("/home/dm/Dibyendu/GitProjects/pptmaker_ai")
-            
             potential_paths = []
             if content.startswith("/media/"):
-                potential_paths.append(project_root / content.lstrip("/"))
+                potential_paths.append(self.project_root / content.lstrip("/"))
             elif content.startswith("/static/"):
-                potential_paths.append(project_root / content.lstrip("/"))
+                potential_paths.append(self.project_root / content.lstrip("/"))
             elif content.startswith("/"):
-                potential_paths.append(project_root / content.lstrip("/"))
+                potential_paths.append(self.project_root / content.lstrip("/"))
             else:
-                potential_paths.append(project_root / content)
+                potential_paths.append(self.project_root / content)
 
             for path in potential_paths:
                 if path.exists() and path.is_file():

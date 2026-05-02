@@ -1198,6 +1198,787 @@ function _installModernPresetBuilders() {
 
 _installModernPresetBuilders();
 
+function _sciencePalette(theme) {
+    const { a, a2, fg, mu, sf, sb, hf, bf } = _t(theme);
+    const meta = _presetMeta(theme);
+    return {
+        a,
+        a2,
+        fg,
+        mu,
+        sf,
+        sb,
+        hf,
+        bf,
+        panel: meta.card,
+        wash: meta.wash,
+        line: meta.line,
+    };
+}
+
+function _scienceHeader(theme, title, subtitle = "", label = "") {
+    const p = _sciencePalette(theme);
+    return [
+        _bar(0, 0, 1024, 7, p.a, undefined, undefined),
+        _box(0, 0, 1024, 104, p.sf, undefined, undefined),
+        _bar(56, 24, 5, 56, p.a, undefined, "3px"),
+        ...(label
+            ? [
+                  _text(78, 20, 520, label.toUpperCase(), {
+                      color: p.a,
+                      fontSize: "12px",
+                      fontFamily: p.bf,
+                      fontWeight: "800",
+                      letterSpacing: "0.14em",
+                  }),
+              ]
+            : []),
+        _text(78, label ? 42 : 28, 790, title, {
+            color: p.fg,
+            fontSize: "38px",
+            fontFamily: p.hf,
+            fontWeight: "800",
+            lineHeight: "1.08",
+        }),
+        ...(subtitle
+            ? [
+                  _text(80, 82, 820, subtitle, {
+                      color: p.mu,
+                      fontSize: "15px",
+                      fontFamily: p.bf,
+                      lineHeight: "1.35",
+                  }),
+              ]
+            : []),
+    ];
+}
+
+function _sciencePanel(theme, x, y, w, h) {
+    const p = _sciencePalette(theme);
+    return _box(x, y, w, h, p.panel, `1px solid ${p.a}26`, "14px");
+}
+
+function _scienceBullets(x, y, w, items, styles = {}, options = {}) {
+    const gap = Number(options.gap) || 46;
+    const marker = options.marker || "•";
+    return (Array.isArray(items) ? items : []).map((rawItem, index) => {
+        const item = typeof rawItem === "string" ? { text: rawItem, level: 0 } : rawItem || {};
+        const level = Math.max(0, Number(item.level) || 0);
+        const indent = level * 28;
+        return _text(x + indent, y + index * gap, w - indent, `${marker} ${item.text || "List item"}`, {
+            lineHeight: "1.3",
+            ...styles,
+        });
+    });
+}
+
+function _installSciencePresetBuilders() {
+    const layouts = {
+        "title-page": {
+            name: "MD + ML Title",
+            icon: "fa-solid fa-atom",
+            color: "text-cyan-400",
+            build(theme) {
+                const p = _sciencePalette(theme);
+                return [
+                    _bar(0, 0, 1024, 8, p.a, undefined, undefined),
+                    _box(64, 118, 896, 484, p.wash, `1px solid ${p.a}20`, "22px"),
+                    _text(92, 158, 820, "Molecular Dynamics and Machine Learning", {
+                        color: p.a,
+                        fontSize: "15px",
+                        fontFamily: p.bf,
+                        fontWeight: "800",
+                        letterSpacing: "0.10em",
+                        textAlign: "center",
+                    }),
+                    _text(118, 222, 788, "Research Title Goes Here", {
+                        color: p.fg,
+                        fontSize: "54px",
+                        fontFamily: p.hf,
+                        fontWeight: "800",
+                        lineHeight: "1.1",
+                        textAlign: "center",
+                    }),
+                    _bar(362, 374, 300, 3, p.a, undefined, "2px"),
+                    _text(152, 412, 720, "Author Name - Group / Institute - Date", {
+                        color: p.mu,
+                        fontSize: "20px",
+                        fontFamily: p.bf,
+                        textAlign: "center",
+                    }),
+                    _text(152, 510, 720, "MD trajectories | protein dynamics | learned representations", {
+                        color: p.fg,
+                        fontSize: "17px",
+                        fontFamily: p.bf,
+                        textAlign: "center",
+                    }),
+                ];
+            },
+        },
+        "section-divider": {
+            name: "Section Divider",
+            icon: "fa-solid fa-grip-lines",
+            color: "text-indigo-400",
+            build(theme) {
+                const p = _sciencePalette(theme);
+                return [
+                    _bar(0, 0, 8, 768, p.a, undefined, undefined),
+                    _text(76, 214, 220, "02", {
+                        color: p.a,
+                        fontSize: "100px",
+                        fontFamily: p.hf,
+                        fontWeight: "800",
+                        opacity: "0.24",
+                    }),
+                    _text(330, 244, 560, "Section Title", {
+                        color: p.fg,
+                        fontSize: "54px",
+                        fontFamily: p.hf,
+                        fontWeight: "800",
+                    }),
+                    _bar(334, 320, 110, 4, p.a, undefined, "2px"),
+                    _text(334, 350, 560, "Short framing sentence for this part of the MD/ML story.", {
+                        color: p.mu,
+                        fontSize: "22px",
+                        fontFamily: p.bf,
+                        lineHeight: "1.4",
+                    }),
+                ];
+            },
+        },
+        "content-slide": {
+            name: "Key Claim",
+            icon: "fa-solid fa-align-left",
+            color: "text-blue-400",
+            build(theme) {
+                const p = _sciencePalette(theme);
+                return [
+                    ..._scienceHeader(theme, "Key claim from simulation and learning", "State one result clearly, then support it with evidence.", "Finding"),
+                    _sciencePanel(theme, 58, 150, 590, 390),
+                    ..._scienceBullets(
+                        88,
+                        184,
+                        530,
+                        [
+                            { text: "MD samples conformational states that are not visible in static structures" },
+                            { text: "Features: contacts, dihedrals, RMSD/RMSF, solvent exposure" },
+                            { text: "ML model separates metastable states and predicts key transitions" },
+                            { text: "Validation uses held-out trajectories and physical interpretability" },
+                        ],
+                        { color: p.fg, fontSize: "22px", fontFamily: p.bf },
+                        { gap: 58 },
+                    ),
+                    _sciencePanel(theme, 686, 150, 280, 390),
+                    _text(714, 186, 220, "Take-home", {
+                        color: p.a,
+                        fontSize: "24px",
+                        fontFamily: p.hf,
+                        fontWeight: "800",
+                    }),
+                    _text(714, 238, 220, "A compact sentence explaining why the combined MD + ML result matters.", {
+                        color: p.fg,
+                        fontSize: "18px",
+                        fontFamily: p.bf,
+                        lineHeight: "1.45",
+                    }),
+                ];
+            },
+        },
+        "two-column": {
+            name: "MD vs ML",
+            icon: "fa-solid fa-table-columns",
+            color: "text-emerald-400",
+            build(theme) {
+                const p = _sciencePalette(theme);
+                return [
+                    ..._scienceHeader(theme, "Two complementary views", "Use this layout to compare physical simulation and learned models.", "Compare"),
+                    _sciencePanel(theme, 58, 158, 420, 420),
+                    _sciencePanel(theme, 546, 158, 420, 420),
+                    _text(88, 190, 340, "Molecular dynamics", {
+                        color: p.a,
+                        fontSize: "26px",
+                        fontFamily: p.hf,
+                        fontWeight: "800",
+                    }),
+                    ..._scienceBullets(
+                        88,
+                        246,
+                        340,
+                        [
+                            { text: "Force field and solvent model" },
+                            { text: "Equilibration and production runs" },
+                            { text: "Trajectory descriptors and uncertainty" },
+                        ],
+                        { color: p.fg, fontSize: "20px", fontFamily: p.bf },
+                        { gap: 56 },
+                    ),
+                    _text(576, 190, 340, "Machine learning", {
+                        color: p.a2,
+                        fontSize: "26px",
+                        fontFamily: p.hf,
+                        fontWeight: "800",
+                    }),
+                    ..._scienceBullets(
+                        576,
+                        246,
+                        340,
+                        [
+                            { text: "Dimensionality reduction or embeddings" },
+                            { text: "Classifier, regressor, or GNN model" },
+                            { text: "Cross-validation and feature attribution" },
+                        ],
+                        { color: p.fg, fontSize: "20px", fontFamily: p.bf },
+                        { gap: 56 },
+                    ),
+                ];
+            },
+        },
+        "figure-caption": {
+            name: "Simulation Figure",
+            icon: "fa-solid fa-chart-line",
+            color: "text-purple-400",
+            build(theme) {
+                const p = _sciencePalette(theme);
+                return [
+                    ..._scienceHeader(theme, "Trajectory result", "Replace the placeholder with RMSD, free-energy, PCA, contact, or clustering plots.", "Figure"),
+                    _box(58, 158, 610, 408, p.panel, `1px dashed ${p.a}`, "14px"),
+                    _text(58, 340, 610, "Insert figure or chart here", {
+                        color: p.mu,
+                        fontSize: "19px",
+                        fontFamily: p.bf,
+                        textAlign: "center",
+                    }),
+                    _text(70, 584, 586, "Figure 1. Short caption describing the simulation system, model, and key observation.", {
+                        color: p.mu,
+                        fontSize: "14px",
+                        fontFamily: p.bf,
+                        textAlign: "center",
+                    }),
+                    _sciencePanel(theme, 700, 158, 266, 408),
+                    _text(728, 190, 210, "Interpretation", {
+                        color: p.a,
+                        fontSize: "24px",
+                        fontFamily: p.hf,
+                        fontWeight: "800",
+                    }),
+                    _text(728, 246, 210, "What changed in the ensemble? Which residue, feature, or latent dimension explains it?", {
+                        color: p.fg,
+                        fontSize: "18px",
+                        fontFamily: p.bf,
+                        lineHeight: "1.45",
+                    }),
+                ];
+            },
+        },
+        "methodology": {
+            name: "MD Pipeline",
+            icon: "fa-solid fa-diagram-project",
+            color: "text-cyan-400",
+            build(theme) {
+                const p = _sciencePalette(theme);
+                return [
+                    ..._scienceHeader(theme, "Workflow", "A simple end-to-end pipeline for MD-informed machine learning.", "Methods"),
+                    _sciencePanel(theme, 78, 172, 868, 316),
+                    ..._scienceBullets(
+                        112,
+                        214,
+                        800,
+                        [
+                            { text: "01 Prepare: structure, protonation, ligands, solvent box" },
+                            { text: "02 Simulate: minimization, equilibration, production MD" },
+                            { text: "03 Featurize: contacts, distances, dihedrals, energies" },
+                            { text: "04 Learn: embedding, clustering, prediction, validation" },
+                        ],
+                        { color: p.fg, fontSize: "23px", fontFamily: p.bf },
+                        { gap: 58 },
+                    ),
+                    _text(84, 528, 856, "Add system size, trajectory length, sampling strategy, and software versions where needed.", {
+                        color: p.mu,
+                        fontSize: "17px",
+                        fontFamily: p.bf,
+                    }),
+                ];
+            },
+        },
+        "results-data": {
+            name: "Results Summary",
+            icon: "fa-solid fa-chart-bar",
+            color: "text-orange-400",
+            build(theme) {
+                const p = _sciencePalette(theme);
+                return [
+                    ..._scienceHeader(theme, "Quantitative summary", "Use simple metrics that are easy to edit and defend.", "Results"),
+                    ...[
+                        ["Trajectory", "3 x 500 ns"],
+                        ["States", "5 clusters"],
+                        ["Model AUC", "0.91"],
+                    ].flatMap((m, i) => [
+                        _sciencePanel(theme, 64 + i * 304, 160, 260, 118),
+                        _text(86 + i * 304, 182, 210, m[0], {
+                            color: p.mu,
+                            fontSize: "14px",
+                            fontFamily: p.bf,
+                            fontWeight: "700",
+                        }),
+                        _text(86 + i * 304, 218, 210, m[1], {
+                            color: p.a,
+                            fontSize: "34px",
+                            fontFamily: p.hf,
+                            fontWeight: "800",
+                        }),
+                    ]),
+                    _box(64, 334, 860, 230, p.panel, `1px dashed ${p.a}`, "14px"),
+                    _text(64, 430, 860, "Insert chart: RMSD, free energy, confusion matrix, or feature importance", {
+                        color: p.mu,
+                        fontSize: "18px",
+                        fontFamily: p.bf,
+                        textAlign: "center",
+                    }),
+                ];
+            },
+        },
+        "conclusion": {
+            name: "Takeaways",
+            icon: "fa-solid fa-flag-checkered",
+            color: "text-green-400",
+            build(theme) {
+                const p = _sciencePalette(theme);
+                return [
+                    ..._scienceHeader(theme, "Conclusions", "Keep the final slide direct and editable.", "Wrap-up"),
+                    _sciencePanel(theme, 70, 158, 860, 390),
+                    ..._scienceBullets(
+                        104,
+                        196,
+                        792,
+                        [
+                            { text: "MD reveals the dominant conformational changes in the system" },
+                            { text: "ML compresses trajectories into interpretable state descriptors" },
+                            { text: "The combined workflow improves hypothesis generation or screening" },
+                            { text: "Next: extend sampling, test new features, and validate experimentally" },
+                        ],
+                        { color: p.fg, fontSize: "23px", fontFamily: p.bf },
+                        { gap: 58 },
+                    ),
+                    _text(74, 610, 470, "Acknowledgements - compute resources - funding", {
+                        color: p.mu,
+                        fontSize: "14px",
+                        fontFamily: p.bf,
+                    }),
+                    _text(640, 610, 290, "email@institute.edu", {
+                        color: p.a,
+                        fontSize: "14px",
+                        fontFamily: p.bf,
+                        textAlign: "right",
+                    }),
+                ];
+            },
+        },
+        "bibliography": {
+            name: "References",
+            icon: "fa-solid fa-book-open",
+            color: "text-rose-400",
+            build(theme) {
+                const p = _sciencePalette(theme);
+                return [
+                    ..._scienceHeader(theme, "References", "Replace with key MD, enhanced sampling, and ML papers.", "Sources"),
+                    ...[
+                        "[1] Author et al. Molecular dynamics study title. Journal, year.",
+                        "[2] Author et al. Machine learning for molecular simulation. Journal, year.",
+                        "[3] Author et al. Enhanced sampling or Markov state model reference. Journal, year.",
+                        "[4] Software and dataset references: GROMACS, OpenMM, MDAnalysis, PyTorch.",
+                    ].map((ref, i) =>
+                        _text(70, 166 + i * 96, 860, ref, {
+                            color: p.fg,
+                            fontSize: "17px",
+                            fontFamily: p.bf,
+                            lineHeight: "1.45",
+                        }),
+                    ),
+                ];
+            },
+        },
+        "blank-titled": {
+            name: "Blank Research",
+            icon: "fa-regular fa-square",
+            color: "text-gray-400",
+            build(theme) {
+                return _scienceHeader(theme, "Slide title", "Add simulation, analysis, or model details here.", "MD + ML");
+            },
+        },
+        "quote-slide": {
+            name: "Research Question",
+            icon: "fa-solid fa-circle-question",
+            color: "text-rose-400",
+            build(theme) {
+                const p = _sciencePalette(theme);
+                return [
+                    ..._scienceHeader(theme, "Research question", "", "Question"),
+                    _sciencePanel(theme, 118, 220, 788, 268),
+                    _text(160, 270, 704, "Can learned representations from MD trajectories reveal functional conformational states?", {
+                        color: p.fg,
+                        fontSize: "38px",
+                        fontFamily: p.hf,
+                        fontWeight: "800",
+                        lineHeight: "1.22",
+                        textAlign: "center",
+                    }),
+                    _text(210, 520, 604, "System - dataset - model - validation criterion", {
+                        color: p.mu,
+                        fontSize: "18px",
+                        fontFamily: p.bf,
+                        textAlign: "center",
+                    }),
+                ];
+            },
+        },
+        "timeline-slide": {
+            name: "Experiment Plan",
+            icon: "fa-solid fa-timeline",
+            color: "text-amber-400",
+            build(theme) {
+                const p = _sciencePalette(theme);
+                return [
+                    ..._scienceHeader(theme, "Experiment plan", "A simple timeline for simulation and modeling work.", "Plan"),
+                    _bar(110, 350, 804, 4, p.line, undefined, "999px"),
+                    ...["System setup", "MD runs", "Feature set", "ML validation"].flatMap((label, i) => {
+                        const x = 102 + i * 258;
+                        return [
+                            _bar(x, 336, 32, 32, p.a, undefined, "999px"),
+                            _text(x - 44, i % 2 ? 386 : 250, 120, label, {
+                                color: p.fg,
+                                fontSize: "17px",
+                                fontFamily: p.bf,
+                                fontWeight: "800",
+                                textAlign: "center",
+                            }),
+                        ];
+                    }),
+                ];
+            },
+        },
+        "agenda": {
+            name: "Talk Outline",
+            icon: "fa-solid fa-list-check",
+            color: "text-sky-400",
+            build(theme) {
+                const p = _sciencePalette(theme);
+                return [
+                    ..._scienceHeader(theme, "Talk outline", "A clean structure for an MD and ML presentation.", "Agenda"),
+                    ..._scienceBullets(
+                        120,
+                        180,
+                        760,
+                        [
+                            { text: "System and scientific motivation" },
+                            { text: "MD setup and trajectory quality checks" },
+                            { text: "Feature engineering and model design" },
+                            { text: "Results, interpretation, and limitations" },
+                        ],
+                        { color: p.fg, fontSize: "27px", fontFamily: p.bf },
+                        { gap: 74 },
+                    ),
+                ];
+            },
+        },
+        "big-number": {
+            name: "Metric Highlight",
+            icon: "fa-solid fa-hashtag",
+            color: "text-fuchsia-400",
+            build(theme) {
+                const p = _sciencePalette(theme);
+                return [
+                    ..._scienceHeader(theme, "One metric", "Use this for a headline result.", "Metric"),
+                    _text(92, 216, 430, "0.91", {
+                        color: p.a,
+                        fontSize: "142px",
+                        fontFamily: p.hf,
+                        fontWeight: "800",
+                        lineHeight: "0.95",
+                    }),
+                    _text(104, 390, 410, "Model AUC for classifying active vs inactive conformational states.", {
+                        color: p.fg,
+                        fontSize: "29px",
+                        fontFamily: p.hf,
+                        fontWeight: "800",
+                        lineHeight: "1.2",
+                    }),
+                    _sciencePanel(theme, 640, 242, 260, 220),
+                    _text(670, 288, 200, "Context", {
+                        color: p.a,
+                        fontSize: "24px",
+                        fontFamily: p.hf,
+                        fontWeight: "800",
+                    }),
+                    _text(670, 342, 200, "Report baseline, data split, uncertainty, and interpretation.", {
+                        color: p.fg,
+                        fontSize: "17px",
+                        fontFamily: p.bf,
+                        lineHeight: "1.45",
+                    }),
+                ];
+            },
+        },
+        "cards-grid": {
+            name: "Feature Grid",
+            icon: "fa-solid fa-grip",
+            color: "text-violet-400",
+            build(theme) {
+                const p = _sciencePalette(theme);
+                return [
+                    ..._scienceHeader(theme, "Feature set", "Six editable cards for MD descriptors or ML inputs.", "Features"),
+                    _table(78, 170, 868, 330, {
+                        rows: 4,
+                        cols: 3,
+                        headerRow: true,
+                        zebra: true,
+                        borderColor: p.a,
+                        borderWidth: 1,
+                        cellPadding: 12,
+                        rowHeights: [54, 76, 76, 76],
+                        colWidths: [289, 289, 289],
+                        headerFill: p.a,
+                        bodyFill: p.sf,
+                        altFill: _alpha(p.a, 0.10),
+                        textColor: p.fg,
+                        headerTextColor: "#ffffff",
+                        cells: [
+                            [{ text: "Feature" }, { text: "Meaning" }, { text: "Use" }],
+                            [{ text: "RMSD / RMSF" }, { text: "Global and local motion" }, { text: "Stability checks" }],
+                            [{ text: "Contacts / distances" }, { text: "Interaction patterns" }, { text: "State classification" }],
+                            [{ text: "Latent embedding" }, { text: "Compressed trajectory" }, { text: "Clustering or prediction" }],
+                        ],
+                    }),
+                ];
+            },
+        },
+        "problem-solution": {
+            name: "Challenge / Approach",
+            icon: "fa-solid fa-scale-balanced",
+            color: "text-amber-400",
+            build(theme) {
+                const p = _sciencePalette(theme);
+                return [
+                    ..._scienceHeader(theme, "Challenge and approach", "Frame what is hard and how the workflow addresses it.", "Strategy"),
+                    _sciencePanel(theme, 70, 174, 390, 330),
+                    _sciencePanel(theme, 564, 174, 390, 330),
+                    _text(102, 214, 300, "Challenge", {
+                        color: p.a,
+                        fontSize: "31px",
+                        fontFamily: p.hf,
+                        fontWeight: "800",
+                    }),
+                    ..._scienceBullets(
+                        102,
+                        282,
+                        300,
+                        [
+                            { text: "High-dimensional trajectories" },
+                            { text: "Rare transitions and limited labels" },
+                            { text: "Need physical interpretability" },
+                        ],
+                        { color: p.fg, fontSize: "19px", fontFamily: p.bf },
+                        { gap: 52 },
+                    ),
+                    _text(596, 214, 300, "Approach", {
+                        color: p.a2,
+                        fontSize: "31px",
+                        fontFamily: p.hf,
+                        fontWeight: "800",
+                    }),
+                    ..._scienceBullets(
+                        596,
+                        282,
+                        300,
+                        [
+                            { text: "Featurize interpretable descriptors" },
+                            { text: "Train simple baseline models first" },
+                            { text: "Check against MD physics" },
+                        ],
+                        { color: p.fg, fontSize: "19px", fontFamily: p.bf },
+                        { gap: 52 },
+                    ),
+                ];
+            },
+        },
+        "image-grid": {
+            name: "Structure Gallery",
+            icon: "fa-regular fa-images",
+            color: "text-purple-400",
+            build(theme) {
+                const p = _sciencePalette(theme);
+                return [
+                    ..._scienceHeader(theme, "Structures and states", "Drop in structures, density maps, or representative conformations.", "Gallery"),
+                    ...[
+                        [66, 164, 420, 250, "State A"],
+                        [538, 164, 420, 250, "State B"],
+                        [66, 456, 260, 140, "Ligand pose"],
+                        [382, 456, 260, 140, "Contact map"],
+                        [698, 456, 260, 140, "Embedding"],
+                    ].flatMap(r => [
+                        _box(r[0], r[1], r[2], r[3], p.panel, `1px dashed ${p.a}`, "14px"),
+                        _text(r[0], r[1] + r[3] / 2 - 10, r[2], r[4], {
+                            color: p.mu,
+                            fontSize: "16px",
+                            fontFamily: p.bf,
+                            textAlign: "center",
+                        }),
+                    ]),
+                ];
+            },
+        },
+        "dashboard": {
+            name: "Run Dashboard",
+            icon: "fa-solid fa-gauge-high",
+            color: "text-cyan-400",
+            build(theme) {
+                const p = _sciencePalette(theme);
+                return [
+                    ..._scienceHeader(theme, "Simulation run dashboard", "Track a small set of metrics without making the slide hard to edit.", "Dashboard"),
+                    ...[
+                        ["Systems", "12"],
+                        ["Total MD", "6 us"],
+                        ["Failed runs", "1"],
+                    ].flatMap((m, i) => [
+                        _sciencePanel(theme, 70 + i * 296, 160, 240, 120),
+                        _text(94 + i * 296, 184, 190, m[0], { color: p.mu, fontSize: "14px", fontFamily: p.bf, fontWeight: "700" }),
+                        _text(94 + i * 296, 220, 190, m[1], { color: p.a, fontSize: "34px", fontFamily: p.hf, fontWeight: "800" }),
+                    ]),
+                    _sciencePanel(theme, 70, 340, 410, 210),
+                    _text(100, 374, 330, "Current notes", { color: p.fg, fontSize: "24px", fontFamily: p.hf, fontWeight: "800" }),
+                    ..._scienceBullets(
+                        100,
+                        424,
+                        330,
+                        [
+                            { text: "Equilibration stable for most systems" },
+                            { text: "Inspect outlier trajectory" },
+                            { text: "Retrain model after new labels" },
+                        ],
+                        { color: p.fg, fontSize: "16px", fontFamily: p.bf },
+                        { gap: 38 },
+                    ),
+                    _box(540, 340, 384, 210, p.panel, `1px dashed ${p.a}`, "14px"),
+                    _text(540, 430, 384, "Insert run-quality chart", {
+                        color: p.mu,
+                        fontSize: "17px",
+                        fontFamily: p.bf,
+                        textAlign: "center",
+                    }),
+                ];
+            },
+        },
+        "swot": {
+            name: "Model Audit",
+            icon: "fa-solid fa-border-all",
+            color: "text-lime-400",
+            build(theme) {
+                const p = _sciencePalette(theme);
+                const cards = [
+                    ["Data", "Trajectory coverage and label quality"],
+                    ["Model", "Architecture, baseline, and metrics"],
+                    ["Physics", "Conservation, stability, interpretability"],
+                    ["Risk", "Leakage, overfitting, extrapolation"],
+                ];
+                return [
+                    ..._scienceHeader(theme, "Model audit", "Four checks before trusting an MD/ML result.", "Audit"),
+                    ...cards.flatMap((card, i) => {
+                        const x = 70 + (i % 2) * 456;
+                        const y = 166 + Math.floor(i / 2) * 178;
+                        return [
+                            _sciencePanel(theme, x, y, 390, 130),
+                            _text(x + 24, y + 24, 320, card[0], {
+                                color: p.a,
+                                fontSize: "26px",
+                                fontFamily: p.hf,
+                                fontWeight: "800",
+                            }),
+                            _text(x + 24, y + 72, 320, card[1], {
+                                color: p.mu,
+                                fontSize: "15px",
+                                fontFamily: p.bf,
+                            }),
+                        ];
+                    }),
+                ];
+            },
+        },
+        "comparison-table": {
+            name: "Method Table",
+            icon: "fa-solid fa-table",
+            color: "text-emerald-400",
+            build(theme) {
+                const p = _sciencePalette(theme);
+                return [
+                    ..._scienceHeader(theme, "Method comparison", "Editable table for models, features, or simulation conditions.", "Table"),
+                    _table(78, 170, 868, 330, {
+                        rows: 5,
+                        cols: 4,
+                        headerRow: true,
+                        zebra: true,
+                        borderColor: p.a,
+                        borderWidth: 1,
+                        cellPadding: 10,
+                        rowHeights: [54, 64, 64, 64, 64],
+                        colWidths: [217, 217, 217, 217],
+                        headerFill: p.a,
+                        bodyFill: p.sf,
+                        altFill: _alpha(p.a, 0.10),
+                        textColor: p.fg,
+                        headerTextColor: "#ffffff",
+                        cells: [
+                            [{ text: "Method" }, { text: "Input" }, { text: "Metric" }, { text: "Comment" }],
+                            [{ text: "PCA" }, { text: "Contacts" }, { text: "Variance" }, { text: "Simple baseline" }],
+                            [{ text: "t-SNE/UMAP" }, { text: "Dihedrals" }, { text: "Clusters" }, { text: "Visualization" }],
+                            [{ text: "Random forest" }, { text: "Features" }, { text: "AUC" }, { text: "Interpretable" }],
+                            [{ text: "GNN" }, { text: "Graph" }, { text: "RMSE" }, { text: "Needs more data" }],
+                        ],
+                    }),
+                ];
+            },
+        },
+        "thank-you": {
+            name: "Questions",
+            icon: "fa-regular fa-heart",
+            color: "text-pink-400",
+            build(theme) {
+                const p = _sciencePalette(theme);
+                return [
+                    _bar(0, 0, 1024, 8, p.a, undefined, undefined),
+                    _sciencePanel(theme, 154, 190, 716, 336),
+                    _text(184, 258, 656, "Questions?", {
+                        color: p.fg,
+                        fontSize: "78px",
+                        fontFamily: p.hf,
+                        fontWeight: "800",
+                        textAlign: "center",
+                    }),
+                    _text(220, 380, 584, "Discussion: MD setup, feature design, model validation, and next experiments", {
+                        color: p.mu,
+                        fontSize: "20px",
+                        fontFamily: p.bf,
+                        textAlign: "center",
+                        lineHeight: "1.4",
+                    }),
+                    _text(220, 468, 584, "email@institute.edu", {
+                        color: p.a,
+                        fontSize: "16px",
+                        fontFamily: p.bf,
+                        fontWeight: "800",
+                        textAlign: "center",
+                    }),
+                ];
+            },
+        },
+    };
+
+    Object.entries(layouts).forEach(([id, preset]) => {
+        if (!SLIDE_PRESETS[id]) return;
+        Object.assign(SLIDE_PRESETS[id], preset);
+    });
+}
+
+_installSciencePresetBuilders();
+
 /* ─── Insert Preset as New Slide ────────────────────────────────────────── */
 
 function buildPresetSlideState(presetId, theme, { slideId = generateId('slide'), notes = '', background = '' } = {}) {

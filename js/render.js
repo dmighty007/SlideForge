@@ -1047,8 +1047,11 @@ function _getTableCellDisplayStyles(tableData, rowIndex, colIndex, cellStyles = 
     return {
         backgroundColor: cellStyles.backgroundColor || (isHeader ? tableData.headerFill : zebraFill),
         color: cellStyles.color || (isHeader ? tableData.headerTextColor : tableData.textColor),
-        textAlign: cellStyles.textAlign || "left",
-        fontWeight: cellStyles.fontWeight || (isHeader ? "700" : "400"),
+        fontFamily: cellStyles.fontFamily || tableData.fontFamily || '"Manrope", sans-serif',
+        fontSize: cellStyles.fontSize || tableData.fontSize || "16px",
+        fontStyle: cellStyles.fontStyle || tableData.fontStyle || "normal",
+        textAlign: cellStyles.textAlign || tableData.textAlign || "left",
+        fontWeight: cellStyles.fontWeight || (isHeader ? "700" : tableData.fontWeight || "400"),
     };
 }
 
@@ -1056,6 +1059,59 @@ function _renderTableDom(container, elData, { interactive = true } = {}) {
     const tableData = normalizeTableData(elData.tableData);
     elData.tableData = tableData;
     container.innerHTML = "";
+
+    const beginTableCellEdit = (cell, rowIndex, colIndex) => {
+        if (!interactive || document.body.classList.contains("play-mode-active")) return;
+        const host = container.closest(".canvas-element");
+        setSelectedTablePart?.(elData.id, { type: "cell", row: rowIndex, col: colIndex });
+        cell.dataset.previousText = cell.innerText.replace(/\r/g, "");
+        cell.contentEditable = "true";
+        cell.spellcheck = true;
+        host?.classList.add("editing-table");
+        if (host) {
+            interact(host).draggable(false);
+            interact(host).resizable(false);
+        }
+        requestAnimationFrame(() => {
+            const range = document.createRange();
+            range.selectNodeContents(cell);
+            range.collapse(false);
+            const selection = window.getSelection();
+            selection?.removeAllRanges();
+            selection?.addRange(range);
+            cell.focus();
+        });
+    };
+
+    const commitTableCellEdit = (cell, rowIndex, colIndex, { revert = false } = {}) => {
+        if (!cell.isContentEditable) return;
+        const host = container.closest(".canvas-element");
+        const nextTableData = normalizeTableData(elData.tableData);
+        const previousText = nextTableData.cells[rowIndex][colIndex]?.text || "";
+        const nextText = revert ? cell.dataset.previousText || previousText : cell.innerText.replace(/\r/g, "");
+
+        if (nextText !== previousText) {
+            saveStateToUndo();
+            nextTableData.cells[rowIndex][colIndex].text = nextText;
+            updateElementState(elData.id, { tableData: nextTableData });
+            elData.tableData = nextTableData;
+        }
+
+        cell.textContent = nextText;
+        cell.contentEditable = "false";
+        delete cell.dataset.previousText;
+        host?.classList.remove("editing-table");
+        if (host) {
+            interact(host).draggable(true);
+            interact(host).resizable(true);
+        }
+        if (typeof schedulePresentationAutosave === "function") {
+            schedulePresentationAutosave();
+        }
+        if (window.refreshPreviews) {
+            window.refreshPreviews();
+        }
+    };
 
     const shell = document.createElement("div");
     shell.className = "table-element-shell";
@@ -1097,6 +1153,9 @@ function _renderTableDom(container, elData, { interactive = true } = {}) {
             cell.style.padding = `${tableData.cellPadding}px`;
             cell.style.backgroundColor = cellStyles.backgroundColor;
             cell.style.color = cellStyles.color;
+            cell.style.fontFamily = cellStyles.fontFamily;
+            cell.style.fontSize = cellStyles.fontSize;
+            cell.style.fontStyle = cellStyles.fontStyle;
             cell.style.textAlign = cellStyles.textAlign;
             cell.style.fontWeight = cellStyles.fontWeight;
             cell.style.verticalAlign = "top";
@@ -1104,6 +1163,11 @@ function _renderTableDom(container, elData, { interactive = true } = {}) {
             cell.textContent = cellData.text || "";
 
             if (interactive) {
+                cell.addEventListener("mousedown", e => {
+                    if (cell.isContentEditable) {
+                        e.stopPropagation();
+                    }
+                });
                 cell.addEventListener("click", e => {
                     if (document.body.classList.contains("play-mode-active")) return;
                     e.stopPropagation();
@@ -1111,49 +1175,23 @@ function _renderTableDom(container, elData, { interactive = true } = {}) {
                 });
                 cell.addEventListener("dblclick", e => {
                     if (document.body.classList.contains("play-mode-active")) return;
+                    e.preventDefault();
                     e.stopPropagation();
-                    const host = container.closest(".canvas-element");
-                    cell.contentEditable = "true";
-                    cell.spellcheck = false;
-                    host?.classList.add("editing-table");
-                    if (host) {
-                        interact(host).draggable(false);
-                        interact(host).resizable(false);
+                    beginTableCellEdit(cell, rowIndex, colIndex);
+                });
+                cell.addEventListener("keydown", e => {
+                    if (!cell.isContentEditable) return;
+                    e.stopPropagation();
+                    if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        commitTableCellEdit(cell, rowIndex, colIndex);
+                    } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        commitTableCellEdit(cell, rowIndex, colIndex, { revert: true });
                     }
-                    requestAnimationFrame(() => {
-                        const range = document.createRange();
-                        range.selectNodeContents(cell);
-                        range.collapse(false);
-                        const selection = window.getSelection();
-                        selection?.removeAllRanges();
-                        selection?.addRange(range);
-                        cell.focus();
-                    });
                 });
                 cell.addEventListener("blur", () => {
-                    if (!cell.isContentEditable) return;
-                    const host = container.closest(".canvas-element");
-                    const nextTableData = normalizeTableData(elData.tableData);
-                    const nextText = cell.innerText.replace(/\r/g, "");
-                    const previousText = nextTableData.cells[rowIndex][colIndex]?.text || "";
-                    if (nextText !== previousText) {
-                        saveStateToUndo();
-                    }
-                    nextTableData.cells[rowIndex][colIndex].text = nextText;
-                    updateElementState(elData.id, { tableData: nextTableData });
-                    elData.tableData = nextTableData;
-                    cell.contentEditable = "false";
-                    host?.classList.remove("editing-table");
-                    if (host) {
-                        interact(host).draggable(true);
-                        interact(host).resizable(true);
-                    }
-                    if (typeof schedulePresentationAutosave === "function") {
-                        schedulePresentationAutosave();
-                    }
-                    if (window.refreshPreviews) {
-                        window.refreshPreviews();
-                    }
+                    commitTableCellEdit(cell, rowIndex, colIndex);
                 });
             }
 

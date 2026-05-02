@@ -1188,21 +1188,43 @@ function updateFloatingTextToolbar() {
     toolbar.style.left = `${left}px`;
     toolbar.classList.remove("hidden");
 
+    const applyFloatingTextFormatting = (prop, value, options = {}) => {
+        applyTextFormatting(prop, value, options);
+        requestAnimationFrame(() => {
+            updateFloatingTextToolbar();
+            updateUIFromSelection?.();
+        });
+    };
+
     if (boldBtn) {
         bindInlineFormattingGuard(boldBtn);
-        boldBtn.onclick = () => applyTextFormatting("fontWeight", data.styles.fontWeight === "bold" ? "normal" : "bold", { inlineAction: "bold" });
+        boldBtn.onclick = () => {
+            const latest = getSelectedElementData();
+            const nextWeight = latest?.styles?.fontWeight === "bold" ? "normal" : "bold";
+            applyFloatingTextFormatting("fontWeight", nextWeight, { inlineAction: "bold" });
+        };
         setTextControlActive(boldBtn, data.styles.fontWeight === "bold");
     }
     if (italicBtn) {
         bindInlineFormattingGuard(italicBtn);
-        italicBtn.onclick = () => applyTextFormatting("fontStyle", data.styles.fontStyle === "italic" ? "normal" : "italic", { inlineAction: "italic" });
+        italicBtn.onclick = () => {
+            const latest = getSelectedElementData();
+            const nextStyle = latest?.styles?.fontStyle === "italic" ? "normal" : "italic";
+            applyFloatingTextFormatting("fontStyle", nextStyle, { inlineAction: "italic" });
+        };
         setTextControlActive(italicBtn, data.styles.fontStyle === "italic");
     }
     if (fontSelect) {
         bindInlineFormattingGuard(fontSelect);
+        if (!isControlBeingEdited(fontSelect) && typeof buildFontOptions === "function") {
+            const nextOptions = buildFontOptions(data.styles.fontFamily);
+            if (fontSelect.innerHTML !== nextOptions) {
+                fontSelect.innerHTML = nextOptions;
+            }
+        }
         fontSelect.onchange = e => {
             restoreInlineSelection?.();
-            applyTextFormatting("fontFamily", e.target.value, { inlineAction: "fontFamily" });
+            applyFloatingTextFormatting("fontFamily", e.target.value, { inlineAction: "fontFamily" });
         };
         if (!isControlBeingEdited(fontSelect)) {
             fontSelect.value = data.styles.fontFamily || "Inter, sans-serif";
@@ -1220,12 +1242,17 @@ function updateFloatingTextToolbar() {
     if (colorInput) {
         bindInlineFormattingGuard(colorInput);
         colorInput.oninput = e => {
-            colorInput.dataset.pendingInlineColor = e.target.value;
+            if (colorInput.dataset.floatingColorFormattingActive !== "true") {
+                beginFormattingInteraction();
+                colorInput.dataset.floatingColorFormattingActive = "true";
+            }
+            applyFloatingTextFormatting("color", e.target.value, { inlineAction: "color" });
         };
-        colorInput.onchange = e => {
-            applyTextFormatting("color", e.target.value, { inlineAction: "color" });
-            delete colorInput.dataset.pendingInlineColor;
-            endFormattingInteraction();
+        colorInput.onchange = () => {
+            if (colorInput.dataset.floatingColorFormattingActive === "true") {
+                delete colorInput.dataset.floatingColorFormattingActive;
+                endFormattingInteraction();
+            }
         };
         if (!isControlBeingEdited(colorInput)) {
             colorInput.value = _normalizeColorForInput(data.styles.color, "#000000");
@@ -1243,7 +1270,7 @@ function updateFloatingTextToolbar() {
             swatch.title = color;
             bindInlineFormattingGuard(swatch);
             swatch.onclick = () => {
-                applyTextFormatting("color", color, { inlineAction: "color" });
+                applyFloatingTextFormatting("color", color, { inlineAction: "color" });
                 if (colorInput) colorInput.value = color;
             };
             paletteContainer.appendChild(swatch);
@@ -1252,11 +1279,11 @@ function updateFloatingTextToolbar() {
 
     if (subBtn) {
         bindInlineFormattingGuard(subBtn);
-        subBtn.onclick = () => applyTextFormatting("subscript", null, { inlineAction: "subscript" });
+        subBtn.onclick = () => applyFloatingTextFormatting("subscript", null, { inlineAction: "subscript" });
     }
     if (supBtn) {
         bindInlineFormattingGuard(supBtn);
-        supBtn.onclick = () => applyTextFormatting("superscript", null, { inlineAction: "superscript" });
+        supBtn.onclick = () => applyFloatingTextFormatting("superscript", null, { inlineAction: "superscript" });
     }
     if (clearBtn) {
         bindInlineFormattingGuard(clearBtn);
@@ -1487,6 +1514,17 @@ function buildPropertiesPanel() {
             const tableSelection = tableData.selection;
             const selectedRow = tableSelection?.type === "row" || tableSelection?.type === "cell" ? tableSelection.row : null;
             const selectedCol = tableSelection?.type === "col" || tableSelection?.type === "cell" ? tableSelection.col : null;
+            const selectedCell =
+                tableSelection?.type === "cell" && selectedRow !== null && selectedCol !== null
+                    ? tableData.cells[selectedRow]?.[selectedCol]
+                    : null;
+            const selectedStyles = selectedCell?.styles || {};
+            const effectiveTableFontFamily = selectedStyles.fontFamily || tableData.fontFamily || '"Manrope", sans-serif';
+            const effectiveTableFontSize = selectedStyles.fontSize || tableData.fontSize || "16px";
+            const effectiveTableTextColor = selectedStyles.color || tableData.textColor || "#172033";
+            const effectiveTableFontWeight = selectedStyles.fontWeight || tableData.fontWeight || "400";
+            const effectiveTableFontStyle = selectedStyles.fontStyle || tableData.fontStyle || "normal";
+            const effectiveTableTextAlign = selectedStyles.textAlign || tableData.textAlign || "left";
             const tableGrp = createGroup("Table");
             tableGrp.innerHTML += `
                 <div class="grid grid-cols-2 gap-3">
@@ -1510,6 +1548,36 @@ function buildPropertiesPanel() {
                 <div class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
                     <span>${tableSelection ? `Selected ${tableSelection.type}${selectedRow !== null ? ` R${selectedRow + 1}` : ""}${selectedCol !== null ? ` C${selectedCol + 1}` : ""}` : "No row, column, or cell selected"}</span>
                     <button id="prop-table-clear-selection" class="font-semibold text-primary">Clear</button>
+                </div>
+                <div class="rounded-lg border border-slate-200 bg-white p-3 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs text-slate-600 uppercase font-semibold">Text Style</span>
+                        <span class="text-[10px] text-slate-400">${tableSelection ? "Applies to selection" : "Applies to table default"}</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <label class="flex flex-col gap-1">
+                            <span class="text-xs text-slate-600 uppercase font-semibold">Font</span>
+                            <select id="prop-table-font" class="prop-select">${buildFontOptions(effectiveTableFontFamily)}</select>
+                        </label>
+                        <label class="flex flex-col gap-1">
+                            <span class="text-xs text-slate-600 uppercase font-semibold">Size</span>
+                            <input type="text" id="prop-table-font-size" class="prop-input-sm" value="${escapeHtml(effectiveTableFontSize)}">
+                        </label>
+                        <label class="flex flex-col gap-1">
+                            <span class="text-xs text-slate-600 uppercase font-semibold">Color</span>
+                            <input type="color" id="prop-table-cell-text-color" class="w-full h-8 cursor-pointer rounded-md p-0" value="${_normalizeColorForInput(effectiveTableTextColor, "#172033")}">
+                        </label>
+                        <label class="flex flex-col gap-1">
+                            <span class="text-xs text-slate-600 uppercase font-semibold">Align</span>
+                            <select id="prop-table-text-align" class="prop-select">
+                                ${["left", "center", "right"].map(align => `<option value="${align}" ${effectiveTableTextAlign === align ? "selected" : ""}>${align[0].toUpperCase() + align.slice(1)}</option>`).join("")}
+                            </select>
+                        </label>
+                    </div>
+                    <div class="flex gap-2">
+                        <button id="prop-table-bold" class="prop-icon-btn ${effectiveTableFontWeight === "700" || effectiveTableFontWeight === "bold" ? "active" : ""}" title="Bold">B</button>
+                        <button id="prop-table-italic" class="prop-icon-btn italic ${effectiveTableFontStyle === "italic" ? "active" : ""}" title="Italic">I</button>
+                    </div>
                 </div>
                 <div class="grid grid-cols-2 gap-3">
                     <div class="flex flex-col gap-1">
@@ -2189,6 +2257,72 @@ function buildPropertiesPanel() {
                         tableData.selection = null;
                     });
                     clearTablePartSelections();
+                });
+
+                const mutateTableTextStyle = (prop, value) => {
+                    mutateSelectedTableData(tableData => {
+                        const selection = tableData.selection;
+                        const applyToCell = (row, col) => {
+                            const cell = tableData.cells[row]?.[col];
+                            if (!cell) return;
+                            cell.styles = { ...(cell.styles || {}), [prop]: value };
+                        };
+
+                        if (selection?.type === "cell") {
+                            applyToCell(selection.row, selection.col);
+                        } else if (selection?.type === "row") {
+                            for (let col = 0; col < tableData.cols; col += 1) applyToCell(selection.row, col);
+                        } else if (selection?.type === "col") {
+                            for (let row = 0; row < tableData.rows; row += 1) applyToCell(row, selection.col);
+                        } else {
+                            tableData[prop] = value;
+                        }
+                    });
+                };
+
+                const tableFont = document.getElementById("prop-table-font");
+                if (tableFont) {
+                    tableFont.onchange = e => mutateTableTextStyle("fontFamily", e.target.value);
+                }
+                const tableFontSize = document.getElementById("prop-table-font-size");
+                if (tableFontSize) {
+                    const commit = () => {
+                        const nextValue = _normalizePx(tableFontSize.value, "16px");
+                        tableFontSize.value = nextValue;
+                        mutateTableTextStyle("fontSize", nextValue);
+                    };
+                    tableFontSize.addEventListener("change", commit);
+                    tableFontSize.addEventListener("blur", commit);
+                    tableFontSize.addEventListener("keydown", e => {
+                        if (e.key !== "Enter") return;
+                        e.preventDefault();
+                        commit();
+                        tableFontSize.blur();
+                    });
+                }
+                const tableCellTextColor = document.getElementById("prop-table-cell-text-color");
+                if (tableCellTextColor) {
+                    tableCellTextColor.oninput = e => mutateTableTextStyle("color", _normalizeColorForInput(e.target.value, "#172033"));
+                }
+                const tableTextAlign = document.getElementById("prop-table-text-align");
+                if (tableTextAlign) {
+                    tableTextAlign.onchange = e => mutateTableTextStyle("textAlign", e.target.value);
+                }
+                document.getElementById("prop-table-bold")?.addEventListener("click", () => {
+                    const current = normalizeTableData(data.tableData);
+                    const selection = current.selection;
+                    const selected =
+                        selection?.type === "cell" ? current.cells[selection.row]?.[selection.col]?.styles?.fontWeight : null;
+                    const effective = selected || current.fontWeight || "400";
+                    mutateTableTextStyle("fontWeight", effective === "700" || effective === "bold" ? "400" : "700");
+                });
+                document.getElementById("prop-table-italic")?.addEventListener("click", () => {
+                    const current = normalizeTableData(data.tableData);
+                    const selection = current.selection;
+                    const selected =
+                        selection?.type === "cell" ? current.cells[selection.row]?.[selection.col]?.styles?.fontStyle : null;
+                    const effective = selected || current.fontStyle || "normal";
+                    mutateTableTextStyle("fontStyle", effective === "italic" ? "normal" : "italic");
                 });
 
                 document.getElementById("prop-table-add-row")?.addEventListener("click", () => {

@@ -97,7 +97,7 @@ window.onload = async () => {
                     n.id === "floating-text-toolbar" ||
                     n.closest?.("#floating-text-toolbar"),
             );
-        if (!isElement && !isGroupBound && !isUi && !e.ctrlKey && !e.metaKey) {
+        if (!isElement && !isGroupBound && !isUi && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
             clearSelection();
         }
     });

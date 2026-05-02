@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -202,7 +203,10 @@ def presentation_create(request):
             }
         )
 
-    payload = _request_json(request)
+    try:
+        payload = _request_json(request)
+    except ValueError as exc:
+        return HttpResponseBadRequest(str(exc))
     presentation = Presentation.objects.create(
         owner=request.user,
         title=payload.get("title") or "Untitled Presentation",

@@ -7,14 +7,14 @@ function initContextMenu() {
     const menu = document.getElementById("canvas-context-menu");
 
     canvasWrapper.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
         const target = e.target.closest(".canvas-element");
         if (!target) {
             hideContextMenu();
             return;
         }
-
-        e.preventDefault();
-        e.stopPropagation();
 
         contextMenuTargetId = target.id;
         
@@ -69,10 +69,16 @@ function initContextMenu() {
     });
 
     window.addEventListener("mousedown", (e) => {
-        if (!menu.contains(e.target)) {
+        if (menu && !menu.contains(e.target)) {
             hideContextMenu();
         }
-    });
+    }, true);
+
+    window.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+            hideContextMenu();
+        }
+    }, true);
 
     window.addEventListener("scroll", hideContextMenu, true);
 }
@@ -140,15 +146,6 @@ function toggleLockElement(id) {
     const dom = document.getElementById(id);
     if (dom) {
         dom.classList.toggle("element-locked", nextLocked);
-        // We might need to disable interact.js for this element if locked
-        if (typeof interact !== "undefined") {
-            if (nextLocked) {
-                interact(dom).unset(); // Simple way to lock
-            } else {
-                // Re-init interact
-                _setupElementInteract(); 
-            }
-        }
     }
     buildPropertiesPanel();
 }

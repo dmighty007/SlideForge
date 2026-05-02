@@ -190,6 +190,11 @@ function normalizeTableData(tableData) {
         textColor: typeof tableData.textColor === "string" ? tableData.textColor : fallback.textColor,
         headerTextColor:
             typeof tableData.headerTextColor === "string" ? tableData.headerTextColor : fallback.headerTextColor,
+        fontFamily: typeof tableData.fontFamily === "string" ? tableData.fontFamily : '"Manrope", sans-serif',
+        fontSize: typeof tableData.fontSize === "string" ? tableData.fontSize : "16px",
+        fontWeight: typeof tableData.fontWeight === "string" ? tableData.fontWeight : "400",
+        fontStyle: typeof tableData.fontStyle === "string" ? tableData.fontStyle : "normal",
+        textAlign: typeof tableData.textAlign === "string" ? tableData.textAlign : "left",
         cells,
     };
 }
