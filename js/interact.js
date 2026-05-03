@@ -155,8 +155,13 @@ function _setupElementInteract() {
                         updateElementState(id, { x: snapX, y: snapY });
                     });
 
+                    const movingCroppedImage = state.selectedIds.some(id => {
+                        const data = state.slides[currentSlideIndex].elements.find(item => item.id === id);
+                        return data?.type === "image" && data.cropTransform;
+                    });
+
                     // Real-time thumbnail update (throttled via requestAnimationFrame)
-                    if (!window._thumbnailRaf) {
+                    if (!movingCroppedImage && !window._thumbnailRaf) {
                         window._thumbnailRaf = requestAnimationFrame(() => {
                             window._thumbnailRaf = null;
                             if (typeof renderSlidePreviews === "function") {
@@ -220,30 +225,42 @@ function _setupElementInteract() {
 
                     const isText = elementData.type === "text";
                     const isImage = elementData.type === "image";
+                    const isCroppedImage = isImage && Boolean(elementData.cropTransform);
                     const isEquation = elementData.type === "equation";
                     const verticalResize = Boolean(event.edges?.top || event.edges?.bottom);
                     
-                    let x = parseFloat(target.getAttribute("data-x")) || 0;
-                    let y = parseFloat(target.getAttribute("data-y")) || 0;
+                    const oldX = parseFloat(target.getAttribute("data-x")) || 0;
+                    const oldY = parseFloat(target.getAttribute("data-y")) || 0;
+                    const oldW = parseFloat(target.style.width) || parseFloat(elementData.width) || 100;
+                    const oldH = parseFloat(target.style.height) || parseFloat(elementData.height) || 100;
+                    let x = oldX;
+                    let y = oldY;
                     let w = Math.max(24, _snapVal(event.rect.width / scale, shiftHeld));
                     let h = Math.max(24, _snapVal(event.rect.height / scale, shiftHeld));
 
                     // Handle Aspect Ratio Locking
                     if (isImage && elementData.lockAspectRatio) {
-                        const originalW = parseFloat(elementData.width) || 100;
-                        const originalH = parseFloat(elementData.height) || 100;
-                        const ratio = originalW / originalH;
+                        const ratio =
+                            isCroppedImage
+                                ? oldW / Math.max(1, oldH)
+                                : typeof getImageAspectRatio === "function"
+                                ? getImageAspectRatio(elementData)
+                                : oldW / Math.max(1, oldH);
                         
                         if (Math.abs(event.deltaRect.width) > Math.abs(event.deltaRect.height)) {
                             h = w / ratio;
                         } else {
                             w = h * ratio;
                         }
+                        if (event.edges?.left) x = oldX + oldW - w;
+                        else if (!event.edges?.left && !event.edges?.right) x = oldX + (oldW - w) / 2;
+                        if (event.edges?.top) y = oldY + oldH - h;
+                        else if (!event.edges?.top && !event.edges?.bottom) y = oldY + (oldH - h) / 2;
+                    } else {
+                        // Update position for handles that move the origin
+                        x += event.deltaRect.left / scale;
+                        y += event.deltaRect.top / scale;
                     }
-
-                    // Update position for handles that move the origin
-                    x += event.deltaRect.left / scale;
-                    y += event.deltaRect.top / scale;
 
                     target.style.width = w + "px";
                     target.style.height = h + "px";
@@ -286,6 +303,7 @@ function _setupElementInteract() {
                             y,
                             width: w + "px",
                             height: h + "px",
+                            ...(isImage ? { heightSetManually: true, imageAspectRatio: isCroppedImage ? (w / Math.max(1, h)) : (elementData.imageAspectRatio || (w / Math.max(1, h))) } : {}),
                             ...(isText ? { autoHeight: false } : {}),
                         });
                         if (isText && elementData.textFitMode === "autofit") {
@@ -294,7 +312,7 @@ function _setupElementInteract() {
                     }
 
                     // Real-time thumbnail update (throttled via requestAnimationFrame)
-                    if (!window._thumbnailRaf) {
+                    if (!isCroppedImage && !window._thumbnailRaf) {
                         window._thumbnailRaf = requestAnimationFrame(() => {
                             window._thumbnailRaf = null;
                             if (typeof renderSlidePreviews === "function") {

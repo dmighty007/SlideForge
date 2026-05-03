@@ -252,6 +252,32 @@ function normalizeElementAnimation(el = {}) {
     return normalized;
 }
 
+function parseElementPixelValue(value, fallback = 0) {
+    const parsed = Number.parseFloat(String(value ?? "").replace("px", ""));
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function getImageAspectRatio(data = {}) {
+    const stored = Number(data.imageAspectRatio ?? data.aspectRatio);
+    if (Number.isFinite(stored) && stored > 0) return stored;
+    const width = parseElementPixelValue(data.width, 0);
+    const height = parseElementPixelValue(data.height, 0);
+    return width > 0 && height > 0 ? width / height : 1;
+}
+
+function normalizeImageCropTransform(crop = null) {
+    if (!crop || typeof crop !== "object") return null;
+    const widthPercent = Math.max(100, Number(crop.widthPercent) || 100);
+    const heightPercent = Math.max(100, Number(crop.heightPercent) || 100);
+    const clamp = (value, min, max) => Math.min(max, Math.max(min, Number(value) || 0));
+    return {
+        widthPercent,
+        heightPercent,
+        leftPercent: clamp(crop.leftPercent, 100 - widthPercent, 0),
+        topPercent: clamp(crop.topPercent, 100 - heightPercent, 0),
+    };
+}
+
 function isElementAnimationConfigured(el = {}) {
     return Boolean(normalizeElementAnimation(el));
 }
@@ -577,6 +603,12 @@ function normalizeStateIds() {
                     ? {
                           htmlInteractive: safeEl.htmlInteractive ?? true,
                           htmlMode: safeEl.htmlMode === "autofit" ? "autofit" : "responsive",
+                      }
+                    : {}),
+                ...(fallbackType === "image"
+                    ? {
+                          lockAspectRatio: safeEl.lockAspectRatio ?? true,
+                          imageAspectRatio: getImageAspectRatio(safeEl),
                       }
                     : {}),
                 ...(fallbackType === "pdf"

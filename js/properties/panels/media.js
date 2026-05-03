@@ -70,10 +70,7 @@ function buildMediaPanel(panel, data) {
                 </div>
             </div>
             <label class="flex items-center gap-2 cursor-pointer group/chk mt-3 mb-2">
-                <input type="checkbox" id="prop-img-lock-aspect" ${data.lockAspectRatio ? "checked" : ""} class="hidden">
-                <div class="w-4 h-4 rounded border border-gray-600 flex items-center justify-center group-hover/chk:border-accent transition-colors">
-                    <div class="w-2.5 h-2.5 rounded-sm bg-accent transition-opacity ${data.lockAspectRatio ? "opacity-100" : "opacity-0"}"></div>
-                </div>
+                <input type="checkbox" id="prop-img-lock-aspect" ${data.lockAspectRatio ? "checked" : ""} class="aspect-lock-checkbox prop-native-checkbox">
                 <span class="text-xs text-gray-400">Lock Aspect Ratio</span>
             </label>
             <div class="h-px bg-gray-800 my-3"></div>

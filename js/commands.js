@@ -96,6 +96,7 @@ function addElement(type, options = {}) {
         ...(type === "text" ? { bulletStyle: "default", autoHeight: true } : {}),
         ...(type === "table" ? { tableData: createDefaultTableData(3, 4) } : {}),
         ...(type === "shape" ? { shapeType } : {}),
+        ...(type === "image" ? { lockAspectRatio: true, imageAspectRatio: 1.5 } : {}),
         ...(type === "shape" && isArrowShape ? { arrowHeadSize: 38, arrowShaftSize: 36 } : {}),
         ...(type === "video" ? { videoType: "youtube", muted: true, autoplay: false, loop: false } : {}),
         ...(type === "pdf"
@@ -656,6 +657,7 @@ function _createClipboardTextElement(text, x = 100, y = 100) {
 function _createClipboardImageElement(dataUrl, origWidth, origHeight, x = 100, y = 100) {
     const targetWidth = 400;
     const aspect = origHeight / Math.max(1, origWidth);
+    const imageAspectRatio = Math.max(0.01, origWidth / Math.max(1, origHeight));
     return {
         id: generateId("el"),
         type: "image",
@@ -663,6 +665,8 @@ function _createClipboardImageElement(dataUrl, origWidth, origHeight, x = 100, y
         y,
         width: `${targetWidth}px`,
         height: `${Math.round(targetWidth * aspect)}px`,
+        lockAspectRatio: true,
+        imageAspectRatio,
         content: dataUrl,
         styles: { zIndex: getNextZIndex(), borderRadius: "8px" },
     };
@@ -970,6 +974,7 @@ async function handleImageFileInsert(event) {
         const targetWidth = 420;
         const aspect = origHeight / origWidth;
         const targetHeight = targetWidth * aspect;
+        const imageAspectRatio = Math.max(0.01, origWidth / Math.max(1, origHeight));
         
         state.slides[activeIndex].elements.push({
             id,
@@ -978,6 +983,8 @@ async function handleImageFileInsert(event) {
             y: 100,
             width: `${targetWidth}px`,
             height: `${Math.round(targetHeight)}px`,
+            lockAspectRatio: true,
+            imageAspectRatio,
             content: dataUrl,
             styles: { zIndex: getNextZIndex(), borderRadius: "8px" },
         });
@@ -1382,6 +1389,8 @@ function _makeImageElement({ x, y, width, height, content }) {
         y,
         width: `${width}px`,
         height: `${height}px`,
+        lockAspectRatio: true,
+        imageAspectRatio: Math.max(0.01, width / Math.max(1, height)),
         content,
         styles: {
             zIndex: 2,
@@ -1472,13 +1481,13 @@ function _normalizeImportedImagePath(rawPath) {
 function _buildBulletContent(points) {
     const rows = [];
     (Array.isArray(points) ? points : []).forEach(point => {
-        const heading = _bridgeWordClamp(String(point?.heading || "").trim(), 7);
+        const heading = _bridgeWordClamp(point?.heading, 7);
         const bullets = Array.isArray(point?.content) ? point.content : [point?.content];
         if (heading) {
             rows.push({ html: `<strong>${heading}</strong>`, level: 0 });
         }
         bullets
-            .map(item => _bridgeWordClamp(String(item || "").trim(), 22))
+            .map(item => _bridgeWordClamp(item, 22))
             .filter(Boolean)
             .forEach(item => rows.push({ html: item, level: heading ? 1 : 0 }));
     });
@@ -1486,7 +1495,7 @@ function _buildBulletContent(points) {
 }
 
 function _bridgeWordClamp(text, maxWords = 22) {
-    const words = String(text || "").trim().split(/\s+/).filter(Boolean);
+    const words = _bridgeCleanImportedText(text).split(/\s+/).filter(Boolean);
     if (words.length <= maxWords) return words.join(" ");
     return `${words.slice(0, maxWords).join(" ")}...`;
 }
@@ -1635,9 +1644,9 @@ function _bridgeIsDenseSlide(slide) {
 function _bridgePointsAsCards(points, maxCards = 3) {
     return (Array.isArray(points) ? points : [])
         .map(point => {
-            const heading = String(point?.heading || "").trim() || "Takeaway";
+            const heading = _bridgeCleanImportedText(point?.heading, "Takeaway");
             const bullets = (Array.isArray(point?.content) ? point.content : [point?.content])
-                .map(item => String(item || "").trim())
+                .map(item => _bridgeCleanImportedText(item))
                 .filter(Boolean);
             return {
                 heading: _bridgeWordClamp(heading, 6),
@@ -1686,8 +1695,36 @@ function _bridgeTextPlain(value) {
     return String(value || "").replace(/<[^>]*>/g, "").trim();
 }
 
+const BRIDGE_CASE_ACRONYMS = [
+    "MD", "ML", "AI", "DNA", "RNA", "PDB", "RMSD", "RMSF", "PCA", "UMAP", "t-SNE", "GNN", "CNN", "RNN",
+    "AUC", "ROC", "MSE", "RMSE", "MAE", "GPU", "CPU", "NVT", "NPT", "PMF", "MSM", "FEP", "TI",
+];
+
+function _bridgeHumanizeImportedCase(value) {
+    const raw = String(value || "").replace(/\s+/g, " ").trim();
+    if (!raw) return "";
+    const letters = raw.match(/[A-Za-z]/g) || [];
+    if (letters.length < 8 && !/\s/.test(raw)) return raw;
+    const uppercase = letters.filter(ch => ch === ch.toUpperCase()).length;
+    const lowercase = letters.filter(ch => ch === ch.toLowerCase()).length;
+    if (uppercase / letters.length < 0.78 || lowercase > 2) return raw;
+    let text = raw.toLowerCase();
+    text = text.replace(/(^|[.!?:]\s+)([a-z])/g, (_, prefix, ch) => `${prefix}${ch.toUpperCase()}`);
+    BRIDGE_CASE_ACRONYMS.forEach(acronym => {
+        const escaped = acronym.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        text = text.replace(new RegExp(`\\b${escaped}\\b`, "gi"), acronym);
+    });
+    text = text.replace(/\b([a-z]+)(\d+)\b/g, (_, word, number) => `${word.toUpperCase()}${number}`);
+    return text;
+}
+
+function _bridgeCleanImportedText(value, fallback = "") {
+    const cleaned = String(value || "").replace(/<[^>]*>/g, "").replace(/\s+/g, " ").replace(/^[•\-\u2022]\s*/, "").trim();
+    return cleaned ? _bridgeHumanizeImportedCase(cleaned) : fallback;
+}
+
 function _bridgeIsPlaceholderText(text) {
-    return /^(imported presentation|imported (slide )?content|imported figure|imported section from the source document|insert figure( \/ chart)? here|chart \/ graph placeholder)$/i.test(
+    return /^(imported presentation|imported (slide )?content|imported figure|imported section from the source document|insert figure( \/ chart)? here|chart \/ graph placeholder|insert figure or chart here|insert chart:.*)$/i.test(
         String(text || "").replace(/[\[\]]/g, "").trim(),
     );
 }
@@ -1702,6 +1739,14 @@ function _bridgeSetTextByPlaceholder(elements, placeholder, content) {
     return el;
 }
 
+function _bridgeSetTextByPlaceholders(elements, placeholders, content) {
+    for (const placeholder of placeholders) {
+        const el = _bridgeSetTextByPlaceholder(elements, placeholder, content);
+        if (el) return el;
+    }
+    return null;
+}
+
 function _bridgeSetFirstBulletBlock(elements, content, options = {}) {
     const el = (elements || []).find(item => item.type === "text" && Array.isArray(item.content));
     if (!el) return null;
@@ -1711,6 +1756,25 @@ function _bridgeSetFirstBulletBlock(elements, content, options = {}) {
     if (options.width != null) el.width = `${options.width}px`;
     if (options.fontSize) el.styles.fontSize = options.fontSize;
     return el;
+}
+
+function _bridgeBulletPlainText(item) {
+    if (typeof item === "string") return _bridgeCleanImportedText(item);
+    return _bridgeCleanImportedText(item?.html || item?.text || "");
+}
+
+function _bridgeSetBulletLines(elements, content, options = {}) {
+    const structured = _bridgeSetFirstBulletBlock(elements, content, options);
+    if (structured) return structured;
+    const bulletTexts = (Array.isArray(content) ? content : [])
+        .map(_bridgeBulletPlainText)
+        .filter(Boolean);
+    if (!bulletTexts.length) return null;
+    const bulletEls = (elements || []).filter(item => item.type === "text" && /^•\s+/.test(_bridgeTextPlain(item.content)));
+    bulletEls.forEach((el, idx) => {
+        el.content = bulletTexts[idx] ? `• ${bulletTexts[idx]}` : "";
+    });
+    return bulletEls[0] || null;
 }
 
 function _bridgeContentText(value) {
@@ -1858,17 +1922,26 @@ function _bridgePresetForContentSlide(slide) {
 
 function _bridgeHydrateContentPreset(slideState, slide, theme) {
     const elements = slideState.elements || [];
-    const title = String(slide?.title || "Imported Slide");
+    const title = _bridgeCleanImportedText(slide?.title, "Imported Slide");
     const summary = _bridgeWordClamp(_bridgeSlideSummary(slide), 18);
     const bullets = _buildBulletContent(slide.points);
     const presetId = slideState.layoutId;
 
     if (presetId === "figure-caption") {
-        _bridgeSetTextByPlaceholder(elements, "Results / Figure", title);
-        _bridgeSetTextByPlaceholder(elements, "Key finding stated as a clear assertion — the figure supports this claim", summary);
-        _bridgeSetTextByPlaceholder(elements, "Figure 1. Descriptive caption explaining the figure content.", _bridgeWordClamp(String(slide.fig_cap || summary || title), 26));
-        _bridgeSetTextByPlaceholder(elements, "Key Insight", "Key Insight");
-        const insight = _bridgeFindText(elements, text => text.startsWith("Explain what this result means"));
+        _bridgeSetTextByPlaceholders(elements, ["Results / Figure", "Trajectory result"], title);
+        _bridgeSetTextByPlaceholder(elements, "FIGURE", "Figure");
+        _bridgeSetTextByPlaceholders(elements, [
+            "Key finding stated as a clear assertion — the figure supports this claim",
+            "Replace the placeholder with RMSD, free-energy, PCA, contact, or clustering plots.",
+        ], summary);
+        _bridgeSetTextByPlaceholders(elements, [
+            "Figure 1. Descriptive caption explaining the figure content.",
+            "Figure 1. Short caption describing the simulation system, model, and key observation.",
+        ], _bridgeWordClamp(slide.fig_cap || summary || title, 26));
+        _bridgeSetTextByPlaceholders(elements, ["Key Insight", "Interpretation"], "Interpretation");
+        const insight =
+            _bridgeFindText(elements, text => text.startsWith("Explain what this result means"))
+            || _bridgeFindText(elements, text => text.startsWith("What changed in the ensemble"));
         if (insight) insight.content = _bridgeWordClamp(_bridgeNarrativeSummary(slide.points, 2) || summary || slide.fig_cap || title, 34);
         const stat = _bridgeFindText(elements, text => text === "p < 0.001");
         if (stat) stat.content = _bridgeWordClamp((slide.points?.[0]?.heading || "Evidence"), 5);
@@ -1887,28 +1960,48 @@ function _bridgeHydrateContentPreset(slideState, slide, theme) {
     }
 
     if (presetId === "two-column") {
-        _bridgeSetTextByPlaceholder(elements, "Comparative Analysis", title);
+        _bridgeSetTextByPlaceholders(elements, ["Comparative Analysis", "Two complementary views"], title);
+        _bridgeSetTextByPlaceholder(elements, "COMPARE", "Compare");
+        _bridgeSetTextByPlaceholder(elements, "Use this layout to compare physical simulation and learned models.", summary);
         const midpoint = Math.ceil(bullets.length / 2);
         const left = bullets.slice(0, midpoint);
         const right = bullets.slice(midpoint);
         const textBlocks = elements.filter(item => item.type === "text" && Array.isArray(item.content));
         if (textBlocks[0]) textBlocks[0].content = left.length ? left : bullets;
         if (textBlocks[1]) textBlocks[1].content = right.length ? right : bullets.slice(0, 2);
-        _bridgeSetTextByPlaceholder(elements, "Column A", "Evidence");
-        _bridgeSetTextByPlaceholder(elements, "Column B", "Implication");
+        _bridgeSetTextByPlaceholders(elements, ["Column A", "Molecular dynamics"], slide.fig_path ? "Figure evidence" : "Evidence");
+        _bridgeSetTextByPlaceholders(elements, ["Column B", "Machine learning"], "Model implication");
+        if (!textBlocks.length) {
+            const bulletEls = elements.filter(item => item.type === "text" && /^•\s+/.test(_bridgeTextPlain(item.content)));
+            const leftEls = bulletEls.filter(el => (parseFloat(el.x) || 0) < 500);
+            const rightEls = bulletEls.filter(el => (parseFloat(el.x) || 0) >= 500);
+            leftEls.forEach((el, idx) => { el.content = left[idx] ? `• ${_bridgeBulletPlainText(left[idx])}` : ""; });
+            rightEls.forEach((el, idx) => { el.content = right[idx] ? `• ${_bridgeBulletPlainText(right[idx])}` : ""; });
+        }
         return;
     }
 
     if (presetId === "results-data") {
-        _bridgeSetTextByPlaceholder(elements, "Key Results", title);
-        _bridgeSetTextByPlaceholder(elements, "Main finding stated as a clear assertion — the chart below supports this", summary);
-        _bridgeSetTextByPlaceholder(elements, "Figure 1. Short caption for chart.", _bridgeWordClamp(String(slide.fig_cap || summary || title), 20));
+        _bridgeSetTextByPlaceholders(elements, ["Key Results", "Quantitative summary"], title);
+        _bridgeSetTextByPlaceholder(elements, "RESULTS", "Results");
+        _bridgeSetTextByPlaceholders(elements, [
+            "Main finding stated as a clear assertion — the chart below supports this",
+            "Use simple metrics that are easy to edit and defend.",
+        ], summary);
+        _bridgeSetTextByPlaceholder(elements, "Figure 1. Short caption for chart.", _bridgeWordClamp(slide.fig_cap || summary || title, 20));
         const labels = _bridgePointsAsCards(slide.points, 3);
         ["p < 0.001", "n = 1,024", "R² = 0.94"].forEach((placeholder, idx) => {
             const el = _bridgeSetTextByPlaceholder(elements, placeholder, labels[idx]?.heading || ["Finding", "Evidence", "Impact"][idx]);
             if (el) el.styles.fontSize = "24px";
         });
+        ["3 x 500 ns", "5 clusters", "0.91"].forEach((placeholder, idx) => {
+            const el = _bridgeSetTextByPlaceholder(elements, placeholder, labels[idx]?.heading || ["Finding", "Evidence", "Impact"][idx]);
+            if (el) el.styles.fontSize = "24px";
+        });
         ["Statistical Significance", "Sample Size", "Model Fit"].forEach((placeholder, idx) => {
+            _bridgeSetTextByPlaceholder(elements, placeholder, labels[idx]?.body || summary || title);
+        });
+        ["Trajectory", "States", "Model AUC"].forEach((placeholder, idx) => {
             _bridgeSetTextByPlaceholder(elements, placeholder, labels[idx]?.body || summary || title);
         });
         if (slide.fig_path) {
@@ -1927,16 +2020,23 @@ function _bridgeHydrateContentPreset(slideState, slide, theme) {
 
     if (presetId === "conclusion") {
         _bridgeSetTextByPlaceholder(elements, "Conclusions", title);
-        _bridgeSetFirstBulletBlock(elements, bullets);
-        _bridgeSetTextByPlaceholder(elements, "Acknowledgements · Funding · Grant Reference", summary);
-        _bridgeSetTextByPlaceholder(elements, "author@university.edu", "");
+        _bridgeSetTextByPlaceholder(elements, "WRAP-UP", "Wrap-up");
+        _bridgeSetTextByPlaceholder(elements, "Keep the final slide direct and editable.", summary);
+        _bridgeSetBulletLines(elements, bullets);
+        _bridgeSetTextByPlaceholders(elements, ["Acknowledgements · Funding · Grant Reference", "Acknowledgements - compute resources - funding"], summary);
+        _bridgeSetTextByPlaceholders(elements, ["author@university.edu", "email@institute.edu"], "");
         return;
     }
 
-    _bridgeSetTextByPlaceholder(elements, "Slide Title", title);
-    _bridgeSetTextByPlaceholder(elements, "One clear assertion that summarises the content on this slide", summary);
-    _bridgeSetTextByPlaceholder(elements, "Signal", _bridgeWordClamp(slide.points?.[0]?.heading || "Takeaway", 3));
-    _bridgeSetFirstBulletBlock(elements, bullets);
+    _bridgeSetTextByPlaceholders(elements, ["Slide Title", "Key claim from simulation and learning"], title);
+    _bridgeSetTextByPlaceholders(elements, [
+        "One clear assertion that summarises the content on this slide",
+        "State one result clearly, then support it with evidence.",
+    ], summary);
+    _bridgeSetTextByPlaceholders(elements, ["Signal", "Finding", "FINDING"], _bridgeWordClamp(slide.points?.[0]?.heading || "Takeaway", 3));
+    _bridgeSetBulletLines(elements, bullets);
+    const takeHome = _bridgeFindText(elements, text => text.startsWith("A compact sentence explaining why"));
+    if (takeHome) takeHome.content = _bridgeWordClamp(_bridgeNarrativeSummary(slide.points, 2) || summary || title, 28);
 }
 
 function _bridgeFinalizeSlide(slideState) {
@@ -1944,6 +2044,7 @@ function _bridgeFinalizeSlide(slideState) {
     slideState.elements = (slideState.elements || []).filter(el => {
         if (el.type !== "text") return true;
         const text = _bridgeContentText(el.content);
+        if (!text) return false;
         return !_bridgeIsPlaceholderText(text);
     });
     return _bridgeApplyContentAwareFit(slideState);
@@ -1988,11 +2089,14 @@ function _makeBeamerFooter(theme, presentationTitle, slideNumber, totalSlides) {
 
 function _createBridgeTitleSlide(data, theme, presentationTitle, slideNumber, totalSlides) {
     return _bridgeFinalizeSlide(_bridgeBuildPresetSlide("title-page", theme, elements => {
-        _bridgeSetTextByPlaceholder(elements, "RESEARCH PRESENTATION", data.journal_name || "Imported Presentation");
-        _bridgeSetTextByPlaceholder(elements, "Research Title Goes Here", presentationTitle);
-        _bridgeSetTextByPlaceholder(elements, "Author Name · Co-Author Name", data.authors || "");
+        _bridgeSetTextByPlaceholders(elements, ["RESEARCH PRESENTATION", "Molecular Dynamics and Machine Learning"], data.journal_name || "Imported Presentation");
+        _bridgeSetTextByPlaceholder(elements, "Research Title Goes Here", _bridgeCleanImportedText(presentationTitle, "Imported Presentation"));
+        _bridgeSetTextByPlaceholders(elements, ["Author Name · Co-Author Name", "Author Name - Group / Institute - Date"], data.authors || "");
         const metaText = [data.journal_name, data.publish_date, data.doi ? `DOI: ${data.doi}` : ""].filter(Boolean).join(" · ");
-        _bridgeSetTextByPlaceholder(elements, "Department · University · Conference 2025", metaText || data.sub || "AI-generated research presentation");
+        _bridgeSetTextByPlaceholders(elements, [
+            "Department · University · Conference 2025",
+            "MD trajectories | protein dynamics | learned representations",
+        ], metaText || _bridgeCleanImportedText(data.sub, "AI-generated research presentation"));
         _bridgeSetTextByPlaceholder(elements, "contact@university.edu", "");
     }));
 /*
@@ -2060,9 +2164,12 @@ function _createBridgeTitleSlide(data, theme, presentationTitle, slideNumber, to
 function _createBridgeSectionSlide(slide, theme, presentationTitle, slideNumber, totalSlides) {
     return _bridgeFinalizeSlide(_bridgeBuildPresetSlide("section-divider", theme, elements => {
         _bridgeSetTextByPlaceholder(elements, "02", String(Math.max(1, slideNumber - 1)).padStart(2, "0"));
-        _bridgeSetTextByPlaceholder(elements, "Section Title", String(slide.title || "Section"));
+        _bridgeSetTextByPlaceholder(elements, "Section Title", _bridgeCleanImportedText(slide.title, "Section"));
         const description = slide.goal || slide.claim || slide.summary || presentationTitle || "";
-        _bridgeSetTextByPlaceholder(elements, "A brief description of what this section covers", _bridgeWordClamp(description, 18));
+        _bridgeSetTextByPlaceholders(elements, [
+            "A brief description of what this section covers",
+            "Short framing sentence for this part of the MD/ML story.",
+        ], _bridgeWordClamp(description, 18));
     }));
 /*
     const ui = _bridgeVisualMeta(theme);
@@ -2314,12 +2421,12 @@ function _looksLikeBridgeExport(data) {
 }
 
 function _bridgeInferPresentationTitle(data) {
-    const direct = String(data?.title || "").trim();
+    const direct = _bridgeCleanImportedText(data?.title);
     if (direct && !/^untitled|imported presentation$/i.test(direct)) return direct;
     const firstContent = (data?.slides || []).find(slide => slide?.type === "content" && String(slide?.title || "").trim());
-    if (firstContent?.title) return String(firstContent.title).trim();
+    if (firstContent?.title) return _bridgeCleanImportedText(firstContent.title);
     const firstSection = (data?.slides || []).find(slide => slide?.type === "section" && String(slide?.title || "").trim());
-    if (firstSection?.title) return String(firstSection.title).trim();
+    if (firstSection?.title) return _bridgeCleanImportedText(firstSection.title);
     return direct || "Imported Presentation";
 }
 

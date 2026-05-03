@@ -1613,6 +1613,14 @@ function _applyTypeContent(el, elData) {
         _renderChartDom(el, elData);
     } else if (elData.type === "image") {
         if (elData.cropTransform) {
+            const crop =
+                typeof normalizeImageCropTransform === "function"
+                    ? normalizeImageCropTransform(elData.cropTransform)
+                    : elData.cropTransform;
+            if (crop && JSON.stringify(crop) !== JSON.stringify(elData.cropTransform)) {
+                elData.cropTransform = crop;
+                updateElementState(elData.id, { cropTransform: crop });
+            }
             const wrapper = document.createElement("div");
             wrapper.className = "w-full h-full rounded-[inherit]";
             wrapper.style.overflow = "hidden";
@@ -1624,10 +1632,10 @@ function _applyTypeContent(el, elData) {
             img.draggable = false;
             
             img.style.position = "absolute";
-            img.style.left = `${elData.cropTransform.leftPercent}%`;
-            img.style.top = `${elData.cropTransform.topPercent}%`;
-            img.style.width = `${elData.cropTransform.widthPercent}%`;
-            img.style.height = `${elData.cropTransform.heightPercent}%`;
+            img.style.left = `${crop.leftPercent}%`;
+            img.style.top = `${crop.topPercent}%`;
+            img.style.width = `${crop.widthPercent}%`;
+            img.style.height = `${crop.heightPercent}%`;
             img.style.maxWidth = "none";
             img.style.maxHeight = "none";
             img.style.objectFit = "fill";
@@ -1642,12 +1650,17 @@ function _applyTypeContent(el, elData) {
             
             // Auto-adjust height to natural aspect ratio if not explicitly cropped
             img.onload = () => {
-                if (!elData.cropTransform && !elData.heightSetManually) {
-                    const ratio = img.naturalWidth / img.naturalHeight;
+                const naturalRatio = img.naturalWidth / Math.max(1, img.naturalHeight);
+                const hasNaturalRatio = Number.isFinite(naturalRatio) && naturalRatio > 0;
+                if (hasNaturalRatio && !elData.imageAspectRatio) {
+                    elData.imageAspectRatio = naturalRatio;
+                    updateElementState(elData.id, { imageAspectRatio: naturalRatio, lockAspectRatio: elData.lockAspectRatio ?? true });
+                }
+                if (hasNaturalRatio && !elData.cropTransform && !elData.heightSetManually) {
                     const currentWidth = parseFloat(el.style.width) || el.offsetWidth;
-                    const newHeight = currentWidth / ratio;
+                    const newHeight = currentWidth / naturalRatio;
                     el.style.height = `${newHeight}px`;
-                    updateElementState(elData.id, { height: `${newHeight}px` });
+                    updateElementState(elData.id, { height: `${newHeight}px`, imageAspectRatio: naturalRatio, lockAspectRatio: elData.lockAspectRatio ?? true });
                     if (state.selectedIds.includes(elData.id)) updateGroupBound();
                 }
             };

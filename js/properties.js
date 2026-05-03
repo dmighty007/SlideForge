@@ -1789,10 +1789,7 @@ function buildPropertiesPanel() {
                     </div>
                 </div>
                 <label class="flex items-center gap-2 cursor-pointer group/chk mt-3 mb-2">
-                    <input type="checkbox" id="prop-img-lock-aspect" ${data.lockAspectRatio ? "checked" : ""} class="hidden">
-                    <div class="w-4 h-4 rounded border border-gray-600 flex items-center justify-center group-hover/chk:border-accent transition-colors">
-                        <div class="w-2.5 h-2.5 rounded-sm bg-accent transition-opacity ${data.lockAspectRatio ? "opacity-100" : "opacity-0"}"></div>
-                    </div>
+                    <input type="checkbox" id="prop-img-lock-aspect" ${data.lockAspectRatio ? "checked" : ""} class="aspect-lock-checkbox prop-native-checkbox">
                     <span class="text-xs text-gray-400">Lock Aspect Ratio</span>
                 </label>
                 <div class="h-px bg-gray-800 my-3"></div>
@@ -2578,15 +2575,15 @@ function buildPropertiesPanel() {
                     imgLock.onchange = e => {
                         saveStateToUndo();
                         const locked = e.target.checked;
-                        updateElementState(data.id, { lockAspectRatio: locked });
+                        const ratio = data.cropTransform
+                            ? ((parseFloat(data.width) || 1) / Math.max(1, parseFloat(data.height) || 1))
+                            : typeof getImageAspectRatio === "function"
+                              ? getImageAspectRatio(data)
+                              : ((parseFloat(data.width) || 1) / Math.max(1, parseFloat(data.height) || 1));
+                        updateElementState(data.id, { lockAspectRatio: locked, imageAspectRatio: ratio });
                         data.lockAspectRatio = locked;
+                        data.imageAspectRatio = ratio;
                         
-                        // Manually update custom checkbox UI for instant feedback
-                        const checkmark = e.target.nextElementSibling?.firstElementChild;
-                        if (checkmark) {
-                            checkmark.classList.toggle("opacity-100", locked);
-                            checkmark.classList.toggle("opacity-0", !locked);
-                        }
                     };
                 }
 
@@ -2599,22 +2596,27 @@ function buildPropertiesPanel() {
                             if (isNaN(newH) || newH < 10) newH = 10;
 
                             if (data.lockAspectRatio) {
-                                const origW = parseFloat(data.width) || newW;
-                                const origH = parseFloat(data.height) || newH;
-                                const ratio = origW / origH;
+                                const ratio = data.cropTransform
+                                    ? ((parseFloat(data.width) || newW) / Math.max(1, parseFloat(data.height) || newH))
+                                    : typeof getImageAspectRatio === "function"
+                                      ? getImageAspectRatio(data)
+                                      : ((parseFloat(data.width) || newW) / Math.max(1, parseFloat(data.height) || newH));
                                 if (isWidth) {
                                     newH = newW / ratio;
-                                    imgH.value = newH;
+                                    imgH.value = Math.round(newH);
                                 } else {
                                     newW = newH * ratio;
-                                    imgW.value = newW;
+                                    imgW.value = Math.round(newW);
                                 }
                             }
 
-                            updateElementState(data.id, { width: newW + "px", height: newH + "px", heightSetManually: true });
+                            const updates = { width: newW + "px", height: newH + "px", heightSetManually: true };
+                            if (data.lockAspectRatio) updates.imageAspectRatio = data.cropTransform ? (newW / Math.max(1, newH)) : (typeof getImageAspectRatio === "function" ? getImageAspectRatio(data) : (newW / Math.max(1, newH)));
+                            updateElementState(data.id, updates);
                             data.width = newW + "px";
                             data.height = newH + "px";
                             data.heightSetManually = true;
+                            if (updates.imageAspectRatio) data.imageAspectRatio = updates.imageAspectRatio;
                             const dom = document.getElementById(data.id);
                             if (dom) {
                                 dom.style.width = newW + "px";

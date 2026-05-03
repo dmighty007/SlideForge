@@ -41,6 +41,7 @@ class SimpleCrop {
                 this.imgH = this.naturalH * scale;
                 this.imgL = (this.width - this.imgW) / 2;
                 this.imgT = (this.height - this.imgH) / 2;
+                this.writeCropTransform(this.width, this.height, this.imgW, this.imgH, this.imgL, this.imgT);
             }
 
             this.buildUI();
@@ -56,12 +57,12 @@ class SimpleCrop {
     buildUI() {
         this.overlay = document.createElement("div");
         this.overlay.className = "crop-simple-overlay";
-        this.overlay.style.cssText = "position:absolute; inset:0; background:rgba(0,0,0,0.4); z-index:10000; cursor:crosshair;";
+        this.overlay.style.cssText = "position:absolute; inset:0; background:rgba(15,23,42,0.36); z-index:10000; cursor:crosshair;";
 
         this.cropBox = document.createElement("div");
-        this.cropBox.style.cssText = "position:absolute; border:2px dashed #fbbf24; box-shadow:0 0 0 9999px rgba(0,0,0,0.5); cursor:move; z-index:10001;";
+        this.cropBox.style.cssText = "position:absolute; border:2px solid #fbbf24; box-shadow:0 0 0 9999px rgba(0,0,0,0.48); cursor:move; z-index:10001;";
 
-        const handleStyle = "position:absolute; width:12px; height:12px; background:#fbbf24; border:2px solid #000; border-radius:2px;";
+        const handleStyle = "position:absolute; width:14px; height:14px; background:#fbbf24; border:2px solid #0f172a; border-radius:3px; box-shadow:0 1px 4px rgba(0,0,0,0.35);";
         const positions = [
             { id: "tl", css: "top:-6px; left:-6px; cursor:nwse-resize;" },
             { id: "tr", css: "top:-6px; right:-6px; cursor:nesw-resize;" },
@@ -81,10 +82,16 @@ class SimpleCrop {
             this.cropBox.appendChild(h);
         });
 
+        const hint = document.createElement("div");
+        hint.textContent = "Drag edges to crop. Enter applies, Esc cancels.";
+        hint.style.cssText = "position:absolute;left:0;bottom:-34px;white-space:nowrap;padding:5px 8px;border-radius:6px;background:#0f172a;color:#f8fafc;font:600 12px/1.2 Inter,system-ui,sans-serif;box-shadow:0 8px 24px rgba(15,23,42,0.24);";
+        this.cropBox.appendChild(hint);
+
         this.overlay.appendChild(this.cropBox);
         const section = document.querySelector(".reveal .slides section.present") || document.getElementById("slides-container");
         section.appendChild(this.overlay);
 
+        this.applyPreviewDOM();
         this.updateDOM();
     }
 
@@ -95,6 +102,71 @@ class SimpleCrop {
         this.cropBox.style.top = typeof this.elData.y === "number" ? `${this.elData.y}px` : this.elData.y;
         this.cropBox.style.width = this.elData.width;
         this.cropBox.style.height = this.elData.height;
+    }
+
+    applyPreviewDOM() {
+        const el = document.getElementById(this.elementId);
+        if (!el) return;
+        el.style.transform = `translate(${parseFloat(this.elData.x) || 0}px, ${parseFloat(this.elData.y) || 0}px)`;
+        el.style.width = this.elData.width;
+        el.style.height = this.elData.height;
+        el.setAttribute("data-x", parseFloat(this.elData.x) || 0);
+        el.setAttribute("data-y", parseFloat(this.elData.y) || 0);
+
+        let wrapper = el.querySelector(":scope > .crop-live-preview");
+        if (!wrapper) {
+            Array.from(el.children).forEach(child => {
+                if (
+                    child.classList.contains("resize-handle")
+                    || child.classList.contains("anim-badge")
+                    || child.classList.contains("crop-live-preview")
+                ) return;
+                child.remove();
+            });
+            wrapper = document.createElement("div");
+            wrapper.className = "crop-live-preview w-full h-full rounded-[inherit]";
+            wrapper.style.overflow = "hidden";
+            wrapper.style.position = "relative";
+            const img = document.createElement("img");
+            img.src = this.elData.content;
+            img.draggable = false;
+            img.style.position = "absolute";
+            img.style.maxWidth = "none";
+            img.style.maxHeight = "none";
+            img.style.objectFit = "fill";
+            img.style.pointerEvents = "none";
+            wrapper.appendChild(img);
+            const firstHandle = Array.from(el.children).find(child => child.classList.contains("resize-handle"));
+            el.insertBefore(wrapper, firstHandle || null);
+        }
+
+        const img = wrapper.querySelector("img");
+        const crop =
+            typeof normalizeImageCropTransform === "function"
+                ? normalizeImageCropTransform(this.elData.cropTransform)
+                : this.elData.cropTransform;
+        if (img && crop) {
+            this.elData.cropTransform = crop;
+            img.style.left = `${crop.leftPercent}%`;
+            img.style.top = `${crop.topPercent}%`;
+            img.style.width = `${crop.widthPercent}%`;
+            img.style.height = `${crop.heightPercent}%`;
+        }
+    }
+
+    writeCropTransform(w, h, imgW, imgH, imgL, imgT) {
+        const crop = {
+            widthPercent: (imgW / w) * 100,
+            heightPercent: (imgH / h) * 100,
+            leftPercent: (imgL / w) * 100,
+            topPercent: (imgT / h) * 100,
+        };
+        this.elData.cropTransform =
+            typeof normalizeImageCropTransform === "function"
+                ? normalizeImageCropTransform(crop)
+                : crop;
+        this.elData.heightSetManually = true;
+        this.elData.imageAspectRatio = w / Math.max(1, h);
     }
 
     setupInteractions() {
@@ -110,6 +182,7 @@ class SimpleCrop {
     }
 
     handleMouseDown(e) {
+        e.preventDefault();
         e.stopPropagation();
         if (!this.hasRecordedUndo && window.saveStateToUndo) {
             window.saveStateToUndo();
@@ -146,6 +219,7 @@ class SimpleCrop {
 
     handleMouseMove(e) {
         if (!this.activeHandle && !this.isDraggingBox) return;
+        e.preventDefault();
 
         const scale = typeof getCanvasScale === "function" ? getCanvasScale() : 1;
         const dx = (e.clientX - this.startX) / scale;
@@ -154,13 +228,26 @@ class SimpleCrop {
         let { x, y, w, h, imgW, imgH, imgL, imgT } = this.s;
 
         if (this.activeHandle) {
-            if (this.activeHandle.includes("l")) { x += dx; w -= dx; imgL -= dx; }
-            if (this.activeHandle.includes("r")) { w += dx; }
-            if (this.activeHandle.includes("t")) { y += dy; h -= dy; imgT -= dy; }
-            if (this.activeHandle.includes("b")) { h += dy; }
-
-            if (w < 20) w = 20;
-            if (h < 20) h = 20;
+            if (this.activeHandle.includes("l")) {
+                const nextW = Math.max(20, this.s.w - dx);
+                const applied = this.s.w - nextW;
+                x = this.s.x + applied;
+                w = nextW;
+                imgL = this.s.imgL - applied;
+            }
+            if (this.activeHandle.includes("r")) {
+                w = Math.max(20, this.s.w + dx);
+            }
+            if (this.activeHandle.includes("t")) {
+                const nextH = Math.max(20, this.s.h - dy);
+                const applied = this.s.h - nextH;
+                y = this.s.y + applied;
+                h = nextH;
+                imgT = this.s.imgT - applied;
+            }
+            if (this.activeHandle.includes("b")) {
+                h = Math.max(20, this.s.h + dy);
+            }
 
             // Update container state
             this.elData.x = x;
@@ -170,23 +257,30 @@ class SimpleCrop {
 
             // Recalculate imgH from imgW to ensure ZERO distortion
             const currentImgH = imgW / this.naturalRatio;
-
-            this.elData.cropTransform = {
-                widthPercent: (imgW / w) * 100,
-                heightPercent: (currentImgH / h) * 100,
-                leftPercent: (imgL / w) * 100,
-                topPercent: (imgT / h) * 100
-            };
+            this.writeCropTransform(w, h, imgW, currentImgH, imgL, imgT);
         } else if (this.isDraggingBox) {
             this.elData.x = x + dx;
             this.elData.y = y + dy;
         }
 
-        if (window.renderSlidesFromState) window.renderSlidesFromState();
+        this.applyPreviewDOM();
         this.updateDOM();
     }
 
     handleMouseUp() {
+        if (this.activeHandle || this.isDraggingBox) {
+            updateElementState?.(this.elementId, {
+                x: this.elData.x,
+                y: this.elData.y,
+                width: this.elData.width,
+                height: this.elData.height,
+                cropTransform: this.elData.cropTransform,
+                heightSetManually: true,
+                imageAspectRatio: this.elData.imageAspectRatio,
+            });
+            if (window.updateGroupBound) window.updateGroupBound();
+            if (typeof schedulePresentationAutosave === "function") schedulePresentationAutosave();
+        }
         this.activeHandle = null;
         this.isDraggingBox = false;
     }

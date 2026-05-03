@@ -3308,3 +3308,16 @@ button:focus:not(:focus-visible) {
 .export-menu-dropdown.show {
     display: flex;
 }
+
+.prop-native-checkbox {
+    display: inline-block !important;
+    appearance: auto !important;
+    -webkit-appearance: checkbox !important;
+    opacity: 1 !important;
+    width: 16px;
+    height: 16px;
+    accent-color: var(--primary);
+    cursor: pointer;
+    flex: 0 0 auto;
+    pointer-events: auto;
+}
