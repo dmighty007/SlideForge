@@ -6,7 +6,7 @@ window.onload = async () => {
     bindProjectTitleInput();
     bindUserMenu();
     initPropertiesPanelToggle();
-    initToolDockToggle();
+    initLayersPopover();
     normalizeStateIds();
     if (typeof migrateInlineVideoAssets === "function") {
         try {
@@ -93,7 +93,7 @@ window.onload = async () => {
             path.some(
                 n =>
                     n.id === "properties-panel" ||
-                    n.id === "toolbar" ||
+                    n.id === "app-toolbar" ||
                     n.id === "floating-text-toolbar" ||
                     n.closest?.("#floating-text-toolbar"),
             );
@@ -102,22 +102,11 @@ window.onload = async () => {
         }
     });
 
-    populatePresentationThemeSelector?.();
-    document.getElementById("theme-selector").addEventListener("change", e => {
-        const previousTheme = state.presentationTheme;
-        retintPresentationTheme(previousTheme, e.target.value);
-        applyPresentationTheme(e.target.value, { persist: false });
-        renderSlidesFromState();
-        renderSlidePreviews(null, { preserveScroll: true });
-    });
-    document.getElementById("page-setup-selector").addEventListener("change", e => {
-        changePresentationPageSetup(e.target.value);
-    });
 
     if (!PRESENTATION_THEMES[state.presentationTheme]) {
         state.presentationTheme = "editorial";
     }
-    document.getElementById("theme-selector").value = state.presentationTheme || "editorial";
+
     syncPresentationPageSetup();
     const shapePickerModal = document.getElementById("shape-picker-modal");
     if (shapePickerModal) {
@@ -131,7 +120,7 @@ window.onload = async () => {
             if (typeof handleEditorViewportResize === "function") {
                 handleEditorViewportResize();
             }
-            updateFloatingTextToolbar();
+            updateFloatingToolbars();
         }),
     );
     document.addEventListener("fullscreenchange", () => {
@@ -170,8 +159,8 @@ function setPropertiesPanelVisible(visible, { persist = true } = {}) {
         } else if (typeof applyZoom === "function") {
             applyZoom({ preserveViewport: true });
         }
-        if (typeof updateFloatingTextToolbar === "function") {
-            updateFloatingTextToolbar();
+        if (typeof updateFloatingToolbars === "function") {
+            updateFloatingToolbars();
         }
     });
 }
@@ -187,31 +176,44 @@ function initPropertiesPanelToggle() {
     setPropertiesPanelVisible(saved === "1", { persist: false });
 }
 
-function setToolDockVisible(visible, { persist = true } = {}) {
-    const dock = document.getElementById("toolbar-tool-dock");
-    const button = document.getElementById("toggle-tool-dock");
-    if (!dock) return;
+function setLayersPopoverVisible(visible) {
+    const popover = document.getElementById("layers-popover");
+    const button = document.getElementById("toggle-layers-popover");
+    if (!popover) return;
 
-    dock.classList.toggle("toolbar-dock-hidden", !visible);
+    popover.classList.toggle("hidden", !visible);
     if (button) {
         button.setAttribute("aria-pressed", visible ? "true" : "false");
-        button.title = visible ? "Hide Tools" : "Show Tools";
+        button.title = visible ? "Hide Layers" : "Layers";
     }
-    if (persist) {
-        localStorage.setItem("pptmaker_tool_dock_visible", visible ? "1" : "0");
+    if (visible && typeof renderLayersList === "function") {
+        renderLayersList();
     }
 }
 
-function toggleToolDock() {
-    const dock = document.getElementById("toolbar-tool-dock");
-    setToolDockVisible(dock?.classList.contains("toolbar-dock-hidden"));
+function toggleLayersPopover() {
+    const popover = document.getElementById("layers-popover");
+    closeExportMenu?.();
+    closeUserMenu?.();
+    setLayersPopoverVisible(popover?.classList.contains("hidden"));
 }
-window.toggleToolDock = toggleToolDock;
+window.toggleLayersPopover = toggleLayersPopover;
+window.closeLayersPopover = () => setLayersPopoverVisible(false);
 
-function initToolDockToggle() {
-    const saved = localStorage.getItem("pptmaker_tool_dock_visible");
-    setToolDockVisible(saved !== "0", { persist: false });
+function initLayersPopover() {
+    if (document.body.dataset.layersPopoverBound === "true") return;
+    document.body.dataset.layersPopoverBound = "true";
+
+    document.addEventListener("mousedown", event => {
+        const popover = document.getElementById("layers-popover");
+        const button = document.getElementById("toggle-layers-popover");
+        if (!popover || popover.classList.contains("hidden")) return;
+        if (popover.contains(event.target) || button?.contains(event.target)) return;
+        setLayersPopoverVisible(false);
+    });
 }
+
+
 
 // ─── Debounced preview refresh (used by properties.js via window) ─────────────
 

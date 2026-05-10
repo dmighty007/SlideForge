@@ -139,6 +139,12 @@ function initKeyboard() {
             addSlide();
         }
 
+        // Ctrl+K: Open Command Palette
+        if ((e.ctrlKey || e.metaKey) && key === "k") {
+            e.preventDefault();
+            if (typeof openCommandPalette === "function") openCommandPalette();
+        }
+
         // Alt+G: Group selected
         if (e.altKey && !e.shiftKey && key === "g") {
             e.preventDefault();
@@ -187,8 +193,14 @@ function initKeyboard() {
 
         // Escape: Clear selection or close modal
         if (e.key === "Escape") {
-            if (!document.getElementById("shortcuts-modal").classList.contains("hidden")) {
+            const shortcutsModal = document.getElementById("shortcuts-modal");
+            if (shortcutsModal && !shortcutsModal.classList.contains("hidden")) {
                 closeShortcutsModal();
+                return;
+            }
+            const commandPaletteModal = document.getElementById("command-palette-modal");
+            if (commandPaletteModal?.style.display === "flex") {
+                closeCommandPalette?.();
                 return;
             }
             if (state.selectedIds.length) {

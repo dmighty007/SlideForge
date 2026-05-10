@@ -539,14 +539,7 @@ function getPresentationTheme(themeId = state.presentationTheme) {
     return PRESENTATION_THEMES[themeId] || PRESENTATION_THEMES.editorial;
 }
 
-function populatePresentationThemeSelector() {
-    const selector = document.getElementById("theme-selector");
-    if (!selector) return;
-    const selected = selector.value || state.presentationTheme || "editorial";
-    selector.innerHTML = Object.entries(PRESENTATION_THEMES)
-        .map(([id, theme]) => `<option value="${id}" ${id === selected ? "selected" : ""}>${theme.label}</option>`)
-        .join("");
-}
+
 
 function applyPresentationTheme(themeId, { persist = true } = {}) {
     const safeThemeId = PRESENTATION_THEMES[themeId] ? themeId : "editorial";

@@ -1,4 +1,122 @@
+function _getElementNumber(value, fallback = 0) {
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+}
 
+function _getElementBox(el) {
+    const x = _getElementNumber(el.x);
+    const y = _getElementNumber(el.y);
+    const width = _getElementNumber(el.width);
+    const height = _getElementNumber(el.height);
+    return {
+        x,
+        y,
+        width,
+        height,
+        minX: x,
+        minY: y,
+        maxX: x + width,
+        maxY: y + height,
+    };
+}
+
+function _getSelectionAlignmentUnits(slide) {
+    const selected = slide.elements.filter(el => state.selectedIds.includes(el.id));
+    const units = [];
+    const grouped = new Map();
+
+    selected.forEach(el => {
+        if (!el.groupId) {
+            units.push({ id: el.id, elements: [el] });
+            return;
+        }
+        if (!grouped.has(el.groupId)) {
+            grouped.set(el.groupId, { id: el.groupId, elements: [] });
+            units.push(grouped.get(el.groupId));
+        }
+        grouped.get(el.groupId).elements.push(el);
+    });
+
+    return units
+        .map(unit => {
+            const boxes = unit.elements.map(_getElementBox);
+            const minX = Math.min(...boxes.map(box => box.minX));
+            const minY = Math.min(...boxes.map(box => box.minY));
+            const maxX = Math.max(...boxes.map(box => box.maxX));
+            const maxY = Math.max(...boxes.map(box => box.maxY));
+            return {
+                ...unit,
+                locked: unit.elements.some(el => el.locked),
+                minX,
+                minY,
+                maxX,
+                maxY,
+                width: maxX - minX,
+                height: maxY - minY,
+            };
+        })
+        .filter(unit => unit.elements.length && !unit.locked);
+}
+
+function alignSelection(alignment) {
+    if (state.selectedIds.length < 2) return;
+    const slide = state.slides[currentSlideIndex];
+    if (!slide) return;
+
+    const units = _getSelectionAlignmentUnits(slide);
+    if (units.length < 2) return;
+
+    saveStateToUndo();
+
+    const bounds = {
+        minX: Math.min(...units.map(unit => unit.minX)),
+        minY: Math.min(...units.map(unit => unit.minY)),
+        maxX: Math.max(...units.map(unit => unit.maxX)),
+        maxY: Math.max(...units.map(unit => unit.maxY)),
+    };
+
+    units.forEach(unit => {
+        let nextX = unit.minX;
+        let nextY = unit.minY;
+
+        switch (alignment) {
+            case 'left': nextX = bounds.minX; break;
+            case 'center': nextX = bounds.minX + (bounds.maxX - bounds.minX) / 2 - unit.width / 2; break;
+            case 'right': nextX = bounds.maxX - unit.width; break;
+            case 'top': nextY = bounds.minY; break;
+            case 'middle': nextY = bounds.minY + (bounds.maxY - bounds.minY) / 2 - unit.height / 2; break;
+            case 'bottom': nextY = bounds.maxY - unit.height; break;
+            default: return;
+        }
+
+        const dx = nextX - unit.minX;
+        const dy = nextY - unit.minY;
+
+        unit.elements.forEach(el => {
+            const x = _getElementNumber(el.x);
+            const y = _getElementNumber(el.y);
+            const alignedX = x + dx;
+            const alignedY = y + dy;
+
+            updateElementState(el.id, {
+                x: `${alignedX}px`,
+                y: `${alignedY}px`,
+            });
+
+            const dom = document.getElementById(el.id);
+            if (dom) {
+                dom.style.transform = `translate(${alignedX}px, ${alignedY}px) rotate(${el.rotation || 0}deg)`;
+                dom.setAttribute("data-x", alignedX);
+                dom.setAttribute("data-y", alignedY);
+            }
+        });
+    });
+
+    if (window.renderSlidesFromState) window.renderSlidesFromState();
+    updateGroupBound?.();
+    refreshPreviews?.();
+    schedulePresentationAutosave?.(150);
+}
 
 function getActiveSlideIndex() {
     if (typeof Reveal !== "undefined" && typeof Reveal.isReady === "function" && Reveal.isReady()) {
@@ -2819,6 +2937,11 @@ async function handleAIImportUpload(event) {
 
     const lowerName = String(file.name || "").toLowerCase();
     if (file.type === "application/pdf" || lowerName.endsWith(".pdf")) {
+        if (!currentAuthUser) {
+            setProjectSaveHint?.("Sign in to run AI PDF import. JSON imports work locally.", "warn");
+            openAuthModal?.("login");
+            return;
+        }
         try {
             await runAIPdfImport(file);
         } catch (err) {
@@ -3316,6 +3439,7 @@ function _clearAnimationClasses(dom) {
         "sf-anim-effect-pulse",
         "sf-anim-effect-glow",
     ].forEach(className => dom.classList.remove(className));
+    dom.style.removeProperty("--sf-base-transform");
     dom.style.removeProperty("--sf-anim-duration");
     dom.style.removeProperty("--sf-anim-delay");
     dom.style.removeProperty("--sf-anim-easing");
@@ -3666,17 +3790,7 @@ async function togglePlayMode() {
             requestAnimationFrame(() => _resizePresentationChalkboard());
         }
         
-        // Update button UI
-        const btn = document.getElementById("btn-present");
-        if (btn) {
-            if (isPlaying) {
-                btn.innerHTML = '<i class="fa-solid fa-stop text-sm text-red-500"></i><span class="text-xs font-medium hidden md:inline">Stop</span>';
-                btn.title = "Exit Presentation (Esc)";
-            } else {
-                btn.innerHTML = '<i class="fa-solid fa-play text-sm"></i><span class="text-xs font-medium hidden md:inline">Present</span>';
-                btn.title = "Present";
-            }
-        }
+        updatePresentButtonState(isPlaying);
     });
     if (isPlaying) {
         clearSelection();
@@ -3713,11 +3827,7 @@ function handlePresentationFullscreenChange() {
         requestAnimationFrame(() => {
             Reveal.layout?.();
             Reveal.slide?.(currentSlideIndex, 0, 0);
-            const btn = document.getElementById("btn-present");
-            if (btn) {
-                btn.innerHTML = '<i class="fa-solid fa-play text-sm"></i><span class="text-xs font-medium hidden md:inline">Present</span>';
-                btn.title = "Present";
-            }
+            updatePresentButtonState(false);
         });
         _resetAnimations();
         resetPresentationTools();
@@ -3731,6 +3841,16 @@ function handlePresentationFullscreenChange() {
         }
         _presentationRuntimeState.presenterWindow = null;
     }
+}
+
+function updatePresentButtonState(isPlaying) {
+    const btn = document.getElementById("btn-present");
+    if (!btn) return;
+    btn.innerHTML = isPlaying
+        ? '<i class="fa-solid fa-stop text-red-500"></i>'
+        : '<i class="fa-solid fa-play"></i>';
+    btn.title = isPlaying ? "Exit Presentation (Esc)" : "Present";
+    btn.setAttribute("aria-label", btn.title);
 }
 
 function _playSlideAnimations(slideIndex) {
@@ -3838,3 +3958,122 @@ function exportPresentationPPTX() {
         console.error("exportPPTX function not found. Ensure export.js is loaded.");
     }
 }
+
+// ─── Command Palette ──────────────────────────────────────────────────────────
+
+const COMMANDS = [
+    { id: "add-slide", title: "Add Slide", icon: "fa-plus", action: addSlide },
+    { id: "duplicate-slide", title: "Duplicate Slide", icon: "fa-copy", action: duplicateCurrentSlide },
+    { id: "delete-slide", title: "Delete Slide", icon: "fa-trash", action: deleteCurrentSlide },
+    { id: "add-text", title: "Add Text Box", icon: "fa-t", action: () => addElement('text') },
+    { id: "add-shape-rect", title: "Add Rectangle", icon: "fa-square", action: () => addShape('rectangle') },
+    { id: "add-shape-circle", title: "Add Circle", icon: "fa-circle", action: () => addShape('circle') },
+    { id: "add-image", title: "Add Image", icon: "fa-image", action: () => { const fileInput = document.getElementById('image-file-upload'); if (fileInput) fileInput.click(); } },
+    { id: "add-video", title: "Add Video", icon: "fa-video", action: () => addElement('video') },
+    { id: "ai-cleanup", title: "AI Clean Up Slide", icon: "fa-wand-magic-sparkles", action: aiCleanUpSlide },
+    { id: "present", title: "Toggle Presentation Mode", icon: "fa-play", action: togglePlayMode },
+    { id: "export-pdf", title: "Export to PDF", icon: "fa-file-pdf", action: exportPresentationPDF },
+    { id: "export-pptx", title: "Export to PPTX", icon: "fa-file-powerpoint", action: exportPresentationPPTX },
+    { id: "export-zip", title: "Export to Web (ZIP)", icon: "fa-file-zipper", action: exportPresentationZip },
+    { id: "export-json", title: "Export to JSON", icon: "fa-file-code", action: exportPresentationJson },
+    { id: "import-json", title: "Import from JSON", icon: "fa-file-import", action: importPresentationJson },
+];
+
+let commandPaletteSelectedIndex = 0;
+let commandPaletteResults = [];
+
+function openCommandPalette() {
+    const modal = document.getElementById("command-palette-modal");
+    const input = document.getElementById("command-palette-input");
+    if (!modal || !input) return;
+
+    modal.style.display = "flex";
+    input.value = "";
+    input.focus();
+    renderCommandPaletteResults("");
+
+    input.oninput = (e) => renderCommandPaletteResults(e.target.value);
+    input.onkeydown = (e) => {
+        if (e.key === "ArrowDown") {
+            e.preventDefault();
+            commandPaletteSelectedIndex = Math.min(commandPaletteSelectedIndex + 1, commandPaletteResults.length - 1);
+            updateCommandPaletteSelection();
+        } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            commandPaletteSelectedIndex = Math.max(commandPaletteSelectedIndex - 1, 0);
+            updateCommandPaletteSelection();
+        } else if (e.key === "Enter") {
+            e.preventDefault();
+            executeSelectedCommand();
+        } else if (e.key === "Escape") {
+            e.preventDefault();
+            closeCommandPalette();
+        }
+    };
+}
+
+function closeCommandPalette() {
+    const modal = document.getElementById("command-palette-modal");
+    if (modal) modal.style.display = "none";
+}
+
+window.closeCommandPalette = closeCommandPalette;
+window.openCommandPalette = openCommandPalette;
+
+function renderCommandPaletteResults(query) {
+    const container = document.getElementById("command-palette-results");
+    if (!container) return;
+
+    const lowerQuery = query.toLowerCase();
+    commandPaletteResults = COMMANDS.filter(cmd => cmd.title.toLowerCase().includes(lowerQuery));
+    commandPaletteSelectedIndex = 0;
+
+    if (commandPaletteResults.length === 0) {
+        container.innerHTML = `<div class="px-4 py-8 text-center text-slate-400 text-sm">No commands found for "${query}"</div>`;
+        return;
+    }
+
+    container.innerHTML = commandPaletteResults.map((cmd, index) => `
+        <button id="cmd-item-${index}" class="w-full text-left px-4 py-3 flex items-center gap-3 text-slate-700 hover:bg-slate-50 transition-colors ${index === 0 ? 'bg-slate-50 border-l-2 border-primary text-primary' : 'border-l-2 border-transparent'}" onclick="executeCommandPaletteCommand('${cmd.id}')">
+            <i class="fa-solid ${cmd.icon} w-5 text-center ${index === 0 ? 'text-primary' : 'text-slate-400'}"></i>
+            <span class="text-sm font-medium">${cmd.title}</span>
+        </button>
+    `).join("");
+}
+
+function updateCommandPaletteSelection() {
+    commandPaletteResults.forEach((_, index) => {
+        const btn = document.getElementById(`cmd-item-${index}`);
+        if (!btn) return;
+        const icon = btn.querySelector('i');
+        if (index === commandPaletteSelectedIndex) {
+            btn.classList.add('bg-slate-50', 'border-primary', 'text-primary');
+            btn.classList.remove('border-transparent', 'text-slate-700');
+            icon?.classList.add('text-primary');
+            icon?.classList.remove('text-slate-400');
+            btn.scrollIntoView({ block: "nearest" });
+        } else {
+            btn.classList.remove('bg-slate-50', 'border-primary', 'text-primary');
+            btn.classList.add('border-transparent', 'text-slate-700');
+            icon?.classList.remove('text-primary');
+            icon?.classList.add('text-slate-400');
+        }
+    });
+}
+
+function executeSelectedCommand() {
+    if (commandPaletteResults[commandPaletteSelectedIndex]) {
+        executeCommandPaletteCommand(commandPaletteResults[commandPaletteSelectedIndex].id);
+    }
+}
+
+function executeCommandPaletteCommand(cmdId) {
+    const cmd = COMMANDS.find(c => c.id === cmdId);
+    if (cmd) {
+        closeCommandPalette();
+        // slight delay to let modal close
+        setTimeout(() => cmd.action(), 50);
+    }
+}
+
+window.executeCommandPaletteCommand = executeCommandPaletteCommand;

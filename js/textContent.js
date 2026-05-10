@@ -72,6 +72,27 @@ const NUMBERED_STYLE_THEMES = {
     'lower-greek': 'α, β, γ...'
 };
 
+const BULLETED_LIST_STYLE_TYPES = {
+    default: "disc",
+    square: "square",
+    diamond: "disc",
+    modern: "disc",
+    chevron: "disc",
+    dash: "disc",
+    checklist: "disc",
+    star: "disc",
+};
+
+function getBulletedListStyleType(style = "default") {
+    return BULLETED_LIST_STYLE_TYPES[style] || BULLETED_LIST_STYLE_TYPES.default;
+}
+
+function escapeCssString(value) {
+    return String(value || "")
+        .replace(/\\/g, "\\\\")
+        .replace(/'/g, "\\'");
+}
+
 function normalizeStructuredBulletItem(item) {
     const safeItem = item || {};
     const html =
@@ -145,6 +166,24 @@ function extractHtmlLinePayloads(content) {
         if (node.nodeType !== Node.ELEMENT_NODE) return;
 
         const tag = node.tagName;
+        if (node.classList?.contains("ppt-bullet-block")) {
+            flushLine();
+            Array.from(node.querySelectorAll(".ppt-bullet-row")).forEach(row => {
+                const textNode = row.querySelector(".ppt-bullet-text");
+                currentHtml = textNode ? textNode.innerHTML : row.innerHTML;
+                flushLine();
+            });
+            return;
+        }
+
+        if (node.classList?.contains("ppt-bullet-row")) {
+            flushLine();
+            const textNode = node.querySelector(".ppt-bullet-text");
+            currentHtml = textNode ? textNode.innerHTML : node.innerHTML;
+            flushLine();
+            return;
+        }
+
         if (tag === "BR") {
             flushLine();
             return;
@@ -344,7 +383,22 @@ function buildNumberedListMarkup(style, lines) {
         if (!raw) return "List item";
         return /<[^>]+>/.test(raw) ? raw : escapeHtml(raw);
     });
-    return `<ol class="ppt-numbered-block" style="list-style-type:${style || "decimal"};">${safeLines.map(line => `<li>${line}</li>`).join("")}</ol>`;
+    return `<ol class="ppt-numbered-block" style="list-style-type:${style || "decimal"};margin:0;padding-left:1.5em;line-height:inherit;width:100%;text-align:inherit;">${safeLines.map(line => `<li style="margin:0;padding:0;line-height:inherit;">${line}</li>`).join("")}</ol>`;
+}
+
+function buildBulletedListMarkup(style, lines) {
+    const safeStyle = BULLET_STYLE_THEMES[style] ? style : "default";
+    const levelStyle = getLevelStyle(safeStyle, 0);
+    const marker = getBulletGlyph(levelStyle);
+    const markerColor = levelStyle.color || "currentColor";
+    const markerScale = Number(levelStyle.fontSize) || 1;
+    const normalizedLines = normalizeBulletedListLines(lines);
+    const safeLines = (normalizedLines.length ? normalizedLines : ["List item"]).map(line => {
+        const raw = String(line || "").trim();
+        if (!raw) return "List item";
+        return /<[^>]+>/.test(raw) ? raw : escapeHtml(raw);
+    });
+    return `<ul class="ppt-bulleted-block" data-bullet-style="${escapeHtml(safeStyle)}" style="--bullet-marker:'${escapeCssString(marker)}';--bullet-color:${markerColor};--bullet-font-scale:${markerScale};">${safeLines.map(line => `<li class="ppt-bulleted-item">${line}</li>`).join("")}</ul>`;
 }
 
 function applyTextNumberedState(elData, style = "decimal") {
@@ -362,7 +416,7 @@ function applyTextBulletState(elData, kind, style = "default") {
 
     if (kind === "bulleted") {
         const lines = extractStyledLines(elData.content);
-        elData.content = buildStructuredBulletContent(lines, style);
+        elData.content = buildBulletedListMarkup(style, lines);
         elData.bulletStyle = style;
     } else if (kind === "numbered") {
         applyTextNumberedState(elData, style);
@@ -436,13 +490,41 @@ function stripEditableBulletPrefix(rawLine) {
     let text = raw.slice(leading.length);
 
     for (const marker of EDITABLE_BULLET_MARKERS) {
-        if (text.startsWith(`${marker} `)) {
-            text = text.slice(marker.length + 1);
+        if (text === marker) {
+            text = "";
+            break;
+        }
+        if (text.startsWith(marker) && /^\s/.test(text.slice(marker.length, marker.length + 1))) {
+            text = text.slice(marker.length).replace(/^[\t ]+/, "");
             break;
         }
     }
 
     return { level, text };
+}
+
+function normalizeBulletedListLines(lines) {
+    return (Array.isArray(lines) && lines.length ? lines : ["List item"])
+        .map(line => {
+            const raw = String(line || "").trim();
+            if (!raw) return "";
+            if (/<[^>]+>/.test(raw)) {
+                const plain = plainTextFromHtmlSnippet(raw).replace(/\u00a0/g, " ").trim();
+                const parsedPlain = stripEditableBulletPrefix(plain);
+                if (!parsedPlain.text.trim()) return "";
+
+                const probe = document.createElement("div");
+                probe.innerHTML = raw;
+                const firstText = Array.from(probe.childNodes).find(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
+                if (firstText) {
+                    firstText.textContent = stripEditableBulletPrefix(firstText.textContent).text;
+                    return probe.innerHTML.trim();
+                }
+                return parsedPlain.text;
+            }
+            return stripEditableBulletPrefix(raw).text.trim();
+        })
+        .filter(Boolean);
 }
 
 function structuredContentToEditableText(content, bulletStyle = "default") {
@@ -455,10 +537,11 @@ function structuredContentToEditableText(content, bulletStyle = "default") {
             const item = normalizeStructuredBulletItem(rawItem);
             const level = item.level;
             const plainText = parseTextFromHtml(item.html);
+            const prefix = getEditableBulletPrefix(level, bulletStyle);
             if (!plainText.trim()) {
-                return "";
+                return prefix;
             }
-            return `${getEditableBulletPrefix(level, bulletStyle)}${plainText}`;
+            return `${prefix}${plainText}`;
         })
         .join("\n");
 }
@@ -519,8 +602,9 @@ function buildStructuredBulletEditorHtml(content, bulletStyle = "default") {
     return `<ul class="ppt-bullet-edit-list" data-bullet-style="${escapeHtml(bulletStyle)}">${rows || '<li class="ppt-bullet-edit-item" data-level="0" data-marker="•" style="--bullet-indent:0px;"><br></li>'}</ul>`;
 }
 
-function parseStructuredBulletEditorHtml(host) {
+function parseStructuredBulletEditorHtml(host, options = {}) {
     if (!host) return [normalizeStructuredBulletItem({ html: "List item", level: 0 })];
+    const preserveTrailingEmpty = Boolean(options.preserveTrailingEmpty);
     const items = Array.from(host.querySelectorAll(".ppt-bullet-edit-item")).map(item =>
         normalizeStructuredBulletItem({
             html: item.innerHTML === "<br>" ? "" : item.innerHTML,
@@ -528,7 +612,7 @@ function parseStructuredBulletEditorHtml(host) {
         }),
     );
 
-    while (items.length > 1 && !plainTextFromHtmlSnippet(items[items.length - 1].html).trim()) {
+    while (!preserveTrailingEmpty && items.length > 1 && !plainTextFromHtmlSnippet(items[items.length - 1].html).trim()) {
         items.pop();
     }
 

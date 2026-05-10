@@ -117,7 +117,7 @@ async function exportPDF() {
                 canvas = await html2canvas(slide, {
                     scale: 3,
                     useCORS: true,
-                    allowTaint: true,
+                    allowTaint: false,
                     backgroundColor: "#ffffff",
                     logging: false,
                     width: page.width,
@@ -162,7 +162,7 @@ async function exportPNG() {
             canvas = await html2canvas(slide, {
                 scale: 4,
                 useCORS: true,
-                allowTaint: true,
+                allowTaint: false,
                 backgroundColor: "#ffffff",
                 logging: false,
                 width: page.width,
@@ -215,7 +215,7 @@ async function exportPPTX() {
         
         // Use the same filename as the project title
         const titleInput = document.getElementById("project-title-input");
-        const filename = (titleInput ? titleInput.value : "presentation") + ".pptx";
+        const filename = (titleInput && titleInput.value.trim() ? titleInput.value.trim() : "presentation") + ".pptx";
 
         const response = await fetch("/api/presentations/export/pptx/", {
             method: "POST",
@@ -940,6 +940,16 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: 4px;
+    line-height: 1;
+}
+
+.equation-container .katex-display {
+    margin: 0;
+}
+
+.equation-container .katex {
+    line-height: 1;
 }
 
 /* Bullet List Styles */
@@ -948,6 +958,9 @@ body {
 .ppt-bullet-marker { display: inline-block; min-width: 1.2em; line-height: 1.2; color: var(--bullet-color, currentColor); font-size: calc(1em * var(--bullet-font-scale, 1)); }
 .ppt-bullet-text { min-width: 0; line-height: inherit; text-align: inherit; }
 .ppt-bullet-spacer { min-height: 1em; }
+.ppt-bulleted-block { list-style: none; margin: 0; padding: 0; line-height: inherit; width: 100%; text-align: inherit; }
+.ppt-bulleted-block .ppt-bulleted-item { display: grid; grid-template-columns: 1.2em minmax(0, 1fr); column-gap: 12px; align-items: start; margin: 0; padding: 0; line-height: inherit; }
+.ppt-bulleted-block .ppt-bulleted-item::before { content: var(--bullet-marker, "•"); display: inline-block; min-width: 1.2em; line-height: 1.2; color: var(--bullet-color, currentColor); font-size: calc(1em * var(--bullet-font-scale, 1)); }
 .ppt-numbered-block { margin: 0; padding-left: 1.5em; line-height: inherit; width: 100%; text-align: inherit; }
 .ppt-numbered-block li { margin: 0; padding: 0; line-height: inherit; }
 
@@ -1014,6 +1027,58 @@ function generateViewerJs() {
     return `
 const animationEffects = ['fade-in', 'slide-up', 'slide-down', 'slide-left', 'slide-right', 'zoom-in', 'pop-in', 'wipe-in', 'pulse', 'glow'];
 const MOLECULE_EMBED_3DMOL_SRC = ${JSON.stringify(typeof MOLECULE_EMBED_3DMOL_SRC === 'string' ? MOLECULE_EMBED_3DMOL_SRC : 'https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.5.3/3Dmol-min.js')};
+
+const BULLET_STYLE_THEMES = {
+    default: { levels: [
+        { type: 'symbol', value: '\u2022', fontSize: 1.0, color: 'inherit', indent: 0 },
+        { type: 'symbol', value: '\u25e6', fontSize: 0.9, color: 'inherit', indent: 20 },
+        { type: 'symbol', value: '\u25aa', fontSize: 0.85, color: 'inherit', indent: 40 },
+    ]},
+    square: { levels: [
+        { type: 'symbol', value: '\u25a0', fontSize: 0.9, color: 'inherit', indent: 0 },
+        { type: 'symbol', value: '\u25a1', fontSize: 0.9, color: 'inherit', indent: 20 },
+        { type: 'symbol', value: '\u25aa', fontSize: 0.85, color: 'inherit', indent: 40 },
+    ]},
+    diamond: { levels: [
+        { type: 'symbol', value: '\u25c6', fontSize: 0.9, color: '#f59e0b', indent: 0 },
+        { type: 'symbol', value: '\u25c7', fontSize: 0.9, color: 'inherit', indent: 20 },
+        { type: 'symbol', value: '\u25c8', fontSize: 0.85, color: 'inherit', indent: 40 },
+    ]},
+    modern: { levels: [
+        { type: 'icon', value: 'arrow-right', color: '#60a5fa', indent: 0 },
+        { type: 'symbol', value: '\u2013', color: 'inherit', indent: 20 },
+    ]},
+    chevron: { levels: [
+        { type: 'symbol', value: '\u00bb', fontSize: 1.0, color: '#38bdf8', indent: 0 },
+        { type: 'symbol', value: '\u203a', fontSize: 1.0, color: 'inherit', indent: 20 },
+        { type: 'symbol', value: '\u2013', fontSize: 0.9, color: 'inherit', indent: 40 },
+    ]},
+    dash: { levels: [
+        { type: 'symbol', value: '\u2013', fontSize: 1.0, color: 'inherit', indent: 0 },
+        { type: 'symbol', value: '\u2014', fontSize: 1.0, color: 'inherit', indent: 20 },
+        { type: 'symbol', value: '\u00b7', fontSize: 1.0, color: 'inherit', indent: 40 },
+    ]},
+    checklist: { levels: [{ type: 'icon', value: 'check', color: '#22c55e', indent: 0 }] },
+    star: { levels: [
+        { type: 'symbol', value: '\u2726', fontSize: 0.95, color: '#f472b6', indent: 0 },
+        { type: 'symbol', value: '\u2727', fontSize: 0.95, color: 'inherit', indent: 20 },
+        { type: 'symbol', value: '\u2022', fontSize: 0.9, color: 'inherit', indent: 40 },
+    ]},
+};
+const VIEWER_ICON_MAP = { 'arrow-right': '\u2192', 'check': '\u2713', 'circle': '\u25cf', 'square': '\u25a0', 'star': '\u2605', 'diamond': '\u25c6', 'chevron': '\u00bb' };
+function _viewerGetLevelStyle(bulletStyle, level) {
+    const theme = BULLET_STYLE_THEMES[bulletStyle] || BULLET_STYLE_THEMES.default;
+    return theme.levels[Math.min(level, theme.levels.length - 1)] || BULLET_STYLE_THEMES.default.levels[0];
+}
+function _viewerGetBulletGlyph(levelStyle) {
+    if (levelStyle.type === 'icon') return VIEWER_ICON_MAP[levelStyle.value] || '\u2022';
+    return levelStyle.value || '\u2022';
+}
+function _viewerGetBulletIndent(level, levelStyle) {
+    const themeIndent = Number(levelStyle.indent) || 0;
+    const structuralIndent = Math.max(0, Number(level) || 0) * 20;
+    return Math.max(themeIndent, structuralIndent);
+}
 
 ${typeof createDefaultMoleculeContent === 'function' ? createDefaultMoleculeContent.toString() : ''}
 ${typeof normalizeMoleculeFormat === 'function' ? normalizeMoleculeFormat.toString() : ''}
@@ -1532,17 +1597,17 @@ function initViewer(data) {
 function createViewerElement(elData) {
     function ensureViewerDocumentShell(content) {
         const raw = String(content || '');
-        if (/<!doctype|<html[\\s>]/i.test(raw)) return raw;
+        if (/<!doctype|<html[\s>]/i.test(raw)) return raw;
         return '<!doctype html><html><head></head><body>' + raw + '</body></html>';
     }
 
     function injectViewerIntoHead(doc, html) {
-        if (/<\\/head>/i.test(doc)) return doc.replace(/<\\/head>/i, html + '</head>');
+        if (/<\/head>/i.test(doc)) return doc.replace(/<\/head>/i, html + '</head>');
         return doc.replace(/<html[^>]*>/i, match => match + '<head>' + html + '</head>');
     }
 
     function injectViewerIntoBodyEnd(doc, html) {
-        if (/<\\/body>/i.test(doc)) return doc.replace(/<\\/body>/i, html + '</body>');
+        if (/<\/body>/i.test(doc)) return doc.replace(/<\/body>/i, html + '</body>');
         return doc + html;
     }
 
@@ -1555,7 +1620,7 @@ function createViewerElement(elData) {
         const styles =
             '<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;}body{box-sizing:border-box;}img,svg,canvas,video{max-width:100%;height:auto;}body[data-fit="fill"]>*:first-child{width:100%;height:100%;}body[data-fit="contain"]{display:flex;align-items:center;justify-content:center;}body[data-fit="contain"]>*:first-child{max-width:100%;max-height:100%;}</style>';
         const script =
-            '<script>(function(){document.body.dataset.fit=' + JSON.stringify(fit) + ';})();<\/script>';
+            '<script>(function(){document.body.dataset.fit=' + JSON.stringify(fit) + ';})();<\\/script>';
         doc = injectViewerIntoHead(doc, styles);
         doc = injectViewerIntoBodyEnd(doc, script);
         return doc;
@@ -1815,7 +1880,7 @@ function createViewerElement(elData) {
     } else if (elData.type === 'equation') {
         const container = document.createElement("div");
         container.className = "equation-container";
-        container.style.cssText = "width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:8px;";
+        container.style.cssText = "width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:4px;line-height:1;";
         container.innerHTML = elData.content || elData.latexSrc || "";
         el.appendChild(container);
     }
@@ -2000,10 +2065,15 @@ function renderConnectorElement(el, elData) {
 
 function renderTextContent(elData) {
     if (Array.isArray(elData.content)) {
-        let html = '<div class="ppt-bullet-block">';
+        const bulletStyle = (elData.bulletStyle && BULLET_STYLE_THEMES[elData.bulletStyle]) ? elData.bulletStyle : 'default';
+        let html = '<div class="ppt-bullet-block" data-bullet-style="' + bulletStyle + '">';
         elData.content.forEach(item => {
             const safeLevel = Math.max(0, Number(item.level) || 0);
-            const indent = safeLevel * 24;
+            const levelStyle = _viewerGetLevelStyle(bulletStyle, safeLevel);
+            const glyph = _viewerGetBulletGlyph(levelStyle);
+            const indent = _viewerGetBulletIndent(safeLevel, levelStyle);
+            const color = levelStyle.color || 'inherit';
+            const fontScale = Number(levelStyle.fontSize) || 1;
             const itemHtml =
                 typeof item.html === 'string'
                     ? item.html
@@ -2012,8 +2082,13 @@ function renderTextContent(elData) {
                         .replace(/</g, '&lt;')
                         .replace(/>/g, '&gt;')
                         .replace(/"/g, '&quot;');
-            html += '<div class="ppt-bullet-row" style="--bullet-indent: ' + indent + 'px">';
-            html += '<span class="ppt-bullet-marker">•</span>';
+            const text = itemHtml.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim();
+            if (!text) {
+                html += '<div class="ppt-bullet-spacer"></div>';
+                return;
+            }
+            html += '<div class="ppt-bullet-row" style="--bullet-indent:' + indent + 'px;--bullet-color:' + color + ';--bullet-font-scale:' + fontScale + ';">';
+            html += '<span class="ppt-bullet-marker">' + glyph + '</span>';
             html += '<span class="ppt-bullet-text">' + itemHtml + '</span>';
             html += '</div>';
         });

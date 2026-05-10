@@ -455,7 +455,7 @@ function clearTextFormatting(data = getSelectedElementData()) {
         updateElementState(data.id, { height: `${layout.height}px` });
         data.height = `${layout.height}px`;
     }
-    updateFloatingTextToolbar?.();
+    updateFloatingToolbars?.();
     buildPropertiesPanel();
     refreshPreviews?.();
 }
@@ -736,7 +736,11 @@ function syncTextDomContent(data) {
 function getTextPanelEditableValue(data) {
     if (!data || data.type !== "text") return "";
     if (isStructuredBulletContent(data.content)) {
-        return structuredContentToEditableText(data.content, data.bulletStyle || "default");
+        return normalizeBulletedListLines(extractPlainLines(data.content)).join("\n");
+    }
+    const listState = getTextListState(data.content, data.bulletStyle);
+    if (listState.kind === "bulleted") {
+        return normalizeBulletedListLines(extractPlainLines(data.content)).join("\n");
     }
     return parseTextFromHtml(data.content || "");
 }
@@ -747,9 +751,19 @@ function buildTextContentFromSidebarValue(data, value) {
     const listState = getTextListState(data.content, data.bulletStyle);
 
     if (isStructuredBulletContent(data.content)) {
+        const style = data.bulletStyle || "default";
+        const populatedLines = normalizeBulletedListLines(lines);
         return {
-            content: parseEditableStructuredText(rawValue, data.content),
-            bulletStyle: data.bulletStyle || "default",
+            content: buildStructuredBulletContent(populatedLines.length ? populatedLines : ["List item"], style),
+            bulletStyle: style,
+        };
+    }
+
+    if (listState.kind === "bulleted") {
+        const populatedLines = normalizeBulletedListLines(lines);
+        return {
+            content: buildStructuredBulletContent(populatedLines.length ? populatedLines : ["List item"], listState.style || "default"),
+            bulletStyle: listState.style || "default",
         };
     }
 
@@ -821,16 +835,28 @@ function applyTextBulletState(data, nextKind, nextStyle = "default") {
         nextBulletStyle = "";
     } else {
         nextBulletStyle = BULLET_STYLE_THEMES[nextStyle] ? nextStyle : "default";
-        nextContent = isStructuredBulletContent(data.content)
-            ? data.content.map(item => normalizeStructuredBulletItem(item))
-            : buildStructuredBulletContent(extractStyledLines(data.content), nextBulletStyle);
+        if (isStructuredBulletContent(data.content)) {
+            nextContent = data.content;
+        } else {
+            nextContent = buildStructuredBulletContent(extractStyledLines(data.content), nextBulletStyle);
+        }
     }
 
     updateElementState(data.id, { content: nextContent, bulletStyle: nextBulletStyle });
     data.content = nextContent;
     data.bulletStyle = nextBulletStyle;
-    syncTextDomContent(data);
-    requestAnimationFrame(updateFloatingTextToolbar);
+
+    const dom = document.getElementById(data.id);
+    const contentHost = dom?.querySelector(".text-element-content");
+    if (contentHost?.dataset?.structuredEdit === "true" && contentHost?.dataset?.structuredEditMode === "list" && isStructuredBulletContent(nextContent)) {
+        contentHost.dataset.structuredEditBulletStyle = nextBulletStyle || "default";
+        contentHost.innerHTML = buildStructuredBulletEditorHtml(nextContent, nextBulletStyle || "default");
+        contentHost.contentEditable = true;
+        if (typeof _focusEditableHost === "function") _focusEditableHost(contentHost);
+    } else {
+        syncTextDomContent(data);
+    }
+    requestAnimationFrame(updateFloatingToolbars);
 }
 
 function syncFragmentDomState(dom, fragmentAnimation, fragmentIndex) {
@@ -881,6 +907,14 @@ function getSlideAnimationEntries(slide = state.slides[currentSlideIndex]) {
             if (orderDelta !== 0) return orderDelta;
             return String(a.el.id).localeCompare(String(b.el.id));
         });
+}
+
+function getNextClickAnimationOrder(excludeId = "") {
+    return (
+        getSlideAnimationEntries()
+            .filter(entry => entry.el.id !== excludeId && entry.animation.trigger === "on-click")
+            .reduce((maxOrder, entry) => Math.max(maxOrder, Number(entry.animation.order) || 0), -1) + 1
+    );
 }
 
 function describeAnimationEffect(effect) {
@@ -982,6 +1016,36 @@ function _buildSlideWorkspacePanel(panel) {
 
     const slide = state.slides[currentSlideIndex] || { layoutId: "blank-titled", notes: "" };
     const background = normalizeSlideBackground(slide.background);
+
+    const globalGrp = createGroup("Global Settings");
+    globalGrp.innerHTML += `
+        <div class="space-y-3">
+            <div class="flex flex-col gap-1">
+                <label class="text-xs font-bold text-slate-600 uppercase tracking-wide">Theme</label>
+                <select id="prop-global-theme" class="prop-select">
+                    <option value="editorial" ${state.presentationTheme === "editorial" ? "selected" : ""}>Editorial</option>
+                    <option value="blueprint" ${state.presentationTheme === "blueprint" ? "selected" : ""}>Blueprint</option>
+                    <option value="chalkboard" ${state.presentationTheme === "chalkboard" ? "selected" : ""}>Chalkboard</option>
+                    <option value="circuit" ${state.presentationTheme === "circuit" ? "selected" : ""}>Circuit</option>
+                    <option value="afterglow" ${state.presentationTheme === "afterglow" ? "selected" : ""}>Afterglow</option>
+                    <option value="fieldnotes" ${state.presentationTheme === "fieldnotes" ? "selected" : ""}>Field Notes</option>
+                    <option value="monograph" ${state.presentationTheme === "monograph" ? "selected" : ""}>Monograph</option>
+                    <option value="graphite" ${state.presentationTheme === "graphite" ? "selected" : ""}>Graphite</option>
+                    <option value="horizon" ${state.presentationTheme === "horizon" ? "selected" : ""}>Horizon</option>
+                </select>
+            </div>
+            <div class="flex flex-col gap-1">
+                <label class="text-xs font-bold text-slate-600 uppercase tracking-wide">Slide Size</label>
+                <select id="prop-global-size" class="prop-select">
+                    <option value="widescreen-16-9" ${getPresentationPageSetupId(state) === "widescreen-16-9" ? "selected" : ""}>16:9</option>
+                    <option value="standard-4-3" ${getPresentationPageSetupId(state) === "standard-4-3" ? "selected" : ""}>4:3</option>
+                    <option value="widescreen-16-10" ${getPresentationPageSetupId(state) === "widescreen-16-10" ? "selected" : ""}>16:10</option>
+                </select>
+            </div>
+        </div>
+    `;
+    panel.appendChild(globalGrp);
+
     const layoutGrp = createGroup("Slide Layout");
     const presetOptions = Object.entries(window.SLIDE_PRESETS || {})
         .map(([id, preset]) => `<option value="${id}" ${slide.layoutId === id ? "selected" : ""}>${preset.name}</option>`)
@@ -1071,7 +1135,16 @@ function _buildSlideWorkspacePanel(panel) {
             ["prop-slide-bg-brightness", "prop-slide-bg-brightness-label", "brightness", value => Math.max(10, Math.min(200, Number(value) || 100)), value => `${Math.round(value)}%`],
             ["prop-slide-bg-saturate", "prop-slide-bg-saturate-label", "saturate", value => Math.max(0, Math.min(250, Number(value) || 100)), value => `${Math.round(value)}%`],
         ];
+        const globalTheme = document.getElementById("prop-global-theme");
+        const globalSize = document.getElementById("prop-global-size");
         const notesInput = document.getElementById("prop-slide-notes");
+
+        if (globalTheme) {
+            globalTheme.onchange = e => applyPresentationTheme(e.target.value);
+        }
+        if (globalSize) {
+            globalSize.onchange = e => applyPresentationPageSetup(e.target.value);
+        }
 
         if (applyBtn) {
             applyBtn.onclick = () => {
@@ -1149,13 +1222,154 @@ function shiftTextBulletLevels(data, delta) {
     updateElementState(data.id, { content: nextContent });
     data.content = nextContent;
     syncTextDomContent(data);
-    requestAnimationFrame(updateFloatingTextToolbar);
+    requestAnimationFrame(updateFloatingToolbars);
 }
 
 
 
-function updateFloatingTextToolbar() {
-    const toolbar = document.getElementById("floating-text-toolbar");
+function updateFloatingToolbars() {
+    ['floating-text-toolbar', 'floating-shape-toolbar', 'floating-image-toolbar'].forEach(id => {
+        const tb = document.getElementById(id);
+        if (tb) tb.classList.add("hidden");
+    });
+
+    const data = getSelectedElementData();
+    if (!data || document.body.classList.contains("play-mode-active") || state.selectedIds.length !== 1) return;
+
+    const dom = document.getElementById(data.id);
+    if (!dom) return;
+
+    let toolbarId = null;
+    if (data.type === 'text') toolbarId = 'floating-text-toolbar';
+    else if (data.type === 'shape') toolbarId = 'floating-shape-toolbar';
+    else if (data.type === 'image') toolbarId = 'floating-image-toolbar';
+
+    if (!toolbarId) return;
+
+    const toolbar = document.getElementById(toolbarId);
+    if (!toolbar) return;
+
+    const rect = dom.getBoundingClientRect();
+    positionFloatingToolbar(toolbar, rect);
+
+    if (data.type === 'text') _bindFloatingTextToolbar(data, toolbar);
+    else if (data.type === 'shape') _bindFloatingShapeToolbar(data, toolbar);
+    else if (data.type === 'image') _bindFloatingImageToolbar(data, toolbar);
+}
+
+function positionFloatingToolbar(toolbar, targetRect) {
+    if (!toolbar || !targetRect) return;
+
+    const previousVisibility = toolbar.style.visibility;
+    toolbar.classList.remove("hidden");
+    toolbar.style.visibility = "hidden";
+    toolbar.style.left = "0px";
+    toolbar.style.top = "0px";
+
+    const toolbarRect = toolbar.getBoundingClientRect();
+    const toolbarWidth = toolbarRect.width || toolbar.offsetWidth || 320;
+    const toolbarHeight = toolbarRect.height || toolbar.offsetHeight || 44;
+    const gap = 12;
+    const viewportPad = 12;
+
+    const appToolbarRect = document.getElementById("app-toolbar")?.getBoundingClientRect();
+    const insertToolbarRect = document.getElementById("insert-toolbar-row")?.getBoundingClientRect();
+    const canvasRect = document.getElementById("canvas-wrapper")?.getBoundingClientRect();
+    const propertiesRect = document.getElementById("properties-panel")?.classList.contains("hidden")
+        ? null
+        : document.getElementById("properties-panel")?.getBoundingClientRect();
+
+    const minTop = Math.max(
+        viewportPad,
+        appToolbarRect?.bottom || 0,
+        insertToolbarRect?.bottom || 0,
+    ) + 8;
+    const maxTop = window.innerHeight - toolbarHeight - viewportPad;
+    const minLeft = Math.max(viewportPad, (canvasRect?.left || 0) + 8);
+    const maxLeft = Math.max(
+        minLeft,
+        (propertiesRect?.left || window.innerWidth) - toolbarWidth - 8,
+    );
+
+    const centeredLeft = targetRect.left + targetRect.width / 2 - toolbarWidth / 2;
+    const left = Math.max(minLeft, Math.min(maxLeft, centeredLeft));
+
+    const topAbove = targetRect.top - toolbarHeight - gap;
+    const topBelow = targetRect.bottom + gap;
+    const hasRoomAbove = topAbove >= minTop;
+    const hasRoomBelow = topBelow <= maxTop;
+
+    let top;
+    if (hasRoomAbove) {
+        top = topAbove;
+    } else if (hasRoomBelow) {
+        top = topBelow;
+    } else {
+        const spaceAbove = Math.max(0, targetRect.top - minTop);
+        const spaceBelow = Math.max(0, maxTop - targetRect.bottom);
+        top = spaceBelow >= spaceAbove ? topBelow : topAbove;
+        top = Math.max(minTop, Math.min(maxTop, top));
+    }
+
+    toolbar.style.left = `${left}px`;
+    toolbar.style.top = `${top}px`;
+    toolbar.style.visibility = previousVisibility || "";
+}
+
+let _imageHoverToolbarHideTimer = null;
+
+function showImageHoverToolbar(id) {
+    if (document.body.classList.contains("play-mode-active")) return;
+    if (state.selectedIds.length && !state.selectedIds.includes(id)) return;
+
+    const data = state.slides[currentSlideIndex]?.elements?.find(el => el.id === id);
+    const dom = document.getElementById(id);
+    const toolbar = document.getElementById("floating-image-toolbar");
+    if (!data || data.type !== "image" || data.hidden || !dom || !toolbar) return;
+
+    clearTimeout(_imageHoverToolbarHideTimer);
+    ['floating-text-toolbar', 'floating-shape-toolbar'].forEach(toolbarId => {
+        document.getElementById(toolbarId)?.classList.add("hidden");
+    });
+
+    const rect = dom.getBoundingClientRect();
+    positionFloatingToolbar(toolbar, rect);
+    toolbar.dataset.hoverImageId = id;
+    _bindFloatingImageToolbar(data, toolbar);
+}
+
+function scheduleImageHoverToolbarHide(id) {
+    clearTimeout(_imageHoverToolbarHideTimer);
+    _imageHoverToolbarHideTimer = setTimeout(() => {
+        const toolbar = document.getElementById("floating-image-toolbar");
+        const dom = document.getElementById(id);
+        if (!toolbar || state.selectedIds.includes(id)) return;
+        if (toolbar.matches(":hover") || dom?.matches(":hover")) return;
+        toolbar.classList.add("hidden");
+        delete toolbar.dataset.hoverImageId;
+    }, 160);
+}
+
+function bindImageHoverToolbarElement(id) {
+    const dom = document.getElementById(id);
+    const toolbar = document.getElementById("floating-image-toolbar");
+    if (!dom || !toolbar || dom.dataset.imageHoverToolbarBound === "true") return;
+    dom.dataset.imageHoverToolbarBound = "true";
+    dom.addEventListener("mouseenter", () => showImageHoverToolbar(id));
+    dom.addEventListener("mouseleave", () => scheduleImageHoverToolbarHide(id));
+    if (toolbar.dataset.imageHoverToolbarBound !== "true") {
+        toolbar.dataset.imageHoverToolbarBound = "true";
+        toolbar.addEventListener("mouseenter", () => clearTimeout(_imageHoverToolbarHideTimer));
+        toolbar.addEventListener("mouseleave", () => {
+            const hoverId = toolbar.dataset.hoverImageId;
+            if (hoverId) scheduleImageHoverToolbarHide(hoverId);
+        });
+    }
+}
+
+window.bindImageHoverToolbarElement = bindImageHoverToolbarElement;
+
+function _bindFloatingTextToolbar(data, toolbar) {
     const boldBtn = document.getElementById("floating-text-bold");
     const italicBtn = document.getElementById("floating-text-italic");
     const fontSelect = document.getElementById("floating-text-font");
@@ -1167,32 +1381,10 @@ function updateFloatingTextToolbar() {
     const insertSymbolBtn = document.getElementById("floating-insert-symbol");
     const insertEquationBtn = document.getElementById("floating-insert-equation");
 
-    const data = getSelectedElementData();
-
-    if (!toolbar) return;
-    if (!data || data.type !== "text" || document.body.classList.contains("play-mode-active")) {
-        toolbar.classList.add("hidden");
-        return;
-    }
-
-    const dom = document.getElementById(data.id);
-    if (!dom) {
-        toolbar.classList.add("hidden");
-        return;
-    }
-
-    const rect = dom.getBoundingClientRect();
-    const toolbarRect = toolbar.getBoundingClientRect();
-    const top = Math.max(76, rect.top - toolbarRect.height - 12);
-    const left = Math.max(220, Math.min(window.innerWidth - toolbarRect.width - 24, rect.left));
-    toolbar.style.top = `${top}px`;
-    toolbar.style.left = `${left}px`;
-    toolbar.classList.remove("hidden");
-
     const applyFloatingTextFormatting = (prop, value, options = {}) => {
         applyTextFormatting(prop, value, options);
         requestAnimationFrame(() => {
-            updateFloatingTextToolbar();
+            updateFloatingToolbars();
             updateUIFromSelection?.();
         });
     };
@@ -1302,11 +1494,139 @@ function updateFloatingTextToolbar() {
 
     toolbar.dataset.guarded = "true";
 }
+function _bindFloatingShapeToolbar(data, toolbar) {
+    const fillInput = document.getElementById("floating-shape-fill");
+    const borderInput = document.getElementById("floating-shape-border");
+    const widthSelect = document.getElementById("floating-shape-border-width");
+
+    if (fillInput) {
+        if (!isControlBeingEdited(fillInput)) {
+            fillInput.value = _normalizeColorForInput(data.styles.backgroundColor, "#ffffff");
+        }
+        fillInput.oninput = e => updateElementState(data.id, { styles: { backgroundColor: e.target.value } });
+        fillInput.onchange = () => {
+            saveStateToUndo();
+            if (window.renderSlidesFromState) renderSlidesFromState();
+        };
+    }
+
+    if (borderInput) {
+        if (!isControlBeingEdited(borderInput)) {
+            const borderMatches = (data.styles.border || "").match(/solid\s+(#[0-9a-fA-F]{3,6}|rgb\([^)]+\)|[a-zA-Z]+)/);
+            borderInput.value = borderMatches ? _normalizeColorForInput(borderMatches[1], "#000000") : "#000000";
+        }
+        borderInput.oninput = e => {
+            const currentBorder = data.styles.border || "0px solid #000000";
+            const widthMatch = currentBorder.match(/^(\d+)px/);
+            const w = widthMatch ? widthMatch[1] : (data.styles.borderWidth || "1");
+            updateElementState(data.id, { styles: { border: `${Math.max(1, w)}px solid ${e.target.value}` } });
+        };
+        borderInput.onchange = () => {
+            saveStateToUndo();
+            if (window.renderSlidesFromState) renderSlidesFromState();
+        };
+    }
+
+    if (widthSelect) {
+        if (!isControlBeingEdited(widthSelect)) {
+            const currentBorder = data.styles.border || "0px solid #000000";
+            const widthMatch = currentBorder.match(/^(\d+)px/);
+            const w = widthMatch ? widthMatch[1] : (data.styles.border ? "1" : "0");
+            widthSelect.value = w;
+        }
+        widthSelect.onchange = e => {
+            const w = parseInt(e.target.value) || 0;
+            if (w === 0) {
+                updateElementState(data.id, { styles: { border: "none" } });
+            } else {
+                const borderMatches = (data.styles.border || "").match(/solid\s+(#[0-9a-fA-F]{3,6}|rgb\([^)]+\)|[a-zA-Z]+)/);
+                const color = borderMatches ? borderMatches[1] : "#000000";
+                updateElementState(data.id, { styles: { border: `${w}px solid ${color}` } });
+            }
+            saveStateToUndo();
+            if (window.renderSlidesFromState) renderSlidesFromState();
+        };
+    }
+}
+
+function _bindFloatingImageToolbar(data, toolbar) {
+    const cropBtn = document.getElementById("floating-image-crop");
+    const opacityInput = document.getElementById("floating-image-opacity");
+    const radiusSelect = document.getElementById("floating-image-radius");
+    const dom = document.getElementById(data.id);
+    if (!data.styles) data.styles = {};
+
+    if (cropBtn) {
+        cropBtn.onclick = () => {
+            if (window.triggerImageCrop) triggerImageCrop(data.id);
+        };
+    }
+
+    if (opacityInput) {
+        if (!isControlBeingEdited(opacityInput)) {
+            opacityInput.value = data.styles.opacity !== undefined ? data.styles.opacity : 1;
+        }
+        opacityInput.oninput = e => {
+            updateElementStyleState(data.id, { opacity: e.target.value });
+            data.styles.opacity = e.target.value;
+            if (dom) dom.style.opacity = e.target.value;
+        };
+        opacityInput.onchange = () => {
+            saveStateToUndo();
+            if (window.refreshPreviews) refreshPreviews();
+        };
+    }
+
+    if (radiusSelect) {
+        if (!isControlBeingEdited(radiusSelect)) {
+            radiusSelect.value = data.styles.borderRadius || "0";
+        }
+        radiusSelect.onchange = e => {
+            updateElementStyleState(data.id, { borderRadius: e.target.value });
+            data.styles.borderRadius = e.target.value;
+            if (dom) dom.style.borderRadius = e.target.value;
+            saveStateToUndo();
+            if (window.refreshPreviews) refreshPreviews();
+        };
+    }
+}
+
 
 function createGroup(title) {
     const wrap = document.createElement("div");
-    wrap.className = "prop-group space-y-3";
-    wrap.innerHTML = `<h3 class="prop-group-title">${title}</h3>`;
+    wrap.className = "prop-group";
+    const header = document.createElement("div");
+    header.className = "flex items-center justify-between cursor-pointer py-2";
+    const titleEl = document.createElement("h3");
+    titleEl.className = "prop-group-title m-0";
+    titleEl.textContent = title;
+    const chevron = document.createElement("i");
+    chevron.className = "fa-solid fa-chevron-down text-[10px] text-slate-400 transition-transform duration-200";
+    header.appendChild(titleEl);
+    header.appendChild(chevron);
+    const content = document.createElement("div");
+    content.className = "space-y-3 pt-1 pb-2";
+
+    header.onclick = () => {
+        const isHidden = content.style.display === "none";
+        content.style.display = isHidden ? "block" : "none";
+        chevron.style.transform = isHidden ? "rotate(0deg)" : "rotate(-90deg)";
+    };
+
+    wrap.appendChild(header);
+    wrap.appendChild(content);
+
+    // We override appendChild and innerHTML on 'wrap' so existing code seamlessly adds to 'content' instead of 'wrap'
+    wrap._originalAppendChild = wrap.appendChild;
+    wrap.appendChild = function(node) {
+        if (node === header || node === content) return wrap._originalAppendChild(node);
+        return content.appendChild(node);
+    };
+    Object.defineProperty(wrap, 'innerHTML', {
+        get() { return content.innerHTML; },
+        set(html) { content.innerHTML = html; }
+    });
+
     return wrap;
 }
 
@@ -1318,6 +1638,7 @@ function createField(label, inputHTML) {
 }
 
 function buildPropertiesPanel() {
+    if (typeof renderLayersList === "function") renderLayersList();
     const panel = document.getElementById("properties-content");
     if (!panel) return;
     const selectionSignature = `${currentSlideIndex}:${state.selectedIds.join("|")}`;
@@ -1332,7 +1653,7 @@ function buildPropertiesPanel() {
     };
 
     panel.innerHTML = "";
-    updateFloatingTextToolbar();
+    updateFloatingToolbars();
 
     if (state.selectedIds.length === 0) {
         _buildSlideWorkspacePanel(panel);
@@ -1365,6 +1686,16 @@ function buildPropertiesPanel() {
             <h3 class="text-xs font-bold text-slate-700 uppercase tracking-widest">${state.selectedIds.length} Object${isSingle ? "" : "s"}</h3>
             ${!isSingle ? `<span class="text-[10px] text-accent font-bold px-2 py-0.5 rounded bg-accent/10 border border-accent/20">${isGrouped ? "GROUPED" : "MULTIPLE"}</span>` : ""}
         </div>
+        ${!isSingle ? `
+        <div class="grid grid-cols-6 gap-1 mb-3 bg-slate-50 p-1.5 rounded-lg border border-slate-200">
+            <button class="prop-align-btn" onclick="alignSelection('left')" title="Align Left"><i class="fa-solid fa-align-left text-xs"></i></button>
+            <button class="prop-align-btn" onclick="alignSelection('center')" title="Align Center"><i class="fa-solid fa-align-center text-xs"></i></button>
+            <button class="prop-align-btn" onclick="alignSelection('right')" title="Align Right"><i class="fa-solid fa-align-right text-xs"></i></button>
+            <button class="prop-align-btn" onclick="alignSelection('top')" title="Align Top"><i class="fa-solid fa-align-left rotate-90 text-xs"></i></button>
+            <button class="prop-align-btn" onclick="alignSelection('middle')" title="Align Middle"><i class="fa-solid fa-align-center rotate-90 text-xs"></i></button>
+            <button class="prop-align-btn" onclick="alignSelection('bottom')" title="Align Bottom"><i class="fa-solid fa-align-right rotate-90 text-xs"></i></button>
+        </div>
+        ` : ""}
         <div class="flex gap-2">
             <button id="prop-group" class="prop-action-btn prop-action-primary flex-1">
                 <i class="fa-solid fa-object-group"></i> GROUP
@@ -1431,9 +1762,12 @@ function buildPropertiesPanel() {
     }
 
     if (!data && state.selectedIds.length > 1) {
-        const elements = state.selectedIds.map(id => state.slides[currentSlideIndex].elements.find(e => e.id === id));
+        const elements = state.selectedIds
+            .map(id => state.slides[currentSlideIndex].elements.find(e => e.id === id))
+            .filter(Boolean);
         const allShapes = elements.every(e => e.type === "shape");
         const allText = elements.every(e => e.type === "text");
+        const textElements = elements.filter(e => e.type === "text");
         if (allShapes || allText) {
             const firstColor = _normalizeColorForInput(elements[0]?.styles?.backgroundColor, "#6366f1");
             const styleGrp = createGroup("Shared Style");
@@ -1444,6 +1778,27 @@ function buildPropertiesPanel() {
                 ),
             );
             panel.appendChild(styleGrp);
+        }
+
+        if (textElements.length) {
+            const firstAlign = textElements[0]?.styles?.textAlign || "left";
+            const sharedAlign = textElements.every(e => (e.styles?.textAlign || "left") === firstAlign) ? firstAlign : "";
+            const textAlignGrp = createGroup(textElements.length === elements.length ? "Text Alignment" : "Text in Group");
+            textAlignGrp.appendChild(
+                createField(
+                    "Alignment",
+                    `<div class="prop-btn-group" id="prop-shared-text-align">
+                        ${["left", "center", "right", "justify"]
+                            .map(
+                                align => `<button type="button" class="prop-btn ${sharedAlign === align ? "active" : ""}" data-align="${align}" title="${align.charAt(0).toUpperCase() + align.slice(1)}">
+                                    <i class="fa-solid fa-align-${align === "justify" ? "justify" : align}"></i>
+                                </button>`,
+                            )
+                            .join("")}
+                    </div>`,
+                ),
+            );
+            panel.appendChild(textAlignGrp);
         }
     }
 
@@ -2114,6 +2469,10 @@ function buildPropertiesPanel() {
                 if (window.refreshPreviews) window.refreshPreviews();
             };
         }
+
+        document.querySelectorAll("#prop-shared-text-align [data-align]").forEach(button => {
+            button.onclick = () => applyTextAlignmentToSelection(button.dataset.align);
+        });
 
         const slideNotes = document.getElementById("prop-slide-notes");
         if (slideNotes) {
@@ -3090,13 +3449,19 @@ function buildPropertiesPanel() {
                 const duration = document.getElementById("prop-anim-duration");
                 const delay = document.getElementById("prop-anim-delay");
                 const easing = document.getElementById("prop-anim-easing");
+                const currentAnimation = getElementAnimationConfig(data);
+
+                const getNumberInputValue = (input, fallback) => {
+                    const parsed = parseInt(input?.value, 10);
+                    return Number.isFinite(parsed) ? parsed : fallback;
+                };
 
                 const buildConfig = () => ({
                     effect: effect?.value || "fade-in",
                     trigger: trigger?.value === "on-click" ? "on-click" : "on-slide",
-                    order: parseInt(order?.value, 10) || 0,
-                    durationMs: parseInt(duration?.value, 10) || 800,
-                    delayMs: parseInt(delay?.value, 10) || 0,
+                    order: getNumberInputValue(order, 0),
+                    durationMs: getNumberInputValue(duration, 800),
+                    delayMs: getNumberInputValue(delay, 0),
                     easing: easing?.value || "ease-out",
                 });
 
@@ -3110,10 +3475,17 @@ function buildPropertiesPanel() {
 
                 enabled && (enabled.onchange = () => {
                     controls?.classList.toggle("hidden", !enabled.checked);
+                    if (enabled.checked && trigger?.value === "on-click" && !currentAnimation && order) {
+                        order.value = String(getNextClickAnimationOrder(data.id));
+                    }
                     commitAnimation();
                 });
                 trigger && (trigger.onchange = () => {
-                    orderWrap?.classList.toggle("hidden", trigger.value !== "on-click");
+                    const isClickTriggered = trigger.value === "on-click";
+                    orderWrap?.classList.toggle("hidden", !isClickTriggered);
+                    if (isClickTriggered && currentAnimation?.trigger !== "on-click" && order) {
+                        order.value = String(getNextClickAnimationOrder(data.id));
+                    }
                     commitAnimation();
                 });
                 [effect, order, duration, delay, easing].forEach(input => {
@@ -3173,7 +3545,7 @@ function buildPropertiesPanel() {
     }, 0);
 
     restorePropertiesScroll();
-    requestAnimationFrame(updateFloatingTextToolbar);
+    requestAnimationFrame(updateFloatingToolbars);
 }
 
 
@@ -3192,6 +3564,45 @@ function ungroupSelected() {
     state.selectedIds.forEach(id => updateElementState(id, { groupId: null }));
     buildPropertiesPanel();
     updateGroupBound();
+}
+
+function applyTextAlignmentToSelection(align) {
+    const allowed = new Set(["left", "center", "right", "justify"]);
+    if (!allowed.has(align) || state.selectedIds.length === 0) return;
+
+    const slide = state.slides[currentSlideIndex];
+    if (!slide) return;
+
+    const textElements = state.selectedIds
+        .map(id => slide.elements.find(e => e.id === id))
+        .filter(e => e?.type === "text" && !e.locked);
+    if (!textElements.length) return;
+
+    saveStateToUndo();
+    textElements.forEach(data => {
+        updateElementStyleState(data.id, { textAlign: align });
+        markTextElementStyleAsLocal(data, "textAlign");
+
+        const dom = document.getElementById(data.id);
+        if (!dom) return;
+
+        _setElementDomStyleProperty(dom, "textAlign", align, "important");
+        const contentHost = dom.querySelector(".text-element-content");
+        if (contentHost) {
+            _setElementDomStyleProperty(contentHost, "textAlign", align, "important");
+        }
+
+        const layout = syncTextBoxLayout(dom, data);
+        if (layout?.autoHeight && Number.isFinite(layout.height)) {
+            updateElementState(data.id, { height: `${layout.height}px` });
+            data.height = `${layout.height}px`;
+        }
+    });
+
+    if (window.refreshPreviews) window.refreshPreviews();
+    updateGroupBound();
+    schedulePresentationAutosave?.(150);
+    buildPropertiesPanel();
 }
 
 function applyStyle(prop, value) {
@@ -3389,3 +3800,166 @@ function _normalizeColorForInput(value, fallback = "#000000") {
     }
     return fallback;
 }
+
+// ─── Layer Management ───────────────────────────────────────────────────────
+
+function renderLayersList() {
+    const container = document.getElementById("layers-list");
+    if (!container) return;
+
+    const slide = state.slides[currentSlideIndex];
+    if (!slide || !slide.elements) {
+        container.innerHTML = '<div class="text-xs text-slate-400 p-2 text-center">No elements on this slide</div>';
+        return;
+    }
+
+    // Sort elements by z-index descending (top layers first)
+    const sortedElements = [...slide.elements].sort((a, b) => {
+        const zA = a.styles?.zIndex || 0;
+        const zB = b.styles?.zIndex || 0;
+        return zB - zA;
+    });
+
+    if (sortedElements.length === 0) {
+        container.innerHTML = '<div class="text-xs text-slate-400 p-2 text-center">No elements on this slide</div>';
+        return;
+    }
+
+    container.innerHTML = sortedElements.map(el => {
+        const isSelected = state.selectedIds.includes(el.id);
+        const icon = getElementIcon(el.type);
+        const name = getElementDisplayName(el);
+        const hiddenClass = el.hidden ? "opacity-55 cursor-default" : "cursor-pointer";
+        const hiddenAttrs = el.hidden ? 'aria-disabled="true" title="Hidden layer. Use the eye button to show it before selecting."' : "";
+        return `
+            <div class="layer-list-item flex items-center gap-2 p-2 rounded-lg transition-colors border ${hiddenClass} ${isSelected ? 'bg-primary/5 border-primary/20 text-primary' : 'bg-white border-transparent text-slate-700 hover:bg-slate-50'}"
+                 ${hiddenAttrs}
+                 onclick="layerItemClicked('${el.id}', event)">
+                <i class="${icon} w-4 text-center ${isSelected ? 'text-primary' : 'text-slate-400'}"></i>
+                <span class="text-[11px] font-medium truncate flex-1">${name}</span>
+                <button class="w-5 h-5 rounded hover:bg-slate-200 flex items-center justify-center text-slate-400 transition-colors" onclick="toggleLayerVisibility('${el.id}', event)" title="Toggle Visibility">
+                    <i class="fa-regular ${el.hidden ? 'fa-eye-slash text-slate-300' : 'fa-eye'} text-[10px]"></i>
+                </button>
+            </div>
+        `;
+    }).join("");
+}
+
+function layerItemClicked(id, event) {
+    const slide = state.slides[currentSlideIndex];
+    const el = slide?.elements?.find(item => item.id === id);
+    if (!el || el.hidden) {
+        event?.preventDefault?.();
+        event?.stopPropagation?.();
+        return;
+    }
+
+    if (event.shiftKey) {
+        const newIds = [...state.selectedIds];
+        if (newIds.includes(id)) {
+            newIds.splice(newIds.indexOf(id), 1);
+        } else {
+            newIds.push(id);
+        }
+        setSelectedIds(newIds);
+    } else {
+        setSelectedIds([id]);
+    }
+    buildPropertiesPanel();
+    updateGroupBound();
+    renderLayersList();
+}
+
+function getElementIcon(type) {
+    switch (type) {
+        case 'text': return 'fa-solid fa-t';
+        case 'image': return 'fa-regular fa-image';
+        case 'shape': return 'fa-regular fa-square';
+        case 'video': return 'fa-solid fa-video';
+        case 'connector': return 'fa-solid fa-arrow-right-long';
+        case 'table': return 'fa-solid fa-table';
+        case 'chart': return 'fa-solid fa-chart-pie';
+        case 'molecule': return 'fa-solid fa-dna';
+        case 'pdf': return 'fa-regular fa-file-pdf';
+        default: return 'fa-solid fa-cube';
+    }
+}
+
+function getElementDisplayName(el) {
+    if (el.type === 'text') {
+        let text = String(el.content || "").replace(/<[^>]+>/g, '').trim();
+        if (!text) return 'Text Box';
+        return text.length > 20 ? text.substring(0, 20) + '...' : text;
+    }
+    if (el.type === 'image') return 'Image';
+    if (el.type === 'shape') {
+        const shapeType = el.shapeType || 'Rectangle';
+        return shapeType.charAt(0).toUpperCase() + shapeType.slice(1);
+    }
+    if (el.type === 'connector') return 'Connector';
+    if (el.type === 'video') return 'Video';
+    if (el.type === 'table') return 'Table';
+    if (el.type === 'molecule') return 'Molecule';
+    return el.type.charAt(0).toUpperCase() + el.type.slice(1);
+}
+
+function toggleLayerVisibility(id, event) {
+    event.stopPropagation();
+    const slide = state.slides[currentSlideIndex];
+    if (!slide) return;
+    const el = slide.elements.find(e => e.id === id);
+    if (!el) return;
+
+    saveStateToUndo();
+    el.hidden = !el.hidden;
+
+    if (el.hidden && state.selectedIds.includes(id)) {
+        setSelectedIds(state.selectedIds.filter(selectedId => selectedId !== id));
+        buildPropertiesPanel();
+        updateGroupBound();
+    }
+
+    const dom = document.getElementById(id);
+    if (dom) {
+        dom.style.opacity = el.hidden ? "0" : "1";
+        dom.style.pointerEvents = el.hidden ? "none" : "auto";
+    }
+
+    renderLayersList();
+}
+
+function moveSelectedLayer(direction) {
+    if (state.selectedIds.length !== 1) return;
+    const id = state.selectedIds[0];
+
+    const slide = state.slides[currentSlideIndex];
+    if (!slide) return;
+
+    saveStateToUndo();
+
+    // Sort all elements by current Z index
+    slide.elements.sort((a, b) => (a.styles?.zIndex || 0) - (b.styles?.zIndex || 0));
+
+    const currentIndex = slide.elements.findIndex(e => e.id === id);
+    if (currentIndex === -1) return;
+
+    if (direction === 'up' && currentIndex < slide.elements.length - 1) {
+        // Swap with the element immediately above it
+        const tempZ = slide.elements[currentIndex].styles.zIndex;
+        slide.elements[currentIndex].styles.zIndex = slide.elements[currentIndex + 1].styles.zIndex;
+        slide.elements[currentIndex + 1].styles.zIndex = tempZ;
+    } else if (direction === 'down' && currentIndex > 0) {
+        // Swap with the element immediately below it
+        const tempZ = slide.elements[currentIndex].styles.zIndex;
+        slide.elements[currentIndex].styles.zIndex = slide.elements[currentIndex - 1].styles.zIndex;
+        slide.elements[currentIndex - 1].styles.zIndex = tempZ;
+    }
+
+    renderSlidesFromState();
+    renderLayersList();
+}
+
+window.renderLayersList = renderLayersList;
+window.layerItemClicked = layerItemClicked;
+window.toggleLayerVisibility = toggleLayerVisibility;
+window.moveSelectedLayer = moveSelectedLayer;

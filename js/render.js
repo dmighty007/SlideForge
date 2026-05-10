@@ -143,6 +143,31 @@ function _refreshStructuredBulletEditorMarkers(host) {
     });
 }
 
+function _commitStructuredBulletEditorChange(host) {
+    if (!host || _getStructuredEditorMode(host) !== "list") return;
+    const dom = host.closest(".canvas-element");
+    const id = dom?.id || dom?.dataset?.id;
+    if (!id) return;
+    const elData = state.slides[currentSlideIndex]?.elements?.find(el => el.id === id);
+    if (!elData || elData.type !== "text") return;
+
+    const nextContent = parseStructuredBulletEditorHtml(host, { preserveTrailingEmpty: true });
+    if (host.dataset.undoSnapshotCaptured !== "true") {
+        saveStateToUndo();
+        host.dataset.undoSnapshotCaptured = "true";
+    }
+    updateElementState(id, { content: nextContent, bulletStyle: _getStructuredEditorBulletStyle(host) });
+    elData.content = nextContent;
+    elData.bulletStyle = _getStructuredEditorBulletStyle(host);
+
+    const layout = syncTextBoxLayout(dom, elData);
+    if (layout?.autoHeight && Number.isFinite(layout.height)) {
+        updateElementState(id, { height: `${layout.height}px` });
+        elData.height = `${layout.height}px`;
+    }
+    refreshPreviews?.();
+}
+
 function _placeCaretInElement(el, { atEnd = false } = {}) {
     if (!el) return;
     const selection = window.getSelection();
@@ -154,16 +179,54 @@ function _placeCaretInElement(el, { atEnd = false } = {}) {
     selection.addRange(range);
 }
 
+function _placeCaretInListItemText(item, { atEnd = false } = {}) {
+    if (!item) return;
+    const selection = window.getSelection();
+    if (!selection) return;
+    const range = document.createRange();
+    let textNode = Array.from(item.childNodes).find(node => node.nodeType === Node.TEXT_NODE);
+    if (!textNode) {
+        textNode = document.createTextNode("");
+        item.insertBefore(textNode, atEnd ? null : item.firstChild);
+    }
+    const offset = atEnd ? textNode.textContent.length : 0;
+    range.setStart(textNode, offset);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+}
+
 function _insertStructuredListItemBreak(host) {
     const item = _getActiveStructuredBulletListItem(host);
     if (!host || !item) return false;
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return false;
+    const range = selection.getRangeAt(0);
+    if (!item.contains(range.startContainer)) return false;
+
+    if (!range.collapsed) {
+        range.deleteContents();
+    }
+
+    const splitRange = document.createRange();
+    splitRange.selectNodeContents(item);
+    splitRange.setStart(range.startContainer, range.startOffset);
+    const trailingContent = splitRange.extractContents();
+
     const nextItem = document.createElement("li");
     nextItem.className = "ppt-bullet-edit-item";
     nextItem.dataset.level = item.dataset.level || "0";
-    nextItem.innerHTML = "<br>";
+    nextItem.appendChild(trailingContent);
+    if (!nextItem.textContent.trim() && !nextItem.querySelector("br,img,svg,math")) {
+        nextItem.innerHTML = "<br>";
+    }
+    if (!item.textContent.trim() && !item.querySelector("br,img,svg,math")) {
+        item.innerHTML = "<br>";
+    }
     item.insertAdjacentElement("afterend", nextItem);
     _refreshStructuredBulletEditorMarkers(host);
-    _placeCaretInElement(nextItem);
+    _placeCaretInListItemText(nextItem);
+    _commitStructuredBulletEditorChange(host);
     return true;
 }
 
@@ -194,10 +257,12 @@ function _handleStructuredListBackspace(host) {
         host.querySelector(".ppt-bullet-edit-list")?.appendChild(fallback);
         _refreshStructuredBulletEditorMarkers(host);
         _placeCaretInElement(fallback);
+        _commitStructuredBulletEditorChange(host);
         return true;
     }
     _refreshStructuredBulletEditorMarkers(host);
     _placeCaretInElement(previous || next, { atEnd: Boolean(previous) });
+    _commitStructuredBulletEditorChange(host);
     return true;
 }
 
@@ -245,6 +310,7 @@ function _adjustStructuredIndentation(el, direction) {
         const nextLevel = Math.max(0, Math.min(2, (Number(item.dataset.level) || 0) + direction));
         item.dataset.level = String(nextLevel);
         _refreshStructuredBulletEditorMarkers(el);
+        _commitStructuredBulletEditorChange(el);
         return;
     }
 
@@ -813,6 +879,9 @@ function renderSlidesFromState() {
     }
     if (typeof schedulePresentationAutosave === "function") {
         schedulePresentationAutosave();
+    }
+    if (typeof renderLayersList === "function") {
+        renderLayersList();
     }
 }
 
@@ -1474,6 +1543,11 @@ function createElementNode(elData) {
     }
     _applyStylesToElement(el, elData.styles);
 
+    if (elData.hidden) {
+        el.style.opacity = "0";
+        el.style.pointerEvents = "none";
+    }
+
     // ── Fragment animations (Reveal.js) ──────────────────────────────────
     const isPlayMode = document.body.classList.contains("play-mode-active");
 
@@ -1553,15 +1627,14 @@ function _applyTypeContent(el, elData) {
             if (document.body.classList.contains("play-mode-active")) return;
             event.stopPropagation();
             selectElement(elData.id, "replace");
-            const isStructured = isStructuredBulletContent(elData.content);
+            let isStructured = isStructuredBulletContent(elData.content);
             if (isStructured) {
                 contentHost.dataset.structuredEdit = "true";
                 contentHost.dataset.structuredEditMode = "list";
                 contentHost.dataset.structuredEditBulletStyle = elData.bulletStyle || "default";
                 contentHost.dataset.structuredEditPreviousTextAlign = contentHost.style.textAlign || "";
-                contentHost.innerHTML = buildStructuredBulletEditorHtml(elData.content, elData.bulletStyle || "default");
-                contentHost.style.whiteSpace = "normal";
                 contentHost.style.setProperty("text-align", "left", "important");
+                contentHost.innerHTML = buildStructuredBulletEditorHtml(elData.content, elData.bulletStyle || "default");
             }
             contentHost.contentEditable = true;
             if (!isStructured) {
@@ -1576,7 +1649,7 @@ function _applyTypeContent(el, elData) {
                 if (!isStructured) {
                     captureInlineSelection();
                 }
-                updateFloatingTextToolbar?.();
+                updateFloatingToolbars?.();
             });
         });
         contentHost.addEventListener("mousedown", e => {
@@ -1599,13 +1672,21 @@ function _applyTypeContent(el, elData) {
         contentHost.addEventListener("keyup", captureInlineSelection);
         contentHost.addEventListener("mouseup", captureInlineSelection);
         contentHost.addEventListener("input", () => {
-            if (contentHost.dataset.structuredEdit === "true") return;
             if (contentHost.dataset.undoSnapshotCaptured !== "true") {
                 saveStateToUndo();
                 contentHost.dataset.undoSnapshotCaptured = "true";
             }
-            updateElementState(el.id, { content: contentHost.innerHTML });
-            captureInlineSelection();
+            if (contentHost.dataset.structuredEdit === "true") {
+                const nextContent =
+                    _getStructuredEditorMode(contentHost) === "list"
+                        ? parseStructuredBulletEditorHtml(contentHost, { preserveTrailingEmpty: true })
+                        : parseEditableStructuredText(contentHost.textContent || "", elData.content);
+                updateElementState(el.id, { content: nextContent });
+                elData.content = nextContent;
+            } else {
+                updateElementState(el.id, { content: contentHost.innerHTML });
+                captureInlineSelection();
+            }
             const layout = syncTextBoxLayout(el, elData);
             if (layout?.autoHeight && Number.isFinite(layout.height)) {
                 updateElementState(el.id, { height: `${layout.height}px` });
@@ -1692,6 +1773,9 @@ function _applyTypeContent(el, elData) {
             if (document.body.classList.contains("play-mode-active")) return;
             if (typeof enterCropMode === "function") enterCropMode(elData.id);
         });
+        if (typeof bindImageHoverToolbarElement === "function") {
+            requestAnimationFrame(() => bindImageHoverToolbarElement(elData.id));
+        }
     } else if (elData.type === "video") {
         const videoInfo = _parseVideoUrl(elData.content);
         let videoNode;
@@ -1836,7 +1920,7 @@ function _applyTypeContent(el, elData) {
         const color = elData.styles?.color || "#ffffff";
         const fontSize = elData.styles?.fontSize || "24px";
         
-        container.style.cssText = `width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:8px; color:${color}; font-size:${fontSize};`;
+        container.style.cssText = `width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:4px;color:${color};font-size:${fontSize};line-height:1;`;
         container.innerHTML = elData.content || elData.latexSrc || "";
         el.appendChild(container);
 
@@ -1844,8 +1928,7 @@ function _applyTypeContent(el, elData) {
         el.addEventListener("dblclick", () => {
             if (document.body.classList.contains("play-mode-active")) return;
             if (typeof openEquationModal === "function") {
-                openEquationModal(elData.latexSrc || "");
-                window._editingEquationId = elData.id;
+                openEquationModal(elData.latexSrc || "", elData.id);
             }
         });
     } else if (elData.type === "shape") {

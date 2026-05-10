@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    
+
     <!-- SEO & Metadata -->
     <title>SlideForge — Professional AI-Powered Presentation Builder</title>
     <meta name="description" content="SlideForge is a professional, AI-powered presentation builder designed for speed, beauty, and impact. Create stunning slides with our minimal SaaS editor, intelligent layouts, and high-quality exports." />
     <meta name="keywords" content="presentation builder, slide maker, AI presentation, online slides, professional presentations, PowerPoint alternative, SlideForge" />
     <meta name="author" content="SlideForge Team" />
-    
+
     <!-- Favicon -->
     <link rel="icon" type="image/png" href="assets/favicon_icon.png" />
     <link rel="apple-touch-icon" href="assets/favicon_icon.png" />
@@ -177,17 +177,40 @@
             </div>
 
             <div class="toolbar-actions toolbar-primary-actions">
-                <div class="toolbar-cluster toolbar-cluster-muted">
-                    <button id="toggle-tool-dock" onclick="toggleToolDock()" title="Hide Tools" class="toolbar-btn" aria-pressed="true">
-                        <i class="fa-solid fa-toolbox text-sm"></i>
-                        <span class="toolbar-btn-label">Tools</span>
+                <div class="toolbar-cluster toolbar-cluster-muted toolbar-icon-cluster">
+                    <button onclick="undo()" title="Undo (Ctrl+Z)" class="toolbar-btn" id="btn-undo">
+                        <i class="fa-solid fa-rotate-left text-sm"></i>
+                    </button>
+                    <button onclick="redo()" title="Redo (Ctrl+Y)" class="toolbar-btn" id="btn-redo">
+                        <i class="fa-solid fa-rotate-right text-sm"></i>
+                    </button>
+                    <div class="w-px h-4 bg-border mx-1"></div>
+                    <button onclick="copySelectionToClipboard()" class="toolbar-btn" title="Copy Selected Element">
+                        <i class="fa-regular fa-copy text-sm"></i>
+                    </button>
+                    <button onclick="pasteFromClipboard()" class="toolbar-btn" title="Paste From Clipboard">
+                        <i class="fa-regular fa-clipboard text-sm"></i>
+                    </button>
+                    <div class="w-px h-4 bg-border mx-1"></div>
+                    <button id="toggle-properties-panel" onclick="togglePropertiesPanel()" title="Show Properties" class="toolbar-btn" aria-pressed="false">
+                        <i class="fa-solid fa-sliders text-sm"></i>
+                        <span class="toolbar-btn-label">Properties</span>
+                    </button>
+                    <button id="toggle-layers-popover" onclick="toggleLayersPopover()" title="Layers" class="toolbar-btn" aria-pressed="false">
+                        <i class="fa-solid fa-layer-group text-sm"></i>
+                        <span class="toolbar-btn-label">Layers</span>
                     </button>
                 </div>
 
                 <div class="toolbar-cluster toolbar-cluster-strong">
-                    <button onclick="togglePlayMode()" id="btn-present" class="toolbar-btn toolbar-btn-success" title="Present">
-                        <i class="fa-solid fa-play text-sm"></i>
-                        <span class="toolbar-btn-label">Present</span>
+                    <button onclick="aiCleanUpSlide()" title="AI Clean Up (LLM visual polish)" aria-label="Polish slide" class="toolbar-btn toolbar-btn-ai toolbar-btn-icon-emphasis">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    </button>
+                    <button id="toolbar-ai-import" onclick="triggerAIImportPicker()" title="Import PDF or AI JSON" aria-label="Import PDF or AI JSON" class="toolbar-btn toolbar-btn-accent toolbar-btn-icon-emphasis">
+                        <i class="fa-solid fa-file-import"></i>
+                    </button>
+                    <button onclick="togglePlayMode()" id="btn-present" class="toolbar-btn toolbar-btn-success toolbar-btn-icon-emphasis" title="Present" aria-label="Present">
+                        <i class="fa-solid fa-play"></i>
                     </button>
                     <div style="position:relative; display:inline-block;" id="export-menu-container">
                         <button onclick="toggleExportMenu()" class="toolbar-btn toolbar-btn-primary" title="Export">
@@ -237,58 +260,88 @@
                 </div>
             </div>
         </div>
-
-        <div id="toolbar-tool-dock" class="toolbar-secondary-row">
-            <div class="toolbar-secondary-bar">
-                <div class="toolbar-cluster toolbar-cluster-muted toolbar-icon-cluster">
-                    <button onclick="undo()" title="Undo (Ctrl+Z)" class="toolbar-btn" id="btn-undo">
-                        <i class="fa-solid fa-rotate-left text-sm"></i>
+        <div class="toolbar-secondary-row" id="insert-toolbar-row">
+            <div class="toolbar-secondary-bar insert-toolbar" aria-label="Insert elements">
+                <div class="toolbar-cluster">
+                    <span class="toolbar-label insert-toolbar-mark" title="Insert" aria-hidden="true">
+                        <i class="fa-solid fa-plus"></i>
+                    </span>
+                    <button onclick="addElement('text')" class="toolbar-btn insert-tool-btn" title="Text Block" aria-label="Text Block">
+                        <i class="fa-solid fa-t"></i>
                     </button>
-                    <button onclick="redo()" title="Redo (Ctrl+Y)" class="toolbar-btn" id="btn-redo">
-                        <i class="fa-solid fa-rotate-right text-sm"></i>
+                    <button onclick="addElement('table')" class="toolbar-btn insert-tool-btn" title="Table" aria-label="Table">
+                        <i class="fa-solid fa-table"></i>
                     </button>
-                    <button onclick="aiCleanUpSlide()" title="AI Clean Up (LLM visual polish)" class="toolbar-btn toolbar-btn-ai">
-                        <i class="fa-solid fa-wand-magic-sparkles text-sm"></i>
-                    </button>
-                </div>
-
-                <div class="toolbar-cluster toolbar-theme-cluster">
-                    <label class="toolbar-label" for="theme-selector">Theme</label>
-                    <select id="theme-selector" class="toolbar-select">
-                        <option value="editorial">Editorial</option>
-                        <option value="blueprint">Blueprint</option>
-                        <option value="chalkboard">Chalkboard</option>
-                        <option value="circuit">Circuit</option>
-                        <option value="afterglow">Afterglow</option>
-                        <option value="fieldnotes">Field Notes</option>
-                        <option value="monograph">Monograph</option>
-                        <option value="graphite">Graphite</option>
-                        <option value="horizon">Horizon</option>
-                    </select>
-                    <label class="toolbar-label" for="page-setup-selector">Size</label>
-                    <select id="page-setup-selector" class="toolbar-select">
-                        <option value="widescreen-16-9">16:9</option>
-                        <option value="standard-4-3">4:3</option>
-                        <option value="widescreen-16-10">16:10</option>
-                    </select>
-                </div>
-
-                <div class="toolbar-cluster toolbar-icon-cluster">
-                    <button id="toggle-properties-panel" onclick="togglePropertiesPanel()" title="Show Properties" class="toolbar-btn" aria-pressed="false">
-                        <i class="fa-solid fa-sliders text-sm"></i>
-                        <span class="toolbar-btn-label">Properties</span>
-                    </button>
-                    <button id="toolbar-ai-import" onclick="triggerAIImportPicker()" title="Import PDF or AI JSON" class="toolbar-btn toolbar-btn-accent">
-                        <i class="fa-solid fa-wand-magic-sparkles text-sm"></i>
-                        <span class="toolbar-btn-label">AI Import</span>
-                    </button>
-                    <button onclick="copySelectionToClipboard()" class="toolbar-btn" title="Copy Selected Element">
-                        <i class="fa-regular fa-copy text-sm"></i>
-                    </button>
-                    <button onclick="pasteFromClipboard()" class="toolbar-btn" title="Paste From Clipboard">
-                        <i class="fa-regular fa-clipboard text-sm"></i>
+                    <button onclick="document.getElementById('image-file-upload').click()" class="toolbar-btn insert-tool-btn" title="Image" aria-label="Image">
+                        <i class="fa-regular fa-image"></i>
                     </button>
                 </div>
+                <div class="toolbar-cluster">
+                    <button onclick="addChart('bar')" class="toolbar-btn insert-tool-btn" title="Bar Chart" aria-label="Bar Chart">
+                        <i class="fa-solid fa-chart-bar"></i>
+                    </button>
+                    <button onclick="addChart('line')" class="toolbar-btn insert-tool-btn" title="Line Chart" aria-label="Line Chart">
+                        <i class="fa-solid fa-chart-line"></i>
+                    </button>
+                    <button onclick="addChart('pie')" class="toolbar-btn insert-tool-btn" title="Pie Chart" aria-label="Pie Chart">
+                        <i class="fa-solid fa-chart-pie"></i>
+                    </button>
+                </div>
+                <div class="toolbar-cluster">
+                    <button onclick="openEquationModal()" class="toolbar-btn insert-tool-btn insert-tool-warm" title="LaTeX Equation" aria-label="LaTeX Equation">
+                        <i class="fa-solid fa-square-root-variable"></i>
+                    </button>
+                    <button data-preserve-inline-selection="true" onmousedown="captureInlineSelection?.(); beginFormattingInteraction?.()" onclick="openSymbolPicker()" class="toolbar-btn insert-tool-btn insert-tool-warm" title="Symbols" aria-label="Symbols">
+                        <i class="fa-solid fa-omega"></i>
+                    </button>
+                    <button onclick="openShapePicker()" class="toolbar-btn insert-tool-btn" title="Shapes and Arrows" aria-label="Shapes and Arrows">
+                        <i class="fa-regular fa-square"></i>
+                    </button>
+                </div>
+                <div class="toolbar-cluster">
+                    <button onclick="addConnector('line')" class="toolbar-btn insert-tool-btn" title="Line Connector" aria-label="Line Connector">
+                        <i class="fa-solid fa-slash"></i>
+                    </button>
+                    <button onclick="addConnector('curve')" class="toolbar-btn insert-tool-btn" title="Curve Connector" aria-label="Curve Connector">
+                        <i class="fa-solid fa-bezier-curve"></i>
+                    </button>
+                    <button onclick="addConnector('poly')" class="toolbar-btn insert-tool-btn" title="Polyline Connector" aria-label="Polyline Connector">
+                        <i class="fa-solid fa-share-nodes"></i>
+                    </button>
+                </div>
+                <div class="toolbar-cluster">
+                    <button onclick="addElement('video')" class="toolbar-btn insert-tool-btn" title="Video URL" aria-label="Video URL">
+                        <i class="fa-solid fa-link"></i>
+                    </button>
+                    <button onclick="document.getElementById('video-file-upload').click()" class="toolbar-btn insert-tool-btn" title="Local Video" aria-label="Local Video">
+                        <i class="fa-solid fa-file-video"></i>
+                    </button>
+                    <button onclick="document.getElementById('pdf-file-upload').click()" class="toolbar-btn insert-tool-btn" title="Local PDF" aria-label="Local PDF">
+                        <i class="fa-solid fa-file-pdf"></i>
+                    </button>
+                    <button onclick="document.getElementById('html-file-upload').click()" class="toolbar-btn insert-tool-btn" title="HTML Embed" aria-label="HTML Embed">
+                        <i class="fa-solid fa-code"></i>
+                    </button>
+                    <button onclick="document.getElementById('molecule-file-upload').click()" class="toolbar-btn insert-tool-btn" title="PDB or Trajectory" aria-label="PDB or Trajectory">
+                        <i class="fa-solid fa-atom"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div id="layers-popover" class="layers-popover hidden">
+            <div class="layers-popover-header">
+                <span>Layers</span>
+                <div class="layers-popover-actions">
+                    <button onclick="moveSelectedLayer('up')" title="Bring Forward" type="button">
+                        <i class="fa-solid fa-chevron-up"></i>
+                    </button>
+                    <button onclick="moveSelectedLayer('down')" title="Send Backward" type="button">
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </button>
+                </div>
+            </div>
+            <div id="layers-list" class="layers-popover-list">
+                <!-- JS rendered layers -->
             </div>
         </div>
     </header>
@@ -299,19 +352,6 @@
         <!-- ══════════════════════════════════════ LEFT SIDEBAR -->
         <aside class="w-56 bg-white border-r border-border flex flex-col z-20 shrink-0 shadow-panel">
 
-            <!-- Tab Switcher -->
-            <div class="flex border-b border-border shrink-0">
-                <button id="tab-slides" onclick="switchSidebarTab('slides')"
-                    class="sidebar-tab sidebar-tab-active flex-1 py-2.5 text-xs font-semibold">
-                    <i class="fa-regular fa-images mr-1.5"></i>Slides
-                </button>
-                <button id="tab-elements" onclick="switchSidebarTab('elements')"
-                    class="sidebar-tab flex-1 py-2.5 text-xs font-semibold">
-                    <i class="fa-solid fa-plus mr-1.5"></i>Elements
-                </button>
-            </div>
-
-            <!-- SLIDES TAB -->
             <div id="panel-slides" class="flex flex-col flex-1 min-h-0">
                 <!-- Add Slide CTA -->
                 <div class="p-3 border-b border-border shrink-0">
@@ -323,114 +363,6 @@
                 <!-- Slide Thumbnails -->
                 <div id="slide-previews" class="flex-1 overflow-y-auto p-3 space-y-2 bg-surface/50">
                     <!-- Populated dynamically -->
-                </div>
-            </div>
-
-            <!-- ELEMENTS TAB -->
-            <div id="panel-elements" class="flex flex-col flex-1 min-h-0 hidden">
-                <div class="flex-1 overflow-y-auto p-3 space-y-1">
-
-                    <!-- Section: Content -->
-                    <p class="element-section-label">Content</p>
-                    <div class="space-y-1">
-                        <button onclick="addElement('text')" class="element-btn">
-                            <i class="fa-solid fa-t w-5 text-primary"></i>
-                            <span>Text Block</span>
-                        </button>
-                        <button onclick="addElement('table')" class="element-btn">
-                            <i class="fa-solid fa-table w-5 text-primary"></i>
-                            <span>Table</span>
-                        </button>
-                        <div class="h-px bg-border my-1 mx-2"></div>
-                        <button onclick="addChart('bar')" class="element-btn">
-                            <i class="fa-solid fa-chart-bar w-5 text-primary"></i>
-                            <span>Bar Chart</span>
-                        </button>
-                        <button onclick="addChart('line')" class="element-btn">
-                            <i class="fa-solid fa-chart-line w-5 text-primary"></i>
-                            <span>Line Chart</span>
-                        </button>
-                        <button onclick="addChart('pie')" class="element-btn">
-                            <i class="fa-solid fa-chart-pie w-5 text-primary"></i>
-                            <span>Pie Chart</span>
-                        </button>
-                        <div class="h-px bg-border my-1 mx-2"></div>
-                        <button onclick="document.getElementById('image-file-upload').click()" class="element-btn">
-                            <i class="fa-regular fa-image w-5 text-primary"></i>
-                            <span>Image</span>
-                        </button>
-                        <button onclick="document.getElementById('html-file-upload').click()" class="element-btn">
-                            <i class="fa-solid fa-code w-5 text-primary"></i>
-                            <span>HTML Embed</span>
-                        </button>
-                        <button onclick="document.getElementById('molecule-file-upload').click()" class="element-btn">
-                            <i class="fa-solid fa-atom w-5 text-primary"></i>
-                            <span>PDB / Trajectory</span>
-                        </button>
-                    </div>
-
-                    <!-- Section: Math & Science -->
-                    <p class="element-section-label mt-2">Math & Science</p>
-                    <div class="element-grid">
-                        <button onclick="openEquationModal()" class="element-btn-sm">
-                            <i class="fa-solid fa-square-root-variable text-amber-500"></i>
-                            <span>LaTeX</span>
-                        </button>
-                        <button data-preserve-inline-selection="true" onmousedown="captureInlineSelection?.(); beginFormattingInteraction?.()" onclick="openSymbolPicker()" class="element-btn-sm">
-                            <i class="fa-solid fa-omega text-amber-500"></i>
-                            <span>Symbols</span>
-                        </button>
-                    </div>
-
-                    <!-- Section: Media -->
-                    <p class="element-section-label mt-2">Media</p>
-                    <div class="element-grid">
-                        <button onclick="addElement('video')" class="element-btn-sm">
-                            <i class="fa-solid fa-link text-primary"></i>
-                            <span>Video URL</span>
-                        </button>
-                        <button onclick="document.getElementById('video-file-upload').click()" class="element-btn-sm">
-                            <i class="fa-solid fa-file-video text-primary"></i>
-                            <span>Local Video</span>
-                        </button>
-                        <button onclick="addElement('pdf')" class="element-btn-sm">
-                            <i class="fa-regular fa-file-pdf text-red-500"></i>
-                            <span>PDF URL</span>
-                        </button>
-                        <button onclick="document.getElementById('pdf-file-upload').click()" class="element-btn-sm">
-                            <i class="fa-solid fa-file-pdf text-red-500"></i>
-                            <span>Local PDF</span>
-                        </button>
-                    </div>
-
-                    <!-- Section: Shapes -->
-                    <p class="element-section-label mt-3">Shapes</p>
-                    <div class="grid grid-cols-1 gap-1">
-                        <button onclick="openShapePicker()" class="element-btn-sm element-btn-wide">
-                            <i class="fa-regular fa-square text-text-sub"></i>
-                            <span>Shapes &amp; Arrows</span>
-                        </button>
-                    </div>
-
-                    <p class="element-section-label mt-2">Connectors</p>
-                    <div class="grid grid-cols-3 gap-1">
-                        <button onclick="addConnector('line')" class="element-btn-sm">
-                            <i class="fa-solid fa-slash text-text-sub"></i>
-                            <span>Line</span>
-                        </button>
-                        <button onclick="addConnector('curve')" class="element-btn-sm">
-                            <i class="fa-solid fa-bezier-curve text-text-sub"></i>
-                            <span>Curve</span>
-                        </button>
-                        <button onclick="addConnector('poly')" class="element-btn-sm">
-                            <i class="fa-solid fa-share-nodes text-text-sub"></i>
-                            <span>Poly</span>
-                        </button>
-                    </div>
-
-                    <!-- Section: Preset Slides -->
-                    <p class="element-section-label mt-2">Slide Presets</p>
-                    <div class="preset-palette" id="preset-slides-list"></div>
                 </div>
             </div>
         </aside>
@@ -562,12 +494,49 @@
                     <button id="floating-insert-equation" class="floating-text-button" title="Insert Equation" onclick="openEquationModal()">
                         <i class="fa-solid fa-square-root-variable"></i>
                     </button>
-
                 </div>
 
-                <!-- Dot grid overlay (editor only) -->
-                <div class="editor-ui absolute inset-0 pointer-events-none"
-                    style="background-image: radial-gradient(circle, #CBD5E1 1px, transparent 1px); background-size: 24px 24px; opacity: 0.5;">
+                <!-- Floating Shape Toolbar -->
+                <div id="floating-shape-toolbar" class="floating-text-toolbar hidden">
+                    <div class="flex items-center gap-1 px-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Shape</div>
+                    <div class="floating-toolbar-divider"></div>
+                    <div class="floating-color-tools" title="Fill Color">
+                        <i class="fa-solid fa-fill-drip text-[10px] text-slate-400"></i>
+                        <input type="color" id="floating-shape-fill" class="floating-text-button p-0 border-0 ml-1">
+                    </div>
+                    <div class="floating-toolbar-divider"></div>
+                    <div class="floating-color-tools" title="Border Color">
+                        <i class="fa-solid fa-border-all text-[10px] text-slate-400"></i>
+                        <input type="color" id="floating-shape-border" class="floating-text-button p-0 border-0 ml-1">
+                    </div>
+                    <select id="floating-shape-border-width" class="floating-text-select ml-1" style="width:56px;" title="Border Width">
+                        <option value="0">0px</option>
+                        <option value="1">1px</option>
+                        <option value="2">2px</option>
+                        <option value="4">4px</option>
+                        <option value="8">8px</option>
+                    </select>
+                </div>
+
+                <!-- Floating Image Toolbar -->
+                <div id="floating-image-toolbar" class="floating-text-toolbar hidden">
+                    <div class="flex items-center gap-1 px-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Image</div>
+                    <div class="floating-toolbar-divider"></div>
+                    <button id="floating-image-crop" class="floating-text-button" title="Crop Image">
+                        <i class="fa-solid fa-crop-simple"></i>
+                    </button>
+                    <div class="floating-toolbar-divider"></div>
+                    <div class="flex items-center gap-1" title="Opacity">
+                        <i class="fa-solid fa-droplet text-[10px] text-slate-400 ml-1"></i>
+                        <input type="range" id="floating-image-opacity" min="0" max="1" step="0.1" class="w-16 accent-primary ml-1">
+                    </div>
+                    <div class="floating-toolbar-divider"></div>
+                    <select id="floating-image-radius" class="floating-text-select" style="width:64px;" title="Corner Radius">
+                        <option value="0">Square</option>
+                        <option value="8px">Rounded</option>
+                        <option value="16px">Pill</option>
+                        <option value="50%">Circle</option>
+                    </select>
                 </div>
 
                 <!-- Marquee -->
@@ -719,7 +688,7 @@
     </div>
 
     <!-- ══════════════════════════════════════════ SYMBOL PICKER MODAL -->
-    <div id="symbol-picker-modal" style="display:none" class="fixed inset-0 z-[500] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+    <div id="symbol-picker-modal" style="display:none" class="fixed left-[240px] top-[120px] z-[500]">
         <div class="bg-white rounded-2xl shadow-2xl w-[520px] max-h-[75vh] flex flex-col border border-border">
             <div class="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
                 <h3 class="text-sm font-semibold text-text-main">Insert Symbol</h3>
@@ -738,7 +707,7 @@
     </div>
 
     <!-- ══════════════════════════════════════════ SHAPE PICKER MODAL -->
-    <div id="shape-picker-modal" style="display:none" class="fixed inset-0 z-[500] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+    <div id="shape-picker-modal" style="display:none" class="fixed left-[240px] top-[120px] z-[500]">
         <div class="shape-picker-sheet bg-white rounded-xl shadow-2xl w-[660px] max-w-[92vw] flex flex-col border border-border">
             <div class="flex items-center justify-between px-5 py-3 border-b border-border">
                 <div>
@@ -823,43 +792,59 @@
     </div>
 
     <!-- ══════════════════════════════════════════ EQUATION MODAL -->
-    <div id="equation-modal" style="display:none" class="fixed inset-0 z-[500] flex items-center justify-center bg-black/40 backdrop-blur-sm">
-        <div class="bg-white rounded-2xl shadow-2xl w-[560px] flex flex-col border border-border">
-            <div class="flex items-center justify-between px-5 py-3 border-b border-border">
-                <h3 class="text-sm font-semibold text-text-main"><i class="fa-solid fa-square-root-variable text-amber-500 mr-2"></i>Insert LaTeX Equation</h3>
-                <button onclick="closeEquationModal()" class="text-text-sub hover:text-text-main w-7 h-7 flex items-center justify-center rounded-lg hover:bg-surface">
+    <div id="equation-modal" style="display:none" class="equation-modal fixed left-[240px] top-[120px] z-[500]">
+        <div class="equation-editor-shell">
+            <div class="equation-editor-header">
+                <div class="equation-editor-title">
+                    <span class="equation-editor-mark"><i class="fa-solid fa-square-root-variable"></i></span>
+                    <div>
+                        <h3>LaTeX Equation</h3>
+                        <p>Compose a formula and preview the rendered output.</p>
+                    </div>
+                </div>
+                <button onclick="closeEquationModal()" class="equation-editor-close" title="Close">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
-            <div class="p-5 space-y-4">
-                <div>
-                    <label class="text-xs font-semibold text-text-sub uppercase tracking-wider block mb-2">LaTeX Expression</label>
+            <div class="equation-editor-body">
+                <section class="equation-code-panel">
+                    <label for="equation-input">Expression</label>
                     <textarea id="equation-input" rows="3"
-                        class="w-full border border-border rounded-xl px-3 py-2 text-sm font-mono bg-surface focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
-                        placeholder="e.g.  \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}"
+                        class="equation-input"
+                        placeholder="\\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}"
                         oninput="previewEquation()"></textarea>
-                </div>
-                <div class="bg-surface rounded-xl border border-border p-4 min-h-[64px] flex items-center justify-center" id="equation-preview">
-                    <span class="text-text-sub text-xs">Preview will appear here…</span>
-                </div>
-                <div class="flex gap-2 flex-wrap">
-                    <span class="text-[10px] font-bold text-text-sub uppercase tracking-widest w-full">Quick Insert</span>
-                    <button onclick="setEquationQuick('\\frac{a}{b}')" class="px-2 py-1 rounded-lg border border-border text-xs hover:border-primary hover:text-primary transition-colors font-mono">a/b</button>
-                    <button onclick="setEquationQuick('\\sqrt{x}')" class="px-2 py-1 rounded-lg border border-border text-xs hover:border-primary hover:text-primary transition-colors font-mono">√x</button>
-                    <button onclick="setEquationQuick('\\sum_{i=0}^{n}')" class="px-2 py-1 rounded-lg border border-border text-xs hover:border-primary hover:text-primary transition-colors font-mono">Σ</button>
-                    <button onclick="setEquationQuick('\\int_{a}^{b}')" class="px-2 py-1 rounded-lg border border-border text-xs hover:border-primary hover:text-primary transition-colors font-mono">∫</button>
-                    <button onclick="setEquationQuick('\\lim_{x \\to \\infty}')" class="px-2 py-1 rounded-lg border border-border text-xs hover:border-primary hover:text-primary transition-colors font-mono">lim</button>
-                    <button onclick="setEquationQuick('\\vec{v} = \\frac{d\\vec{r}}{dt}')" class="px-2 py-1 rounded-lg border border-border text-xs hover:border-primary hover:text-primary transition-colors font-mono">d/dt</button>
-                    <button onclick="setEquationQuick('\\alpha \\beta \\gamma \\delta')" class="px-2 py-1 rounded-lg border border-border text-xs hover:border-primary hover:text-primary transition-colors font-mono">αβγδ</button>
-                    <button onclick="setEquationQuick('E = mc^2')" class="px-2 py-1 rounded-lg border border-border text-xs hover:border-primary hover:text-primary transition-colors font-mono">E=mc²</button>
-                    <button onclick="setEquationQuick('\\hat{H}\\psi = E\\psi')" class="px-2 py-1 rounded-lg border border-border text-xs hover:border-primary hover:text-primary transition-colors font-mono">Ĥψ=Eψ</button>
-                </div>
+                    <div class="equation-help-row">
+                        <span>Display mode preview</span>
+                        <span>KaTeX</span>
+                    </div>
+                </section>
+                <section class="equation-preview-panel">
+                    <div class="equation-preview-label">Preview</div>
+                    <div class="equation-preview" id="equation-preview">
+                        <span>Preview will appear here...</span>
+                    </div>
+                </section>
+                <section class="equation-quick-panel">
+                    <div class="equation-quick-label">Quick Insert</div>
+                    <div class="equation-quick-grid">
+                        <button onclick="setEquationQuick('\\frac{a}{b}')">Fraction</button>
+                        <button onclick="setEquationQuick('\\sqrt{x}')">Radical</button>
+                        <button onclick="setEquationQuick('\\sum_{i=0}^{n}')">Sum</button>
+                        <button onclick="setEquationQuick('\\int_{a}^{b}')">Integral</button>
+                        <button onclick="setEquationQuick('\\lim_{x \\to \\infty}')">Limit</button>
+                        <button onclick="setEquationQuick('\\vec{v} = \\frac{d\\vec{r}}{dt}')">Vector</button>
+                        <button onclick="setEquationQuick('\\alpha \\beta \\gamma \\delta')">Greek</button>
+                        <button onclick="setEquationQuick('E = mc^2')">Energy</button>
+                        <button onclick="setEquationQuick('\\hat{H}\\psi = E\\psi')">Quantum</button>
+                    </div>
+                </section>
             </div>
-            <div class="flex gap-3 px-5 py-4 border-t border-border">
-                <button onclick="closeEquationModal()" class="flex-1 py-2 rounded-xl border border-border text-sm font-medium text-text-sub hover:bg-surface transition-colors">Cancel</button>
-                <button onclick="insertEquation()" class="flex-1 py-2 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary-hover transition-colors">Insert Equation</button>
+            <div class="equation-editor-footer">
+                <button onclick="closeEquationModal()" class="equation-secondary-action">Cancel</button>
+                <button onclick="insertEquation()" class="equation-primary-action">Insert Equation</button>
             </div>
         </div>
+    </div>
     <!-- ══════════════════════════════════════════ KEYBOARD SHORTCUTS MODAL -->
     <div id="shortcuts-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] hidden items-center justify-center p-4">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-scaleIn">
@@ -959,6 +944,21 @@
         </div>
     </div>
 
+    <!-- ══════════════════════════════════════════ COMMAND PALETTE MODAL -->
+    <div id="command-palette-modal" style="display:none" class="fixed inset-0 z-[600] flex items-start justify-center pt-[15vh]">
+        <div class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onclick="closeCommandPalette()"></div>
+        <div class="relative bg-white rounded-2xl shadow-2xl w-[600px] max-w-[90vw] flex flex-col border border-slate-200/60 overflow-hidden animate-popIn">
+            <div class="flex items-center px-4 py-3 border-b border-slate-100 bg-slate-50/50">
+                <i class="fa-solid fa-magnifying-glass text-slate-400 mr-3 text-lg"></i>
+                <input type="text" id="command-palette-input" class="w-full bg-transparent border-none outline-none text-slate-700 text-lg placeholder:text-slate-300" placeholder="Type a command or search..." autocomplete="off">
+                <span class="px-2 py-1 bg-white border border-slate-200 rounded text-[10px] font-mono text-slate-400 ml-3 shrink-0">ESC</span>
+            </div>
+            <div id="command-palette-results" class="max-h-[360px] overflow-y-auto py-2">
+                <!-- Results rendered by JS -->
+            </div>
+        </div>
+    </div>
+
     <!-- ══════════════════════════════════════════ EXTERNAL LIBS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reveal.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
@@ -966,7 +966,7 @@
     <script src="https://cdn.jsdelivr.net/npm/reveal.js-plugins@4.6.0/chalkboard/plugin.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/js/all.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    
+
     <!-- Export Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -1000,16 +1000,19 @@
     <script>
         // Sidebar tab switching
         function switchSidebarTab(tab) {
-            const isSlides = tab === 'slides';
-            document.getElementById('tab-slides').classList.toggle('sidebar-tab-active', isSlides);
-            document.getElementById('tab-elements').classList.toggle('sidebar-tab-active', !isSlides);
-            document.getElementById('panel-slides').classList.toggle('hidden', !isSlides);
-            document.getElementById('panel-elements').classList.toggle('hidden', isSlides);
+            document.getElementById('tab-slides')?.classList.toggle('sidebar-tab-active', tab === 'slides');
+            document.getElementById('tab-elements')?.classList.toggle('sidebar-tab-active', tab === 'elements');
+
+            document.getElementById('panel-slides')?.classList.toggle('hidden', false);
+            document.getElementById('panel-slides')?.classList.toggle('flex', true);
+
+            document.getElementById('panel-elements')?.classList.toggle('hidden', true);
+            document.getElementById('panel-elements')?.classList.toggle('flex', false);
         }
 
         // Equation modal
-        function openEquationModal(existingLatex) {
-            window._editingEquationId = null;
+        function openEquationModal(existingLatex, editId = null) {
+            window._editingEquationId = editId || null;
             const modal = document.getElementById('equation-modal');
             if (modal) modal.style.display = 'flex';
             const inp = document.getElementById('equation-input');
@@ -1020,7 +1023,7 @@
             if (existingLatex) {
                 previewEquation();
             } else {
-                document.getElementById('equation-preview').innerHTML = '<span style="color:#94a3b8;font-size:12px">Preview will appear here…</span>';
+                document.getElementById('equation-preview').innerHTML = '<span>Preview will appear here...</span>';
             }
         }
 
@@ -1033,18 +1036,18 @@
         function previewEquation() {
             const src = document.getElementById('equation-input').value.trim();
             const preview = document.getElementById('equation-preview');
-            if (!src) { preview.innerHTML = '<span style="color:#94a3b8;font-size:12px">Preview will appear here…</span>'; return; }
+            if (!src) { preview.innerHTML = '<span>Preview will appear here...</span>'; return; }
             try {
                 preview.innerHTML = '';
                 katex.render(src, preview, { throwOnError: false, displayMode: true });
             } catch(e) {
-                preview.innerHTML = '<span style="color:#ef4444;font-size:12px">Invalid LaTeX</span>';
+                preview.innerHTML = '<span style="color:#dc2626">Invalid LaTeX</span>';
             }
         }
 
         function setEquationQuick(latex) {
             const inp = document.getElementById('equation-input');
-            if (inp) { inp.value = latex; previewEquation(); }
+            if (inp) { inp.value = latex; previewEquation(); inp.focus(); }
         }
 
         function insertEquation() {

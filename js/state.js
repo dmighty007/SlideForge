@@ -438,12 +438,16 @@ function closeUserMenu() {
 function toggleUserMenu() {
     const menu = document.getElementById("auth-menu");
     if (!menu) return;
+    closeExportMenu();
+    window.closeLayersPopover?.();
     menu.classList.toggle("hidden");
 }
 
 function toggleExportMenu() {
     const dd = document.getElementById("export-menu-dropdown");
     if (!dd) return;
+    closeUserMenu();
+    window.closeLayersPopover?.();
     dd.classList.toggle("show");
 }
 
@@ -509,8 +513,11 @@ function updateAuthUi() {
     }
 
     if (aiImportBtn) {
-        aiImportBtn.disabled = !currentAuthUser;
-        aiImportBtn.classList.toggle("opacity-50", !currentAuthUser);
+        aiImportBtn.disabled = false;
+        aiImportBtn.classList.toggle("toolbar-btn-needs-auth", !currentAuthUser);
+        aiImportBtn.title = currentAuthUser
+            ? "Import PDF or AI JSON"
+            : "Import AI JSON locally. Sign in for AI PDF import.";
     }
 
     if (autosaveBadge) {
@@ -538,6 +545,19 @@ const SAFE_TEXT_STYLE_PROPS = new Set([
     "text-align",
     "text-decoration",
     "vertical-align",
+    "list-style-type",
+    "margin",
+    "margin-top",
+    "margin-right",
+    "margin-bottom",
+    "margin-left",
+    "padding",
+    "padding-top",
+    "padding-right",
+    "padding-bottom",
+    "padding-left",
+    "line-height",
+    "width",
 ]);
 const SAFE_ELEMENT_STYLE_PROPS = new Set([
     "backgroundColor",
@@ -1172,9 +1192,7 @@ function requireAuthenticatedAction(action, mode = "login") {
 }
 
 function triggerAIImportPicker() {
-    requireAuthenticatedAction(() => {
-        document.getElementById("ai-json-upload")?.click();
-    });
+    document.getElementById("ai-json-upload")?.click();
 }
 
 function _inferPresentationTitle() {

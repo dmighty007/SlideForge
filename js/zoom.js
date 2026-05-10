@@ -238,6 +238,9 @@ function handleEditorViewportResize() {
     } else {
         applyZoom({ preserveViewport: true });
     }
+    requestAnimationFrame(() => {
+        if (typeof updateGroupBound === "function") updateGroupBound();
+    });
 }
 
 function centerSlide() {
@@ -281,6 +284,10 @@ function restoreEditorZoom() {
     if (isPresentationPlaying()) return;
     applyZoom();
     centerSlide();
+    requestAnimationFrame(() => {
+        if (typeof updateGroupBound === "function") updateGroupBound();
+        if (typeof updateFloatingToolbars === "function") updateFloatingToolbars();
+    });
 }
 
 window.getCanvasScale = function() {
