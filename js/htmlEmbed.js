@@ -1,6 +1,17 @@
 const EMBED_STYLE_ID = "pptmaker-embed-style";
 const EMBED_SCRIPT_ID = "pptmaker-embed-script";
 const AUTOFIT_ROOT_ID = "pptmaker-autofit-root";
+const HTML_EMBED_SANDBOX = "allow-scripts allow-forms allow-popups allow-downloads";
+
+function getHtmlEmbedSandbox() {
+    return HTML_EMBED_SANDBOX;
+}
+
+function applyHtmlEmbedSandbox(iframe) {
+    if (!iframe) return;
+    iframe.setAttribute("sandbox", getHtmlEmbedSandbox());
+    iframe.setAttribute("referrerpolicy", "no-referrer");
+}
 
 function ensureDocumentShell(content) {
     const raw = String(content || "");

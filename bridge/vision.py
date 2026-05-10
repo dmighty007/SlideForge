@@ -228,18 +228,30 @@ def enrich_catalog(visual_catalog: list, status_cb=None) -> list:
     Run enrich_figure on every entry in *visual_catalog* that has a valid path.
     Returns a new list with `vision` key added to enriched entries.
     """
+    if os.getenv("PPTMAKER_ENABLE_VISION_ENRICHMENT", "1") != "1":
+        if status_cb:
+            status_cb("vision_skip", "Vision enrichment disabled")
+        return visual_catalog
+
     model = _available_vision_model()
     if not model:
         if status_cb:
             status_cb("vision_skip", "No Ollama vision model available — skipping figure enrichment")
         return visual_catalog
 
+    try:
+        max_items = max(0, int(os.getenv("PPTMAKER_MAX_VISION_FIGURES", "8")))
+    except ValueError:
+        max_items = 8
+    catalog_to_enrich = visual_catalog[:max_items] if max_items else []
+    skipped = visual_catalog[max_items:] if max_items else visual_catalog
+
     if status_cb:
-        status_cb("vision_start", f"Enriching figures with {model}", {"current": 0, "total": len(visual_catalog)})
+        status_cb("vision_start", f"Enriching figures with {model}", {"current": 0, "total": len(catalog_to_enrich)})
 
     enriched = []
-    total = len(visual_catalog)
-    for idx, entry in enumerate(visual_catalog, start=1):
+    total = len(catalog_to_enrich)
+    for idx, entry in enumerate(catalog_to_enrich, start=1):
         new_entry = dict(entry)
         path = entry.get("path")
         screen = None
@@ -272,7 +284,7 @@ def enrich_catalog(visual_catalog: list, status_cb=None) -> list:
                     status_cb("vision_figure", f"Enriched {entry.get('id', path)}", {"current": idx, "total": total})
         enriched.append(new_entry)
 
-    return enriched
+    return enriched + skipped
 
 
 def _should_drop_candidate(entry: dict) -> bool:

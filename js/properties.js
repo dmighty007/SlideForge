@@ -686,6 +686,7 @@ function syncHtmlEmbedDom(data) {
     const frame = dom.querySelector(".html-embed-frame");
     if (frame) {
         frame.srcdoc = buildHtmlEmbedSrcdoc(data.content || "", data);
+        applyHtmlEmbedSandbox(frame);
     }
 
     const badge = dom.querySelector(".html-embed-badge");
@@ -1858,6 +1859,98 @@ function buildPropertiesPanel() {
             panel.appendChild(pdfGrp);
         }
 
+        if (data.type === "molecule") {
+            const moleculeGrp = createGroup("Molecule Viewer");
+            const moleculeName = String(data.moleculeName || "Molecule").replace(/"/g, "&quot;");
+            const moleculeLayers = (Array.isArray(data.moleculeRepresentationLayers) ? data.moleculeRepresentationLayers : [])
+                .map(layer => typeof normalizeMoleculeRepresentationLayer === "function" ? normalizeMoleculeRepresentationLayer(layer) : layer)
+                .slice(0, 12);
+            moleculeGrp.innerHTML += `
+                <div class="flex flex-col gap-2 mb-3">
+                    <input type="text" id="prop-molecule-name" class="w-full text-xs" value="${moleculeName}" placeholder="Molecule name">
+                    <button onclick="document.getElementById('molecule-file-upload').click()" class="w-full py-2 rounded bg-gray-900 border border-gray-700 text-xs text-gray-200">
+                        Replace PDB / Trajectory
+                    </button>
+                </div>
+                <button id="prop-molecule-toggle" class="w-full py-2 rounded bg-gray-900 border border-gray-700 text-xs text-gray-200 mb-2">
+                    ${data.moleculeInteractive ? "Disable Editor Interaction" : "Enable Editor Interaction"}
+                </button>
+                <div class="grid grid-cols-2 gap-2 mb-2">
+                    <label class="flex flex-col gap-1 text-[11px] text-gray-400">
+                        Style
+                        <select id="prop-molecule-style" class="w-full text-xs">
+                            <option value="cartoon" ${data.moleculeDefaultStyle === "cartoon" ? "selected" : ""}>Cartoon</option>
+                            <option value="stick" ${data.moleculeDefaultStyle === "stick" ? "selected" : ""}>Stick</option>
+                            <option value="sphere" ${data.moleculeDefaultStyle === "sphere" ? "selected" : ""}>Sphere</option>
+                            <option value="line" ${data.moleculeDefaultStyle === "line" ? "selected" : ""}>Line</option>
+                            <option value="surface" ${data.moleculeDefaultStyle === "surface" ? "selected" : ""}>Surface</option>
+                        </select>
+                    </label>
+                    <label class="flex flex-col gap-1 text-[11px] text-gray-400">
+                        Color
+                        <select id="prop-molecule-color" class="w-full text-xs">
+                            <option value="spectrum" ${data.moleculeDefaultColor === "spectrum" ? "selected" : ""}>Spectrum</option>
+                            <option value="default" ${data.moleculeDefaultColor === "default" ? "selected" : ""}>Element</option>
+                            <option value="chain" ${data.moleculeDefaultColor === "chain" ? "selected" : ""}>Chain</option>
+                            <option value="amino" ${data.moleculeDefaultColor === "amino" ? "selected" : ""}>Residue</option>
+                            <option value="ssJmol" ${data.moleculeDefaultColor === "ssJmol" ? "selected" : ""}>SS Jmol</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <button id="prop-molecule-rotate" class="py-2 rounded border text-xs ${data.moleculeAutoRotate ? "bg-accent/20 border-accent/40 text-accent" : "bg-gray-900 border-gray-700 text-gray-200"}">Auto Rotate</button>
+                    <button id="prop-molecule-projection" class="py-2 rounded bg-gray-900 border border-gray-700 text-xs text-gray-200">
+                        ${data.moleculeProjection === "orthographic" ? "Orthographic" : "Perspective"}
+                    </button>
+                </div>
+                <div class="mt-3 pt-3 border-t border-gray-700/70 space-y-2">
+                    <div class="text-[11px] text-gray-400 font-semibold uppercase tracking-wide">Representation Layer</div>
+                    <input type="text" id="prop-molecule-layer-selection" class="w-full text-xs" value="all" placeholder="all, protein, ligand, chain A, resi 42">
+                    <div class="grid grid-cols-2 gap-2">
+                        <select id="prop-molecule-layer-style" class="w-full text-xs">
+                            <option value="cartoon">Cartoon</option>
+                            <option value="stick">Stick</option>
+                            <option value="sphere">Sphere</option>
+                            <option value="line">Line</option>
+                            <option value="surface">Surface</option>
+                            <option value="hidden">Hidden</option>
+                        </select>
+                        <select id="prop-molecule-layer-color" class="w-full text-xs">
+                            <option value="spectrum">Spectrum</option>
+                            <option value="default">Element</option>
+                            <option value="chain">Chain</option>
+                            <option value="amino">Residue</option>
+                            <option value="ssJmol">SS Jmol</option>
+                            <option value="custom">Custom</option>
+                        </select>
+                    </div>
+                    <input type="color" id="prop-molecule-layer-custom" class="w-full h-8 rounded bg-transparent" value="#6366f1">
+                    <button id="prop-molecule-add-layer" class="w-full py-2 rounded bg-accent/20 border border-accent/40 text-xs text-accent font-semibold">
+                        Add Layer
+                    </button>
+                </div>
+                <div class="mt-3 space-y-1">
+                    <div class="flex items-center justify-between">
+                        <span class="text-[11px] text-gray-400 font-semibold uppercase tracking-wide">Saved Layers</span>
+                        <button id="prop-molecule-clear-layers" class="text-[11px] text-gray-400 hover:text-red-400" ${moleculeLayers.length ? "" : "disabled"}>Clear</button>
+                    </div>
+                    <div id="prop-molecule-layer-list" class="space-y-1">
+                        ${moleculeLayers.length ? moleculeLayers.map(layer => `
+                            <div class="flex items-center gap-2 rounded border border-gray-700 bg-gray-900 px-2 py-1.5">
+                                <span class="w-2 h-2 rounded-full bg-accent shrink-0"></span>
+                                <span class="min-w-0 flex-1 truncate text-[11px] text-gray-300" title="${String(layer.label || "").replace(/"/g, "&quot;")}">${layer.label || "Layer"}</span>
+                                <button class="prop-molecule-remove-layer text-[12px] text-red-400 hover:text-red-300" data-layer-id="${layer.id}">×</button>
+                            </div>
+                        `).join("") : `<div class="text-[11px] text-gray-500 italic">No saved layers</div>`}
+                    </div>
+                </div>
+                <p class="text-[11px] text-gray-500 leading-relaxed mt-3">
+                    Layer controls are saved with this element and applied in editor, export, and presentation mode.
+                </p>
+            `;
+            panel.appendChild(moleculeGrp);
+        }
+
         if (data.type === "equation") {
             const eqGrp = createGroup("Equation");
             eqGrp.innerHTML += `
@@ -2695,6 +2788,156 @@ function buildPropertiesPanel() {
                                 height: `${height}px`,
                                 htmlMode: "autofit",
                             });
+                            buildPropertiesPanel();
+                        });
+                    };
+                }
+            }
+
+            if (data.type === "molecule") {
+                const refreshMoleculeDom = updates => {
+                    const dom = document.getElementById(data.id);
+                    if (!dom) return;
+                    const merged = { ...data, ...updates };
+                    dom.classList.toggle("molecule-interactive", Boolean(merged.moleculeInteractive));
+                    const iframe = dom.querySelector(".molecule-embed-frame");
+                    if (iframe && typeof buildMoleculeEmbedSrcdoc === "function") {
+                        iframe.srcdoc = buildMoleculeEmbedSrcdoc(merged);
+                    }
+                };
+                const normalizedLayers = () =>
+                    (Array.isArray(data.moleculeRepresentationLayers) ? data.moleculeRepresentationLayers : [])
+                        .map(layer => typeof normalizeMoleculeRepresentationLayer === "function" ? normalizeMoleculeRepresentationLayer(layer) : layer)
+                        .slice(0, 12);
+
+                const nameInput = document.getElementById("prop-molecule-name");
+                if (nameInput) {
+                    const commitName = () => {
+                        onCommit(() => {
+                            const next = nameInput.value.trim() || "Molecule";
+                            data.moleculeName = next;
+                            updateElementState(data.id, { moleculeName: next });
+                            refreshMoleculeDom({ moleculeName: next });
+                        });
+                    };
+                    nameInput.onchange = commitName;
+                    nameInput.onblur = commitName;
+                }
+
+                const toggleBtn = document.getElementById("prop-molecule-toggle");
+                if (toggleBtn) {
+                    toggleBtn.onclick = () => {
+                        onCommit(() => {
+                            const next = !data.moleculeInteractive;
+                            data.moleculeInteractive = next;
+                            updateElementState(data.id, { moleculeInteractive: next });
+                            refreshMoleculeDom({ moleculeInteractive: next });
+                            buildPropertiesPanel();
+                        });
+                    };
+                }
+
+                const styleField = document.getElementById("prop-molecule-style");
+                if (styleField) {
+                    styleField.onchange = e => {
+                        onCommit(() => {
+                            const next = ["cartoon", "stick", "sphere", "line", "surface"].includes(e.target.value) ? e.target.value : "cartoon";
+                            data.moleculeDefaultStyle = next;
+                            updateElementState(data.id, { moleculeDefaultStyle: next });
+                            refreshMoleculeDom({ moleculeDefaultStyle: next });
+                        });
+                    };
+                }
+
+                const colorField = document.getElementById("prop-molecule-color");
+                if (colorField) {
+                    colorField.onchange = e => {
+                        onCommit(() => {
+                            const next = ["default", "chain", "amino", "ssJmol", "spectrum"].includes(e.target.value) ? e.target.value : "spectrum";
+                            data.moleculeDefaultColor = next;
+                            updateElementState(data.id, { moleculeDefaultColor: next });
+                            refreshMoleculeDom({ moleculeDefaultColor: next });
+                        });
+                    };
+                }
+
+                const rotateBtn = document.getElementById("prop-molecule-rotate");
+                if (rotateBtn) {
+                    rotateBtn.onclick = () => {
+                        onCommit(() => {
+                            const next = !data.moleculeAutoRotate;
+                            data.moleculeAutoRotate = next;
+                            updateElementState(data.id, { moleculeAutoRotate: next });
+                            refreshMoleculeDom({ moleculeAutoRotate: next });
+                            buildPropertiesPanel();
+                        });
+                    };
+                }
+
+                const projectionBtn = document.getElementById("prop-molecule-projection");
+                if (projectionBtn) {
+                    projectionBtn.onclick = () => {
+                        onCommit(() => {
+                            const next = data.moleculeProjection === "orthographic" ? "perspective" : "orthographic";
+                            data.moleculeProjection = next;
+                            updateElementState(data.id, { moleculeProjection: next });
+                            refreshMoleculeDom({ moleculeProjection: next });
+                            buildPropertiesPanel();
+                        });
+                    };
+                }
+
+                const layerColorField = document.getElementById("prop-molecule-layer-color");
+                const layerCustomField = document.getElementById("prop-molecule-layer-custom");
+                if (layerColorField && layerCustomField) {
+                    const syncCustomVisibility = () => {
+                        layerCustomField.classList.toggle("hidden", layerColorField.value !== "custom");
+                    };
+                    layerColorField.onchange = syncCustomVisibility;
+                    syncCustomVisibility();
+                }
+
+                const addLayerBtn = document.getElementById("prop-molecule-add-layer");
+                if (addLayerBtn) {
+                    addLayerBtn.onclick = () => {
+                        onCommit(() => {
+                            const selectionQuery = document.getElementById("prop-molecule-layer-selection")?.value?.trim() || "all";
+                            const kind = document.getElementById("prop-molecule-layer-style")?.value || "cartoon";
+                            const colorScheme = document.getElementById("prop-molecule-layer-color")?.value || "spectrum";
+                            const customColor = document.getElementById("prop-molecule-layer-custom")?.value || "#6366f1";
+                            const rawLayer = { selectionQuery, kind, colorScheme, customColor };
+                            const layer = typeof normalizeMoleculeRepresentationLayer === "function"
+                                ? normalizeMoleculeRepresentationLayer(rawLayer)
+                                : { ...rawLayer, id: generateId("mol_layer"), label: `${kind} · ${selectionQuery}` };
+                            const nextLayers = [...normalizedLayers(), layer].slice(0, 12);
+                            data.moleculeRepresentationLayers = nextLayers;
+                            updateElementState(data.id, { moleculeRepresentationLayers: nextLayers });
+                            refreshMoleculeDom({ moleculeRepresentationLayers: nextLayers });
+                            buildPropertiesPanel();
+                        });
+                    };
+                }
+
+                document.querySelectorAll(".prop-molecule-remove-layer").forEach(btn => {
+                    btn.onclick = () => {
+                        onCommit(() => {
+                            const layerId = btn.dataset.layerId;
+                            const nextLayers = normalizedLayers().filter(layer => String(layer.id) !== String(layerId));
+                            data.moleculeRepresentationLayers = nextLayers;
+                            updateElementState(data.id, { moleculeRepresentationLayers: nextLayers });
+                            refreshMoleculeDom({ moleculeRepresentationLayers: nextLayers });
+                            buildPropertiesPanel();
+                        });
+                    };
+                });
+
+                const clearLayersBtn = document.getElementById("prop-molecule-clear-layers");
+                if (clearLayersBtn) {
+                    clearLayersBtn.onclick = () => {
+                        onCommit(() => {
+                            data.moleculeRepresentationLayers = [];
+                            updateElementState(data.id, { moleculeRepresentationLayers: [] });
+                            refreshMoleculeDom({ moleculeRepresentationLayers: [] });
                             buildPropertiesPanel();
                         });
                     };

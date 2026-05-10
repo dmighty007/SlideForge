@@ -1,5 +1,6 @@
 import json
 
+from django.conf import settings
 from django.core.files.base import ContentFile
 from django.http import HttpResponseBadRequest, JsonResponse
 from django.utils.text import get_valid_filename
@@ -63,7 +64,7 @@ def ai_import_start(request):
     else:
         job.source_pdf.save(filename, ContentFile(raw_body), save=True)
     queue_import_job(job)
-    return JsonResponse({"job_id": str(job.id)})
+    return JsonResponse({"job_id": str(job.id), "remote_llm_enabled": settings.PPTMAKER_ALLOW_REMOTE_LLM})
 
 
 @require_GET
@@ -89,6 +90,7 @@ def ai_import_status(request):
             "message": job.message,
             "percent": job.progress_percent,
             "error": job.error,
+            "remote_llm_enabled": settings.PPTMAKER_ALLOW_REMOTE_LLM,
             "presentation_id": str(job.presentation_id) if job.presentation_id else None,
             "result": job.output_json if job.status == "completed" else None,
         }

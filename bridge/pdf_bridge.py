@@ -78,6 +78,7 @@ class PDF2PPTxBridge(PDF2PPTx):
     _SPECIFICITY_TERMS_RE = re.compile(
         r"\b("
         r"chignolin|trp-?cage|trajectory intensity|temporal coherence|history window|"
+        r"string methods?|swarms?|trajector(?:y|ies)|local drift|free-?energy|transition pathways?|"
         r"productive walkers?|unproductive walkers?|statistical weights?|weighted intensity|"
         r"conventional (?:binned )?we|targeted we|proximity-based|mean first-passage|mfpt|"
         r"rate constants?|run-to-run variability|folding|unfolding|40-fold|aggregate simulation time|"
@@ -121,17 +122,40 @@ class PDF2PPTxBridge(PDF2PPTx):
             return default
         return max(minimum, min(maximum, value))
 
+    def _provider_labels(self, llm):
+        providers = getattr(llm, "providers", []) or []
+        return [provider.provider_label().lower() for provider in providers if hasattr(provider, "provider_label")]
+
+    def _has_api_first_provider(self, llm):
+        labels = self._provider_labels(llm)
+        return bool(labels) and not labels[0].startswith("ollama")
+
+    def _slide_writing_mode(self, slide_llm):
+        configured = os.getenv("PPTMAKER_SLIDE_WRITING_MODE", "").strip().lower()
+        aliases = {
+            "deterministic": "fast",
+            "local": "fast",
+            "off": "fast",
+            "api": "llm",
+            "full": "llm",
+        }
+        configured = aliases.get(configured, configured)
+        if configured in {"fast", "balanced", "llm"}:
+            return configured
+        return "llm" if self._has_api_first_provider(slide_llm) else "fast"
+
     def _slide_generation_workers(self, slide_llm):
+        mode = self._slide_writing_mode(slide_llm)
+        if mode == "fast":
+            return 1
+
         configured = os.getenv("PPTMAKER_SLIDE_WRITERS", "").strip()
         if configured:
             return self._env_int("PPTMAKER_SLIDE_WRITERS", 1, minimum=1, maximum=8)
 
-        providers = getattr(slide_llm, "providers", []) or []
-        labels = [provider.provider_label().lower() for provider in providers if hasattr(provider, "provider_label")]
-        has_api_first = bool(labels) and not labels[0].startswith("ollama")
-        if has_api_first:
+        if self._has_api_first_provider(slide_llm):
             return self._env_int("PPTMAKER_API_SLIDE_WRITERS", 1, minimum=1, maximum=4)
-        return self._env_int("PPTMAKER_LOCAL_SLIDE_WRITERS", 3, minimum=1, maximum=8)
+        return self._env_int("PPTMAKER_LOCAL_SLIDE_WRITERS", 1, minimum=1, maximum=4)
 
     def _source_snippets(self, text, orig_slide=None, limit=10):
         query = " ".join(
@@ -312,10 +336,16 @@ class PDF2PPTxBridge(PDF2PPTx):
             if len(bullets) >= 4:
                 break
 
+        claim = self._clean_generated_text(orig_slide.get("claim"), "")
+        if claim and len(bullets) < 3:
+            bullets.append(_truncate_words(claim, 14))
+
         unique_bullets = []
         for bullet in bullets:
             if bullet and bullet.lower() not in {item.lower() for item in unique_bullets}:
                 unique_bullets.append(bullet)
+        if claim and len(unique_bullets) < 3 and claim.lower() not in {item.lower() for item in unique_bullets}:
+            unique_bullets.append(_truncate_words(claim, 14))
         if not unique_bullets:
             unique_bullets = ["Needs manual review: source evidence was insufficient."]
         return {
@@ -811,6 +841,155 @@ class PDF2PPTxBridge(PDF2PPTx):
         scored.sort(key=lambda row: (-row[0], row[1]))
         return [item for score, _, item in scored[:limit] if score > 0 or requested][:limit]
 
+    def _fallback_storyboard(self, frame, catalog, document_outline=None, coarse_context=None, paper_brief=None, reason="", llm=None):
+        frame = frame or {}
+        paper_brief = paper_brief if isinstance(paper_brief, dict) else {}
+        evidence = [item for item in (paper_brief.get("evidence_items") or []) if isinstance(item, dict)]
+        available_fig_ids = {str(fig.get("id")) for fig in (catalog or []) if fig.get("id")}
+
+        def clean(value, fallback=""):
+            return self._clean_generated_text(value, fallback)
+
+        def evidence_ids(*items):
+            ids = []
+            for item in items:
+                if isinstance(item, dict) and item.get("id"):
+                    ids.append(str(item["id"]))
+            return ids[:3]
+
+        def figure_ids(*items):
+            ids = []
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                for fid in item.get("figure_ids") or item.get("fig_ids") or []:
+                    fid = str(fid)
+                    if fid in available_fig_ids and fid not in ids:
+                        ids.append(fid)
+            return ids[:2]
+
+        slides = []
+
+        problem = clean(paper_brief.get("problem") or frame.get("problem"))
+        thesis = clean(paper_brief.get("central_thesis") or frame.get("thesis") or frame.get("core_innovation"))
+        if problem or thesis:
+            first_ev = evidence[0] if evidence else {}
+            slides.append({
+                "section": "Setup",
+                "title": _truncate_words(problem or thesis, 8),
+                "goal": _truncate_words(thesis or problem, 22),
+                "evidence_ids": evidence_ids(first_ev),
+                "fig_ids": figure_ids(first_ev),
+                "layout_hint": "text",
+                "context_keywords": ["problem", "motivation"],
+            })
+
+        for idx, step in enumerate(paper_brief.get("method_mechanism") or []):
+            ev = evidence[min(idx + 1, len(evidence) - 1)] if evidence else {}
+            slides.append({
+                "section": "Method",
+                "title": _truncate_words(step, 8),
+                "goal": _truncate_words(step, 20),
+                "evidence_ids": evidence_ids(ev),
+                "fig_ids": figure_ids(ev),
+                "layout_hint": "mechanism",
+                "context_keywords": ["method", "mechanism", *re.findall(r"[A-Za-z][A-Za-z0-9-]{3,}", str(step))[:4]],
+            })
+            if len(slides) >= 5:
+                break
+
+        findings = list(paper_brief.get("benchmarks") or []) + list(paper_brief.get("key_findings") or [])
+        for idx, finding in enumerate(findings):
+            ev = evidence[min(idx + 2, len(evidence) - 1)] if evidence else {}
+            slides.append({
+                "section": "Insight",
+                "title": _truncate_words(finding, 8),
+                "goal": _truncate_words(finding, 20),
+                "evidence_ids": evidence_ids(ev),
+                "fig_ids": figure_ids(ev),
+                "layout_hint": "results",
+                "context_keywords": ["results", "benchmark", *re.findall(r"[A-Za-z][A-Za-z0-9-]{3,}", str(finding))[:4]],
+            })
+            if len(slides) >= 9:
+                break
+
+        if len(slides) < 6:
+            used = {eid for slide in slides for eid in slide.get("evidence_ids", [])}
+            for item in evidence:
+                item_id = str(item.get("id") or "")
+                if item_id in used:
+                    continue
+                claim = clean(item.get("claim") or item.get("support"))
+                if not claim:
+                    continue
+                section = clean(item.get("section"), "Evidence")
+                slides.append({
+                    "section": section if len(section.split()) <= 5 else "Evidence",
+                    "title": _truncate_words(claim, 8),
+                    "goal": _truncate_words(item.get("support") or claim, 20),
+                    "evidence_ids": evidence_ids(item),
+                    "fig_ids": figure_ids(item),
+                    "layout_hint": "figure" if figure_ids(item) else "text",
+                    "context_keywords": re.findall(r"[A-Za-z][A-Za-z0-9-]{3,}", f"{claim} {section}")[:6],
+                })
+                if len(slides) >= 10:
+                    break
+
+        if len(slides) < 4:
+            for entry in (coarse_context or []):
+                heading = clean(entry.get("heading") if isinstance(entry, dict) else "")
+                preview = clean(entry.get("preview") if isinstance(entry, dict) else "")
+                if not heading and not preview:
+                    continue
+                slides.append({
+                    "section": heading or "Document",
+                    "title": _truncate_words(heading or preview, 8),
+                    "goal": _truncate_words(preview or heading, 20),
+                    "evidence_ids": [],
+                    "fig_ids": [],
+                    "layout_hint": "text",
+                    "context_keywords": re.findall(r"[A-Za-z][A-Za-z0-9-]{3,}", f"{heading} {preview}")[:6],
+                })
+                if len(slides) >= 6:
+                    break
+
+        takeaway = clean(paper_brief.get("takeaway") or frame.get("impact") or frame.get("takeaway"))
+        if takeaway:
+            slides.append({
+                "section": "Impact",
+                "title": _truncate_words(takeaway, 8),
+                "goal": _truncate_words(takeaway, 20),
+                "evidence_ids": evidence_ids(evidence[-1] if evidence else {}),
+                "fig_ids": figure_ids(evidence[-1] if evidence else {}),
+                "layout_hint": "summary",
+                "context_keywords": ["takeaway", "impact"],
+            })
+
+        if not slides:
+            slides = [{
+                "section": "Summary",
+                "title": "Source Document",
+                "goal": "Needs manual review: source evidence was insufficient.",
+                "evidence_ids": [],
+                "fig_ids": [],
+                "layout_hint": "summary",
+                "context_keywords": ["summary"],
+            }]
+
+        debug = {
+            "fallback": True,
+            "reason": _truncate_words(str(reason), 80),
+        }
+        if llm is not None:
+            debug["llm_trace"] = self._llm_trace_snapshot(storyboard=llm)
+
+        return {
+            "title": clean(frame.get("title") or paper_brief.get("title") or thesis, "Imported Paper"),
+            "sub": clean(thesis or takeaway or problem, ""),
+            "slides": slides[:12],
+            "_debug": {"storyboard": debug},
+        }
+
     def _plan_storyboard(self, llm, frame, catalog, emit, document_outline=None, coarse_context=None, paper_brief=None):
         emit("storyboard", "Developing scientific narrative storyboard")
         outline_payload = []
@@ -873,7 +1052,32 @@ class PDF2PPTxBridge(PDF2PPTx):
             f"Document outline: {json.dumps(outline_payload)}\n"
             f"Figures: {json.dumps([{'id': f['id'], 'caption': f.get('vision', {}).get('caption_enhanced') or f.get('caption', '')} for f in catalog])}\n"
         )
-        return _generate_structured_json(llm, prompt, "Storyboarding mode.", "scientific storyboarding")
+        try:
+            storyboard = _generate_structured_json(llm, prompt, "Storyboarding mode.", "scientific storyboarding")
+            slides = storyboard.get("slides") if isinstance(storyboard, dict) else storyboard if isinstance(storyboard, list) else None
+            if not isinstance(slides, list) or not slides:
+                raise ValueError("storyboard response did not include slides")
+            return storyboard
+        except Exception as exc:
+            emit(
+                "storyboard",
+                "AI storyboard JSON failed; using deterministic storyboard fallback",
+                {
+                    "percent": 68,
+                    "fallback": True,
+                    "error": str(exc)[:600],
+                    "llm_trace": self._llm_trace_snapshot(storyboard=llm),
+                },
+            )
+            return self._fallback_storyboard(
+                frame,
+                catalog,
+                document_outline=document_outline,
+                coarse_context=coarse_context,
+                paper_brief=paper_brief,
+                reason=str(exc),
+                llm=llm,
+            )
 
     def _generate_slides(self, storyboard, enriched_catalog, full_text, mineru_summary, slide_llm, 
                          json_output, pptx_output, max_slides, max_sections, emit, paper_frame, mineru_context, paper_brief=None, llm_trace=None):
@@ -892,6 +1096,8 @@ class PDF2PPTxBridge(PDF2PPTx):
             "llm_trace": {},
             "slides": []
         }
+        if isinstance(storyboard.get("_debug"), dict):
+            export_data["import_debug"] = storyboard["_debug"]
         
         sections = []
         current_section = None
@@ -916,25 +1122,47 @@ class PDF2PPTxBridge(PDF2PPTx):
 
         candidate_figure_map = {f["id"]: f for f in enriched_catalog}
         generated_sections = []
+        slide_mode = self._slide_writing_mode(slide_llm)
         slide_workers = self._slide_generation_workers(slide_llm)
         export_data["generation"] = {
+            "slide_writing_mode": slide_mode,
             "slide_workers": slide_workers,
             "api_retries": self._env_int("PPTMAKER_API_RETRIES", 3, minimum=1, maximum=8),
         }
         emit(
             "generation",
-            f"Writing slide content with {slide_workers} worker{'s' if slide_workers != 1 else ''}",
-            {"slide_workers": slide_workers, "total": planned_total},
+            (
+                "Writing slide content from source evidence"
+                if slide_mode == "fast"
+                else f"Writing slide content with {slide_workers} worker{'s' if slide_workers != 1 else ''}"
+            ),
+            {"slide_writing_mode": slide_mode, "slide_workers": slide_workers, "total": planned_total},
         )
 
         for s_idx, section in enumerate(sections):
-            emit("section", f"Elaborating section {s_idx+1}/{len(sections)}: {section['name']}", {"current": total_content_slides, "total": planned_total})
+            emit(
+                "section",
+                f"Elaborating section {s_idx+1}/{len(sections)}: {section['name']}",
+                {"current": total_content_slides, "total": planned_total, "slide_writing_mode": slide_mode},
+            )
 
             # Parallel slide generation for speed
             def process_slide(orig_slide):
                 keywords = orig_slide.get("keywords", [])
                 search_query = " ".join(keywords) if keywords else orig_slide["title"]
-                slide_source_text = build_section_context(full_text, search_query, max_chars=8000)
+                context_chars = self._env_int(
+                    "PPTMAKER_FAST_SLIDE_CONTEXT_CHARS" if slide_mode == "fast" else "PPTMAKER_SLIDE_CONTEXT_CHARS",
+                    4500 if slide_mode == "fast" else 6500,
+                    minimum=1800,
+                    maximum=12000,
+                )
+                snippet_limit = self._env_int(
+                    "PPTMAKER_FAST_SLIDE_SNIPPETS" if slide_mode == "fast" else "PPTMAKER_SLIDE_SNIPPETS",
+                    6 if slide_mode == "fast" else 8,
+                    minimum=3,
+                    maximum=12,
+                )
+                slide_source_text = build_section_context(full_text, search_query, max_chars=context_chars)
                 
                 requested_fids = orig_slide.get("fig_ids", [])
                 ordered_figures = []
@@ -945,13 +1173,22 @@ class PDF2PPTxBridge(PDF2PPTx):
                 for r in ranked:
                     if r["id"] not in requested_fids: ordered_figures.append(_serialize_figure(r))
 
-                source_snippets = self._source_snippets(slide_source_text, orig_slide, limit=10)
+                source_snippets = self._source_snippets(slide_source_text, orig_slide, limit=snippet_limit)
                 brief_evidence = self._brief_evidence_for_slide(paper_brief or {}, orig_slide, limit=6)
                 if not source_snippets:
                     return self._normalize_slide_payload(
                         self._fallback_slide_payload_from_source(orig_slide, source_snippets, ordered_figures),
                         orig_slide,
                     )
+
+                if slide_mode == "fast":
+                    res = self._deterministic_review_payload(orig_slide, source_snippets, brief_evidence, ordered_figures)
+                    review_issues = self._review_slide_payload(res, orig_slide, source_snippets, brief_evidence)
+                    res["review"] = {
+                        "issues": review_issues,
+                        "status": "fast_source_writer" if not review_issues else "fast_source_writer_needs_review",
+                    }
+                    return self._normalize_slide_payload(res, orig_slide)
 
                 prompt = (
                     "You are a strict scientific slide editor.\n\n"
@@ -997,7 +1234,7 @@ class PDF2PPTxBridge(PDF2PPTx):
                 res = _generate_structured_json(slide_llm, prompt, "Write technical slides.", "slide generation")
                 issues = self._review_slide_payload(res, orig_slide, source_snippets, brief_evidence)
                 review_issues = issues
-                if issues:
+                if issues and slide_mode == "llm":
                     retry_prompt = (
                         "The previous slide draft failed quality checks: "
                         f"{', '.join(issues)}.\n"

@@ -5,6 +5,7 @@ import json
 import time
 import subprocess
 import requests
+import fitz  # type: ignore
 from PIL import Image
 
 # Ensure local imports work when running as a script
@@ -28,6 +29,7 @@ _MIN_VISUAL_WIDTH = 40
 _MIN_VISUAL_HEIGHT = 40
 _MIN_VISUAL_AREA = 4000
 _FIGURE_CAPTION_RE = re.compile(r"^\*?\*?\s*(fig(?:ure)?|table|scheme|chart)\b", re.I)
+_CAPTION_SCAN_RE = re.compile(r"\b(fig(?:ure)?|table|scheme|chart)\s*[\dA-Za-z.-]*\b[:.\s-]*(.{8,260})", re.I | re.S)
 
 class LocalVisionPDFProcessor(PDFProcessor):
     def __init__(self, filepath: str, llm_provider=None, status_callback=None):
@@ -41,7 +43,25 @@ class LocalVisionPDFProcessor(PDFProcessor):
             except: self.status_callback(event, message)
 
     def extract_visuals_hybrid(self):
-        return self._extract_visuals_marker()
+        if self._use_marker_visuals():
+            extracted = self._extract_visuals_marker()
+            if not extracted:
+                self._emit_status("vision_extract", "Marker found no usable figures; extracting embedded PDF images")
+                extracted = self._extract_visuals_embedded()
+        else:
+            self._emit_status("vision_extract", "Extracting embedded PDF images")
+            extracted = self._extract_visuals_embedded()
+        self._sync_visual_context(extracted)
+        return extracted
+
+    def _use_marker_visuals(self):
+        return os.getenv("PPTMAKER_USE_MARKER_VISUALS", "0") == "1"
+
+    def _marker_timeout_seconds(self):
+        try:
+            return max(30, int(os.getenv("PPTMAKER_MARKER_TIMEOUT_SECONDS", "300")))
+        except ValueError:
+            return 300
 
     def _extract_visuals_marker(self):
         base_name = os.path.splitext(os.path.basename(self.filepath))[0]
@@ -58,13 +78,18 @@ class LocalVisionPDFProcessor(PDFProcessor):
             cmd = [marker_bin, self.filepath, "--output_dir", marker_out_dir, "--output_format", "markdown", "--PageExtractor_extraction_page_chunk_size", "1"]
             env = os.environ.copy()
             env["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
+            env.setdefault("OMP_NUM_THREADS", "2")
+            env.setdefault("MKL_NUM_THREADS", "2")
+            env.setdefault("OPENBLAS_NUM_THREADS", "2")
+            env.setdefault("NUMEXPR_NUM_THREADS", "2")
             try:
-                subprocess.run(cmd, check=True, env=env)
-            except:
-                self._emit_status("vision", "Marker GPU call failed, attempting CPU fallback...")
-                env["CUDA_VISIBLE_DEVICES"] = ""
-                try: subprocess.run(cmd, check=True, env=env)
-                except: return []
+                subprocess.run(cmd, check=True, env=env, timeout=self._marker_timeout_seconds())
+            except subprocess.TimeoutExpired:
+                self._emit_status("vision", "Marker timed out; using embedded image extraction")
+                return []
+            except Exception:
+                self._emit_status("vision", "Marker failed; using embedded image extraction")
+                return []
 
         if not os.path.exists(md_file): return []
         with open(md_file, "r", encoding="utf-8") as f: self.marker_markdown = f.read()
@@ -148,6 +173,137 @@ class LocalVisionPDFProcessor(PDFProcessor):
                 })
         self.visual_catalog = extracted
         return extracted
+
+    def _sync_visual_context(self, extracted):
+        self.visual_catalog = extracted or []
+        self.mineru_context["visuals"] = [
+            {
+                "id": item.get("id"),
+                "page": item.get("page"),
+                "caption": item.get("caption", ""),
+                "path": item.get("path"),
+                "width": item.get("width"),
+                "height": item.get("height"),
+                "kind": item.get("kind", "image"),
+            }
+            for item in self.visual_catalog
+        ]
+        self.mineru_context["captions"] = [
+            item.get("caption", "")
+            for item in self.visual_catalog
+            if item.get("caption")
+        ]
+
+    def _extract_visuals_embedded(self):
+        base_name = os.path.splitext(os.path.basename(self.filepath))[0]
+        output_dir = os.path.join(self.figures_dir, "embedded_output", base_name)
+        os.makedirs(output_dir, exist_ok=True)
+
+        extracted = []
+        seen_xrefs = set()
+        try:
+            doc = fitz.open(self.filepath)
+        except Exception:
+            return []
+
+        with doc:
+            for page_index, page in enumerate(doc):
+                page_number = page_index + 1
+                image_infos = page.get_images(full=True)
+                for image_index, image_info in enumerate(image_infos, start=1):
+                    xref = image_info[0]
+                    if xref in seen_xrefs:
+                        continue
+                    rects = page.get_image_rects(xref)
+                    if not rects:
+                        continue
+
+                    rect = max(rects, key=lambda item: item.width * item.height)
+                    if rect.width < _MIN_VISUAL_WIDTH or rect.height < _MIN_VISUAL_HEIGHT or (rect.width * rect.height) < _MIN_VISUAL_AREA:
+                        continue
+
+                    try:
+                        image_data = doc.extract_image(xref)
+                    except Exception:
+                        continue
+                    image_bytes = image_data.get("image")
+                    if not image_bytes:
+                        continue
+                    ext = (image_data.get("ext") or "png").lower()
+                    if ext == "jpx":
+                        ext = "jp2"
+
+                    filename = f"_page_{page_number}_Image_{image_index}.{ext}"
+                    image_path = os.path.abspath(os.path.join(output_dir, filename))
+                    try:
+                        with open(image_path, "wb") as handle:
+                            handle.write(image_bytes)
+                        with Image.open(image_path) as image:
+                            width, height = image.size
+                            image.verify()
+                    except Exception:
+                        try:
+                            os.remove(image_path)
+                        except OSError:
+                            pass
+                        continue
+
+                    if width < _MIN_VISUAL_WIDTH or height < _MIN_VISUAL_HEIGHT or (width * height) < _MIN_VISUAL_AREA:
+                        try:
+                            os.remove(image_path)
+                        except OSError:
+                            pass
+                        continue
+
+                    caption = self._infer_embedded_caption(page, rect)
+                    if caption and _LOW_SIGNAL_CAPTION_RE.search(caption):
+                        continue
+
+                    seen_xrefs.add(xref)
+                    extracted.append({
+                        "id": f"embedded_p{page_number}_{xref}",
+                        "path": image_path,
+                        "caption": caption or f"Extracted figure from page {page_number}",
+                        "kind": "image",
+                        "page": page_number,
+                        "width": width,
+                        "height": height,
+                        "source": "embedded_pdf",
+                    })
+
+        self.visual_catalog = extracted
+        return extracted
+
+    def _infer_embedded_caption(self, page, image_rect):
+        candidates = []
+        try:
+            blocks = page.get_text("blocks") or []
+        except Exception:
+            return ""
+
+        for block in blocks:
+            if len(block) < 5:
+                continue
+            rect = fitz.Rect(block[:4])
+            text = " ".join(str(block[4] or "").split())
+            if not text:
+                continue
+            lower_gap = rect.y0 - image_rect.y1
+            upper_gap = image_rect.y0 - rect.y1
+            horizontal_overlap = max(0, min(rect.x1, image_rect.x1) - max(rect.x0, image_rect.x0))
+            overlap_ratio = horizontal_overlap / max(1.0, min(rect.width, image_rect.width))
+            if lower_gap >= -6 and lower_gap <= 140 and overlap_ratio >= 0.25:
+                candidates.append((0, abs(lower_gap), text))
+            elif upper_gap >= -6 and upper_gap <= 90 and overlap_ratio >= 0.25:
+                candidates.append((1, abs(upper_gap), text))
+
+        for _, _, text in sorted(candidates, key=lambda item: item[:2]):
+            match = _CAPTION_SCAN_RE.search(text)
+            if match:
+                caption = text[match.start():].strip()
+                return caption[:320]
+
+        return ""
 
     def _infer_marker_caption(self, lines, block_start, block_end, block):
         inline = next((caption for caption, _ in block if caption), "")

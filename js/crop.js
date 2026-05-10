@@ -134,6 +134,8 @@ class SimpleCrop {
             img.style.maxWidth = "none";
             img.style.maxHeight = "none";
             img.style.objectFit = "fill";
+            img.style.display = "block";
+            img.style.setProperty("margin", "0", "important");
             img.style.pointerEvents = "none";
             wrapper.appendChild(img);
             const firstHandle = Array.from(el.children).find(child => child.classList.contains("resize-handle"));

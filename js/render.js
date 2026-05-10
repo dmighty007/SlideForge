@@ -1353,6 +1353,59 @@ function _renderChartDom(container, elData) {
     }
 }
 
+function _normalizeRenderCropTransform(elData) {
+    if (!elData?.cropTransform) return null;
+    const crop =
+        typeof normalizeImageCropTransform === "function"
+            ? normalizeImageCropTransform(elData.cropTransform)
+            : elData.cropTransform;
+    if (!crop) return null;
+    if (JSON.stringify(crop) !== JSON.stringify(elData.cropTransform)) {
+        elData.cropTransform = crop;
+        if (elData.id && typeof updateElementState === "function") {
+            updateElementState(elData.id, { cropTransform: crop });
+        }
+    }
+    return crop;
+}
+
+function _createImageContentNode(elData, { interactive = false } = {}) {
+    const crop = _normalizeRenderCropTransform(elData);
+    if (crop) {
+        const wrapper = document.createElement("div");
+        wrapper.className = "w-full h-full rounded-[inherit]";
+        wrapper.style.overflow = "hidden";
+        wrapper.style.position = "relative";
+
+        const img = document.createElement("img");
+        img.src = elData.content;
+        img.className = "pointer-events-none";
+        img.draggable = false;
+        img.style.position = "absolute";
+        img.style.left = `${crop.leftPercent}%`;
+        img.style.top = `${crop.topPercent}%`;
+        img.style.width = `${crop.widthPercent}%`;
+        img.style.height = `${crop.heightPercent}%`;
+        img.style.maxWidth = "none";
+        img.style.maxHeight = "none";
+        img.style.objectFit = "fill";
+        img.style.display = "block";
+        img.style.setProperty("margin", "0", "important");
+        wrapper.appendChild(img);
+        return wrapper;
+    }
+
+    const img = document.createElement("img");
+    img.src = elData.content;
+    img.className = interactive
+        ? "w-full h-full object-cover rounded-[inherit] pointer-events-none"
+        : "w-full h-full object-cover rounded-[inherit]";
+    img.draggable = false;
+    img.style.display = "block";
+    img.style.setProperty("margin", "0", "important");
+    return img;
+}
+
 function _createStaticNode(elData) {
     const el = document.createElement("div");
     el.className = "canvas-element";
@@ -1373,10 +1426,7 @@ function _createStaticNode(elData) {
     } else if (elData.type === "connector") {
         renderConnectorContent(el, elData, { interactive: false });
     } else if (elData.type === "image") {
-        const img = document.createElement("img");
-        img.src = elData.content;
-        img.className = "w-full h-full object-fill rounded-[inherit]";
-        el.appendChild(img);
+        el.appendChild(_createImageContentNode(elData, { interactive: false }));
     } else if (elData.type === "table") {
         _renderTableDom(el, elData, { interactive: false });
     } else if (elData.type === "chart") {
@@ -1388,6 +1438,7 @@ function _createStaticNode(elData) {
             "position:absolute;top:4px;left:4px;padding:2px 6px;font-size:10px;border-radius:4px;background:#111827;color:#cbd5e1;z-index:2;";
         const frame = document.createElement("iframe");
         frame.srcdoc = buildHtmlEmbedSrcdoc(elData.content || "", elData);
+        applyHtmlEmbedSandbox(frame);
         frame.className = "w-full h-full html-embed-frame";
         frame.style.border = "0";
         frame.style.pointerEvents = "none";
@@ -1612,60 +1663,29 @@ function _applyTypeContent(el, elData) {
     } else if (elData.type === "chart") {
         _renderChartDom(el, elData);
     } else if (elData.type === "image") {
-        if (elData.cropTransform) {
-            const crop =
-                typeof normalizeImageCropTransform === "function"
-                    ? normalizeImageCropTransform(elData.cropTransform)
-                    : elData.cropTransform;
-            if (crop && JSON.stringify(crop) !== JSON.stringify(elData.cropTransform)) {
-                elData.cropTransform = crop;
-                updateElementState(elData.id, { cropTransform: crop });
+        const imageNode = _createImageContentNode(elData, { interactive: true });
+        el.appendChild(imageNode);
+
+        if (!elData.cropTransform) {
+            const img = imageNode.tagName === "IMG" ? imageNode : imageNode.querySelector("img");
+            if (img) {
+                // Auto-adjust height to natural aspect ratio if not explicitly cropped
+                img.onload = () => {
+                    const naturalRatio = img.naturalWidth / Math.max(1, img.naturalHeight);
+                    const hasNaturalRatio = Number.isFinite(naturalRatio) && naturalRatio > 0;
+                    if (hasNaturalRatio && !elData.imageAspectRatio) {
+                        elData.imageAspectRatio = naturalRatio;
+                        updateElementState(elData.id, { imageAspectRatio: naturalRatio, lockAspectRatio: elData.lockAspectRatio ?? true });
+                    }
+                    if (hasNaturalRatio && !elData.cropTransform && !elData.heightSetManually) {
+                        const currentWidth = parseFloat(el.style.width) || el.offsetWidth;
+                        const newHeight = currentWidth / naturalRatio;
+                        el.style.height = `${newHeight}px`;
+                        updateElementState(elData.id, { height: `${newHeight}px`, imageAspectRatio: naturalRatio, lockAspectRatio: elData.lockAspectRatio ?? true });
+                        if (state.selectedIds.includes(elData.id)) updateGroupBound();
+                    }
+                };
             }
-            const wrapper = document.createElement("div");
-            wrapper.className = "w-full h-full rounded-[inherit]";
-            wrapper.style.overflow = "hidden";
-            wrapper.style.position = "relative";
-            
-            const img = document.createElement("img");
-            img.src = elData.content;
-            img.className = "pointer-events-none";
-            img.draggable = false;
-            
-            img.style.position = "absolute";
-            img.style.left = `${crop.leftPercent}%`;
-            img.style.top = `${crop.topPercent}%`;
-            img.style.width = `${crop.widthPercent}%`;
-            img.style.height = `${crop.heightPercent}%`;
-            img.style.maxWidth = "none";
-            img.style.maxHeight = "none";
-            img.style.objectFit = "fill";
-            
-            wrapper.appendChild(img);
-            el.appendChild(wrapper);
-        } else {
-            const img = document.createElement("img");
-            img.src = elData.content;
-            img.className = "w-full h-full object-cover rounded-[inherit] pointer-events-none";
-            img.draggable = false;
-            
-            // Auto-adjust height to natural aspect ratio if not explicitly cropped
-            img.onload = () => {
-                const naturalRatio = img.naturalWidth / Math.max(1, img.naturalHeight);
-                const hasNaturalRatio = Number.isFinite(naturalRatio) && naturalRatio > 0;
-                if (hasNaturalRatio && !elData.imageAspectRatio) {
-                    elData.imageAspectRatio = naturalRatio;
-                    updateElementState(elData.id, { imageAspectRatio: naturalRatio, lockAspectRatio: elData.lockAspectRatio ?? true });
-                }
-                if (hasNaturalRatio && !elData.cropTransform && !elData.heightSetManually) {
-                    const currentWidth = parseFloat(el.style.width) || el.offsetWidth;
-                    const newHeight = currentWidth / naturalRatio;
-                    el.style.height = `${newHeight}px`;
-                    updateElementState(elData.id, { height: `${newHeight}px`, imageAspectRatio: naturalRatio, lockAspectRatio: elData.lockAspectRatio ?? true });
-                    if (state.selectedIds.includes(elData.id)) updateGroupBound();
-                }
-            };
-            
-            el.appendChild(img);
         }
 
         el.addEventListener("dblclick", () => {
@@ -1750,6 +1770,7 @@ function _applyTypeContent(el, elData) {
 
         const iframe = document.createElement("iframe");
         iframe.srcdoc = buildHtmlEmbedSrcdoc(elData.content || "", elData);
+        applyHtmlEmbedSandbox(iframe);
         iframe.className = "w-full h-full html-embed-frame";
         iframe.style.border = "0";
         wrapper.appendChild(iframe);
@@ -1758,6 +1779,35 @@ function _applyTypeContent(el, elData) {
         const badge = document.createElement("span");
         badge.innerHTML = `<i class="fa-solid fa-code mr-1"></i> HTML`;
         badge.className = "html-embed-badge absolute top-2 left-2 px-2 py-1 bg-gray-900/80 text-white text-[10px] rounded border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity";
+        el.appendChild(badge);
+    } else if (elData.type === "molecule") {
+        el.classList.toggle("molecule-interactive", Boolean(elData.moleculeInteractive));
+
+        const wrapper = document.createElement("div");
+        wrapper.className = "molecule-embed-wrapper";
+
+        const iframe = document.createElement("iframe");
+        iframe.srcdoc = typeof buildMoleculeEmbedSrcdoc === "function"
+            ? buildMoleculeEmbedSrcdoc({
+                  ...elData,
+                  moleculePresentationMode: document.body.classList.contains("play-mode-active"),
+              })
+            : "";
+        if (typeof applyMoleculeEmbedSandbox === "function") applyMoleculeEmbedSandbox(iframe);
+        iframe.className = "w-full h-full molecule-embed-frame";
+        iframe.style.border = "0";
+        iframe.setAttribute("title", elData.moleculeIsTrajectory ? "Molecular trajectory viewer" : "Molecular structure viewer");
+        wrapper.appendChild(iframe);
+        el.appendChild(wrapper);
+
+        const overlay = document.createElement("div");
+        overlay.className = "absolute inset-0 z-10 cursor-move play-mode-hidden";
+        overlay.style.display = elData.moleculeInteractive ? "none" : "";
+        el.appendChild(overlay);
+
+        const badge = document.createElement("span");
+        badge.innerHTML = `<i class="fa-solid fa-atom mr-1"></i> ${elData.moleculeIsTrajectory ? "Trajectory" : "PDB"}`;
+        badge.className = "molecule-embed-badge absolute top-2 left-2 px-2 py-1 bg-gray-900/80 text-white text-[10px] rounded border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity";
         el.appendChild(badge);
     } else if (elData.type === "pdf") {
         el.classList.toggle("pdf-interactive", Boolean(elData.pdfInteractive));

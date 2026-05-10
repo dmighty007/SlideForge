@@ -2908,6 +2908,36 @@ body.entry-gate-active .entry-hero {
     pointer-events: auto;
 }
 
+/* ═══════════════════════════════════════════════════════
+   MOLECULE EMBED ELEMENT
+   ═══════════════════════════════════════════════════════ */
+.molecule-embed-wrapper {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    border-radius: inherit;
+    position: relative;
+    background: #020617;
+}
+
+.molecule-embed-frame {
+    width: 100%;
+    height: 100%;
+    border: none;
+    display: block;
+    pointer-events: none;
+    background: #020617;
+}
+
+.canvas-element[data-type="molecule"] {
+    background: #020617;
+}
+
+.canvas-element.molecule-interactive .molecule-embed-frame,
+.play-mode-active .molecule-embed-frame {
+    pointer-events: auto;
+}
+
 .pdf-annotation-layer {
     position: absolute;
     inset: 0;

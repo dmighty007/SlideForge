@@ -99,6 +99,7 @@ function addElement(type, options = {}) {
         ...(type === "image" ? { lockAspectRatio: true, imageAspectRatio: 1.5 } : {}),
         ...(type === "shape" && isArrowShape ? { arrowHeadSize: 38, arrowShaftSize: 36 } : {}),
         ...(type === "video" ? { videoType: "youtube", muted: true, autoplay: false, loop: false } : {}),
+        ...(type === "molecule" && typeof createMoleculeElementData === "function" ? createMoleculeElementData() : {}),
         ...(type === "pdf"
             ? {
                   pdfInteractive: true,
@@ -125,6 +126,8 @@ function addElement(type, options = {}) {
                       ? "480px"
                       : type === "pdf"
                         ? "520px"
+                        : type === "molecule"
+                          ? "620px"
                       : "auto",
         height:
             type === "shape"
@@ -139,6 +142,8 @@ function addElement(type, options = {}) {
                     ? "270px"
                     : type === "pdf"
                       ? "360px"
+                      : type === "molecule"
+                        ? "420px"
                     : "auto",
         content:
             type === "text"
@@ -151,15 +156,17 @@ function addElement(type, options = {}) {
                     ? "https://www.youtube.com/watch?v=aqz-KE-bpKQ"
                     : type === "pdf"
                       ? ""
+                      : type === "molecule" && typeof createDefaultMoleculeContent === "function"
+                        ? createDefaultMoleculeContent()
                     : "",
         styles: {
-            backgroundColor: type === "shape" ? theme.defaultShapeColor : "transparent",
             color: type === "text" || type === "table" ? theme.defaultTextColor : "transparent",
             fontSize: type === "text" ? "32px" : type === "table" ? "16px" : "0px",
             fontFamily: theme.bodyFont,
             textAlign: type === "text" || type === "table" ? "left" : undefined,
             zIndex: getNextZIndex(),
-            borderRadius: type === "shape" ? shapeBorderRadius : type === "video" || type === "pdf" ? "8px" : "0px",
+            borderRadius: type === "shape" ? shapeBorderRadius : type === "video" || type === "pdf" || type === "molecule" ? "8px" : "0px",
+            backgroundColor: type === "molecule" ? "#020617" : type === "shape" ? theme.defaultShapeColor : "transparent",
         },
         ...(type === "text" ? { textFitMode: "autoHeight" } : {}),
         animation: null,
@@ -214,17 +221,126 @@ function addChart(chartType = "bar") {
     selectElement(id);
 }
 
-function aiCleanUpSlide() {
-    const activeIndex = ensureActiveSlideSync();
-    const slide = state.slides[activeIndex];
+function _snapshotCleanableElements(slide, targetIds = null) {
     const elements = slide?.elements || [];
-    const targetIds = state.selectedIds?.length ? new Set(state.selectedIds) : null;
-    const targetElements = (targetIds ? elements.filter(el => targetIds.has(el.id)) : elements).filter(el => {
+    return (targetIds ? elements.filter(el => targetIds.has(el.id)) : elements).filter(el => {
         if (!el || el.type === "connector") return false;
         const w = parseFloat(el.width) || 0;
         const h = parseFloat(el.height) || 0;
         return w > 0 && h > 0;
     });
+}
+
+function _applyAiCleanupUpdates(slide, updates) {
+    if (!slide || !Array.isArray(updates) || !updates.length) return 0;
+    const elementsById = new Map((slide.elements || []).map(el => [el.id, el]));
+    let changedCount = 0;
+    updates.forEach(update => {
+        const el = elementsById.get(update?.id);
+        if (!el) return;
+        const before = JSON.stringify({
+            x: el.x,
+            y: el.y,
+            width: el.width,
+            height: el.height,
+            content: el.content,
+            styles: el.styles || {},
+        });
+        ["x", "y", "width", "height"].forEach(key => {
+            if (update[key] !== undefined && update[key] !== null) el[key] = update[key];
+        });
+        if (el.type === "text" && typeof update.content === "string") {
+            el.content = update.content;
+        }
+        if (update.styles && typeof update.styles === "object") {
+            el.styles = { ...(el.styles || {}), ...update.styles };
+        }
+        const after = JSON.stringify({
+            x: el.x,
+            y: el.y,
+            width: el.width,
+            height: el.height,
+            content: el.content,
+            styles: el.styles || {},
+        });
+        if (after !== before) changedCount += 1;
+    });
+    return changedCount;
+}
+
+function _finishSlideCleanup(changedCount, message = null) {
+    renderSlidesFromState();
+    updateGroupBound?.();
+    if (typeof refreshPreviews === "function") refreshPreviews();
+    if (typeof buildPropertiesPanel === "function") buildPropertiesPanel();
+    schedulePresentationAutosave?.(250);
+    if (typeof setProjectSaveHint === "function") {
+        setProjectSaveHint(
+            message ||
+                (changedCount
+                    ? `Cleaned up ${changedCount} ${changedCount === 1 ? "element" : "elements"}`
+                    : "Layout already aligned"),
+            changedCount ? "success" : "muted",
+        );
+    }
+}
+
+async function aiCleanUpSlide() {
+    const activeIndex = ensureActiveSlideSync();
+    const slide = state.slides[activeIndex];
+    const targetIds = state.selectedIds?.length ? new Set(state.selectedIds) : null;
+    const targetElements = _snapshotCleanableElements(slide, targetIds);
+    if (!targetElements.length) {
+        if (typeof setProjectSaveHint === "function") {
+            setProjectSaveHint("Nothing to clean up", "muted");
+        }
+        return;
+    }
+
+    if (typeof _apiFetch === "function") {
+        try {
+            if (typeof setProjectSaveHint === "function") {
+                setProjectSaveHint("Asking AI to improve slide", "muted");
+            }
+            const slideConfig = getPresentationPageSetupConfig();
+            const payload = {
+                slide: {
+                    ...slide,
+                    elements: targetElements,
+                },
+                pageSetup: {
+                    width: Number(slideConfig.width) || 1024,
+                    height: Number(slideConfig.height) || 768,
+                },
+                theme: state.presentationTheme || "editorial",
+                selectedOnly: Boolean(targetIds),
+            };
+            const response = await _apiFetch("/api/slides/cleanup/", {
+                method: "POST",
+                body: JSON.stringify(payload),
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(result.error || `AI cleanup failed (${response.status})`);
+            saveStateToUndo();
+            const changedCount = _applyAiCleanupUpdates(slide, result.elements);
+            _finishSlideCleanup(changedCount, result.summary || null);
+            return;
+        } catch (err) {
+            console.warn("AI cleanup unavailable; using local cleanup", err);
+            if (typeof setProjectSaveHint === "function") {
+                setProjectSaveHint("AI unavailable; using local cleanup", "muted");
+            }
+        }
+    }
+
+    aiCleanUpSlideHeuristic();
+}
+
+function aiCleanUpSlideHeuristic() {
+    const activeIndex = ensureActiveSlideSync();
+    const slide = state.slides[activeIndex];
+    const targetIds = state.selectedIds?.length ? new Set(state.selectedIds) : null;
+    const targetElements = _snapshotCleanableElements(slide, targetIds);
     if (!targetElements.length) {
         if (typeof setProjectSaveHint === "function") {
             setProjectSaveHint("Nothing to clean up", "muted");
@@ -350,18 +466,7 @@ function aiCleanUpSlide() {
         if (after !== before.get(el.id)) changedCount += 1;
     });
 
-    renderSlidesFromState();
-    updateGroupBound?.();
-    if (typeof refreshPreviews === "function") refreshPreviews();
-    if (typeof buildPropertiesPanel === "function") buildPropertiesPanel();
-    if (typeof setProjectSaveHint === "function") {
-        setProjectSaveHint(
-            changedCount
-                ? `Cleaned up ${changedCount} ${changedCount === 1 ? "element" : "elements"}`
-                : "Layout already aligned",
-            changedCount ? "success" : "muted",
-        );
-    }
+    _finishSlideCleanup(changedCount);
 }
 
 function addConnector(connectorType = "line") {
@@ -847,7 +952,7 @@ async function pasteFromClipboard() {
     return false;
 }
 
-async function optimizeImageToWebP(file, maxWidth = 1920, maxHeight = 1080, quality = 0.8) {
+async function optimizeImageToWebP(file, maxWidth = 3840, maxHeight = 2160, quality = 0.9) {
     return new Promise((resolve, reject) => {
         const url = URL.createObjectURL(file);
         const img = new Image();
@@ -1029,10 +1134,7 @@ async function handlePdfFileInsert(event) {
         const upload = await _uploadAssetFile(file);
         content = upload.url;
     } catch (err) {
-        const backendMissing =
-            err?.message === "Backend API unavailable" ||
-            /404|NetworkError|Failed to fetch|fetch resource/i.test(err?.message || "");
-        if (!backendMissing) throw err;
+        if (!_isSessionOnlyAssetFallbackError(err)) throw err;
         content = _createSessionObjectUrl(file);
         if (typeof setProjectSaveHint === "function") {
             setProjectSaveHint("PDF stored for this session only", "warn");
@@ -1088,6 +1190,15 @@ async function _uploadAssetFile(file, { presentationId = currentPresentationId }
 
 const _sessionObjectUrls = new Set();
 
+function _isSessionOnlyAssetFallbackError(err) {
+    const message = err?.message || "";
+    return (
+        message === "Backend API unavailable" ||
+        message === "Authentication required" ||
+        /401|403|404|NetworkError|Failed to fetch|fetch resource/i.test(message)
+    );
+}
+
 function _createSessionObjectUrl(file) {
     const url = URL.createObjectURL(file);
     _sessionObjectUrls.add(url);
@@ -1099,10 +1210,7 @@ async function _resolveSlideBackgroundAsset(file) {
         const upload = await _uploadAssetFile(file);
         return { url: upload.url, mimeType: file.type || "" };
     } catch (err) {
-        const backendMissing =
-            err?.message === "Backend API unavailable" ||
-            /404|NetworkError|Failed to fetch|fetch resource/i.test(err?.message || "");
-        if (!backendMissing) throw err;
+        if (!_isSessionOnlyAssetFallbackError(err)) throw err;
         return { url: _createSessionObjectUrl(file), mimeType: file.type || "" };
     }
 }
@@ -1216,10 +1324,7 @@ async function _insertUploadedVideo(file) {
         content = upload.url;
         localMimeType = upload.contentType || localMimeType;
     } catch (err) {
-        const backendMissing =
-            err?.message === "Backend API unavailable" ||
-            /404|NetworkError|Failed to fetch|fetch resource/i.test(err?.message || "");
-        if (!backendMissing) throw err;
+        if (!_isSessionOnlyAssetFallbackError(err)) throw err;
         content = _createSessionObjectUrl(file);
         if (typeof setProjectSaveHint === "function") {
             setProjectSaveHint("Video stored for this session only", "warn");
@@ -1340,6 +1445,65 @@ function handleHtmlFileInsert(event) {
         });
         renderSlidesFromState();
         selectElement(id);
+    };
+    reader.readAsText(file);
+}
+
+function handleMoleculeFileInsert(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = ev => {
+        const data = String(ev.target.result || "");
+        const ext = file.name.split(".").pop() || "pdb";
+        const moleculeData = typeof createMoleculeElementData === "function"
+            ? createMoleculeElementData({
+                  data,
+                  name: file.name,
+                  format: ext,
+                  isTrajectory: typeof isMoleculeTrajectoryData === "function" ? isMoleculeTrajectoryData(data) : false,
+              })
+            : {
+                  content: data,
+                  moleculeName: file.name,
+                  moleculeFormat: ext,
+                  moleculeIsTrajectory: /^MODEL\b/m.test(data) && /^ENDMDL\b/m.test(data),
+              };
+        const activeIndex = ensureActiveSlideSync();
+        saveStateToUndo();
+        const selectedMoleculeId = state.selectedIds?.find(selectedId =>
+            state.slides[activeIndex].elements.some(el => el.id === selectedId && el.type === "molecule"),
+        );
+        if (selectedMoleculeId) {
+            const target = state.slides[activeIndex].elements.find(el => el.id === selectedMoleculeId);
+            Object.assign(target, moleculeData);
+        } else {
+            const id = generateId("el");
+            state.slides[activeIndex].elements.push({
+                id,
+                type: "molecule",
+                ...moleculeData,
+                x: 100,
+                y: 90,
+                width: "620px",
+                height: "420px",
+                styles: {
+                    zIndex: getNextZIndex(),
+                    borderRadius: "8px",
+                    backgroundColor: "#020617",
+                    border: "1px solid #334155",
+                },
+            });
+            selectElement(id);
+        }
+        renderSlidesFromState();
+        if (selectedMoleculeId) selectElement(selectedMoleculeId);
+        setProjectSaveHint?.(
+            `${moleculeData.moleculeIsTrajectory ? "Trajectory" : "PDB structure"} ${selectedMoleculeId ? "replaced" : "added"}`,
+            "success",
+        );
     };
     reader.readAsText(file);
 }

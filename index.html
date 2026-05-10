@@ -27,7 +27,6 @@
     <meta name="twitter:description" content="Design stunning presentations in minutes with SlideForge's minimal, intuitive AI-guided editor." />
     <meta name="twitter:image" content="assets/favicon.png" />
 
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         window.tailwind = window.tailwind || {};
@@ -248,7 +247,7 @@
                     <button onclick="redo()" title="Redo (Ctrl+Y)" class="toolbar-btn" id="btn-redo">
                         <i class="fa-solid fa-rotate-right text-sm"></i>
                     </button>
-                    <button onclick="aiCleanUpSlide()" title="AI Clean Up (Auto-align)" class="toolbar-btn toolbar-btn-ai">
+                    <button onclick="aiCleanUpSlide()" title="AI Clean Up (LLM visual polish)" class="toolbar-btn toolbar-btn-ai">
                         <i class="fa-solid fa-wand-magic-sparkles text-sm"></i>
                     </button>
                 </div>
@@ -364,6 +363,10 @@
                             <i class="fa-solid fa-code w-5 text-primary"></i>
                             <span>HTML Embed</span>
                         </button>
+                        <button onclick="document.getElementById('molecule-file-upload').click()" class="element-btn">
+                            <i class="fa-solid fa-atom w-5 text-primary"></i>
+                            <span>PDB / Trajectory</span>
+                        </button>
                     </div>
 
                     <!-- Section: Math & Science -->
@@ -450,7 +453,7 @@
                             <i class="fa-solid fa-pen"></i>
                             <span>Chalk</span>
                         </div>
-                        <label class="presentation-chalk-color-chip" for="present-chalk-color" title="Chalk color">
+                        <label class="presentation-chalk-color-chip" for="present-chalk-color-chip" title="Chalk color">
                             <span class="sr-only">Chalk color</span>
                             <input id="present-chalk-color-chip" type="color" value="#fff59d" />
                         </label>
@@ -656,6 +659,7 @@
     <input type="file" id="html-file-upload" accept=".html,.htm,text/html" class="hidden" onchange="handleHtmlFileInsert(event)" />
     <input type="file" id="video-file-upload" accept="video/*" class="hidden" onchange="handleVideoFileInsert(event)" />
     <input type="file" id="pdf-file-upload" accept=".pdf,application/pdf" class="hidden" onchange="handlePdfFileInsert(event)" />
+    <input type="file" id="molecule-file-upload" accept=".pdb,.ent,.gro,.mol2,chemical/x-pdb,text/plain" class="hidden" onchange="handleMoleculeFileInsert(event)" />
 
     <div id="ai-import-progress-modal" class="fixed inset-0 bg-slate-950/45 hidden items-center justify-center z-[120]">
         <div id="ai-import-progress-card" class="w-[min(92vw,560px)] rounded-2xl border border-slate-200 bg-white shadow-2xl p-6 transition-colors duration-300">
@@ -976,14 +980,15 @@
     <script src="js/textContent.js"></script>
     <script src="js/themes.js"></script>
     <script src="js/htmlEmbed.js"></script>
+    <script src="js/moleculeEmbed.js"></script>
     <script src="js/textLayout.js"></script>
     <script src="js/textSelection.js"></script>
-    <script src="js/crop.js"></script>
-    <script src="js/render.js"></script>
+    <script src="js/crop.js?v=20260503-crop-margin"></script>
+    <script src="js/render.js?v=20260503-crop-margin"></script>
     <script src="js/properties/panels/text.js"></script>
     <script src="js/properties.js"></script>
     <script src="js/interact.js"></script>
-    <script src="js/export.js"></script>
+    <script src="js/export.js?v=20260503-crop-margin"></script>
     <script src="js/components.js"></script>
     <script src="js/commands.js"></script>
     <script src="js/keyboard.js"></script>

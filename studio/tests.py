@@ -1,12 +1,24 @@
 import json
 import tempfile
+from io import BytesIO
 from pathlib import Path
+from unittest import mock
 
+import fitz  # type: ignore
 from django.contrib.auth import get_user_model
-from django.test import Client, TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import Client, TestCase, override_settings
 from PIL import Image
+from pptx import Presentation as PptxPresentation
+from pptx.enum.shapes import MSO_SHAPE_TYPE
 
+from ai_jobs.models import ImportJob
+from ai_jobs.services import _bridge_command, _materialize_bridge_visuals
+from bridge.pdf_bridge import PDF2PPTxBridge
+from bridge.processors import LocalVisionPDFProcessor
+from bridge.text_utils import OutlineEntry
 from bridge.pptx_exporter import PPTXExporter
+from studio.models import Asset, Presentation, PresentationRevision
 
 
 class PresentationApiRegressionTests(TestCase):
@@ -38,6 +50,170 @@ class PresentationApiRegressionTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
 
+    def test_presentation_update_increments_version_and_revision_atomically(self):
+        presentation = Presentation.objects.create(
+            owner=self.user,
+            title="Draft",
+            state_json={"slides": []},
+            autosave_version=3,
+        )
+
+        response = self.client.patch(
+            f"/api/presentations/{presentation.id}/",
+            data=json.dumps({"title": "Updated", "state": {"slides": [{"id": "s1"}]}, "saveRevision": True}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        presentation.refresh_from_db()
+        self.assertEqual(presentation.autosave_version, 4)
+        self.assertEqual(presentation.title, "Updated")
+        revision = PresentationRevision.objects.get(presentation=presentation)
+        self.assertEqual(revision.version, 4)
+        self.assertEqual(revision.state_json, {"slides": [{"id": "s1"}]})
+
+    @mock.patch("studio.views.build_task_provider")
+    @mock.patch("studio.views._generate_structured_json")
+    @override_settings(PPTMAKER_ENABLE_AI_CLEANUP=True)
+    def test_slide_cleanup_uses_llm_and_sanitizes_updates(self, generate_json, build_provider):
+        build_provider.return_value = object()
+        generate_json.return_value = {
+            "summary": "Balanced headline and body.",
+            "elements": [
+                {
+                    "id": "title",
+                    "x": 48,
+                    "y": 42,
+                    "width": 820,
+                    "height": 90,
+                    "content": "Sharper title",
+                    "styles": {"fontSize": "48px", "position": "fixed"},
+                },
+                {"id": "missing", "x": 0, "y": 0, "width": 10, "height": 10},
+            ],
+        }
+
+        response = self.client.post(
+            "/api/slides/cleanup/",
+            data=json.dumps(
+                {
+                    "pageSetup": {"width": 1024, "height": 768},
+                    "theme": "editorial",
+                    "slide": {
+                        "id": "slide-1",
+                        "notes": "Make this crisp.",
+                        "elements": [
+                            {
+                                "id": "title",
+                                "type": "text",
+                                "x": 100,
+                                "y": 100,
+                                "width": "500px",
+                                "height": "80px",
+                                "content": "Old title",
+                                "styles": {"fontSize": "40px"},
+                            }
+                        ],
+                    },
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["summary"], "Balanced headline and body.")
+        self.assertEqual(len(payload["elements"]), 1)
+        self.assertEqual(payload["elements"][0]["id"], "title")
+        self.assertEqual(payload["elements"][0]["content"], "Sharper title")
+        self.assertEqual(payload["elements"][0]["styles"], {"fontSize": "48px"})
+        build_provider.assert_called_once_with(task="creative", allow_remote=True)
+        generate_json.assert_called_once()
+
+    def test_slide_cleanup_uses_local_cleanup_by_default(self):
+        response = self.client.post(
+            "/api/slides/cleanup/",
+            data=json.dumps(
+                {
+                    "pageSetup": {"width": 1024, "height": 768},
+                    "slide": {
+                        "elements": [
+                            {
+                                "id": "title",
+                                "type": "text",
+                                "x": 103,
+                                "y": 101,
+                                "width": "500px",
+                                "height": "80px",
+                                "content": "Old title",
+                            }
+                        ],
+                    },
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["fallback"], "local")
+        self.assertEqual(payload["summary"], "Local cleanup applied")
+        self.assertEqual(payload["elements"][0]["x"], 100)
+        self.assertEqual(payload["elements"][0]["y"], 100)
+
+    @mock.patch("studio.views.logger.warning")
+    @mock.patch("studio.views.build_task_provider")
+    @mock.patch("studio.views._generate_structured_json")
+    @override_settings(PPTMAKER_ENABLE_AI_CLEANUP=True)
+    def test_slide_cleanup_failure_uses_local_fallback(self, generate_json, build_provider, logger_warning):
+        build_provider.return_value = object()
+        generate_json.side_effect = RuntimeError("All LLM providers failed: secret provider detail")
+
+        response = self.client.post(
+            "/api/slides/cleanup/",
+            data=json.dumps(
+                {
+                    "pageSetup": {"width": 1024, "height": 768},
+                    "slide": {
+                        "elements": [
+                            {
+                                "id": "title",
+                                "type": "text",
+                                "x": 100,
+                                "y": 100,
+                                "width": "500px",
+                                "height": "80px",
+                                "content": "Old title",
+                            }
+                        ],
+                    },
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["fallback"], "ai_failed_local")
+        self.assertEqual(payload["summary"], "Local cleanup applied after AI returned invalid JSON")
+        self.assertEqual(payload["elements"], [])
+        self.assertNotIn("secret provider detail", response.content.decode("utf-8"))
+        build_provider.assert_called_once_with(task="creative", allow_remote=True)
+        logger_warning.assert_called_once()
+
+    @mock.patch("studio.views.logger.exception")
+    def test_pptx_export_failure_returns_generic_error(self, logger_exception):
+        with mock.patch("studio.views.PPTXExporter.export", side_effect=RuntimeError("internal detail")):
+            response = self.client.post(
+                "/api/presentations/export/pptx/",
+                data=json.dumps({"state": {"pageSetup": "standard-4-3", "slides": []}}),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.json(), {"error": "PPTX export failed"})
+        logger_exception.assert_called_once_with("PPTX export failed")
+
 
 class PPTXExporterRegressionTests(TestCase):
     def test_image_stream_uses_configurable_project_root(self):
@@ -53,6 +229,138 @@ class PPTXExporterRegressionTests(TestCase):
 
             self.assertIsNotNone(stream)
             self.assertGreater(len(stream.getvalue()), 0)
+
+    def test_image_stream_rejects_paths_outside_safe_asset_roots(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir) / "project"
+            project_root.mkdir()
+            outside_dir = Path(tmpdir) / "outside"
+            outside_dir.mkdir()
+            image_path = outside_dir / "sample.png"
+            Image.new("RGB", (1, 1), color=(255, 0, 0)).save(image_path)
+
+            exporter = PPTXExporter({"slides": []}, project_root=project_root)
+            self.assertIsNone(exporter._get_image_stream(str(image_path)))
+
+    def test_css_font_weight_keywords_are_supported(self):
+        exporter = PPTXExporter({"slides": []})
+
+        self.assertEqual(exporter._parse_font_weight("normal"), 400)
+        self.assertEqual(exporter._parse_font_weight("bold"), 700)
+        self.assertEqual(exporter._parse_font_weight("600"), 600)
+
+    def test_image_crop_transform_maps_to_pptx_crop_fractions(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            media_dir = project_root / "media"
+            media_dir.mkdir()
+            image_path = media_dir / "wide.png"
+            Image.new("RGB", (400, 200), color=(255, 0, 0)).save(image_path)
+
+            state = {
+                "slides": [
+                    {
+                        "elements": [
+                            {
+                                "type": "image",
+                                "x": 0,
+                                "y": 0,
+                                "width": "400px",
+                                "height": "200px",
+                                "content": "/media/wide.png",
+                                "cropTransform": {
+                                    "leftPercent": -50,
+                                    "topPercent": -25,
+                                    "widthPercent": 200,
+                                    "heightPercent": 150,
+                                },
+                                "styles": {},
+                            }
+                        ]
+                    }
+                ]
+            }
+
+            prs = PptxPresentation(PPTXExporter(state, project_root=project_root).export())
+            picture = next(shape for shape in prs.slides[0].shapes if shape.shape_type == MSO_SHAPE_TYPE.PICTURE)
+
+        self.assertAlmostEqual(picture.crop_left, 0.25, places=4)
+        self.assertAlmostEqual(picture.crop_right, 0.25, places=4)
+        self.assertAlmostEqual(picture.crop_top, 1 / 6, places=4)
+        self.assertAlmostEqual(picture.crop_bottom, 1 / 6, places=4)
+
+    def test_native_pptx_exports_tables_connectors_notes_and_placeholders(self):
+        state = {
+            "pageSetup": "widescreen-16-9",
+            "slides": [
+                {
+                    "notes": "Speaker note",
+                    "elements": [
+                        {
+                            "id": "title",
+                            "type": "text",
+                            "x": 40,
+                            "y": 30,
+                            "width": "420px",
+                            "height": "100px",
+                            "content": "Title <strong>bold</strong><br><em>italic</em>",
+                            "styles": {"fontSize": "28px", "color": "#123456", "zIndex": 1},
+                        },
+                        {
+                            "id": "tbl",
+                            "type": "table",
+                            "x": 60,
+                            "y": 160,
+                            "width": "520px",
+                            "height": "180px",
+                            "styles": {"zIndex": 2},
+                            "tableData": {
+                                "rows": 2,
+                                "cols": 2,
+                                "headerRow": True,
+                                "cells": [[{"text": "Metric"}, {"text": "Value"}], [{"text": "Accuracy"}, {"text": "98%"}]],
+                                "colWidths": [180, 140],
+                                "rowHeights": [44, 52],
+                            },
+                        },
+                        {
+                            "id": "line",
+                            "type": "connector",
+                            "x": 650,
+                            "y": 120,
+                            "width": "160px",
+                            "height": "80px",
+                            "styles": {"color": "#ff0000", "strokeWidth": 3, "zIndex": 3},
+                        },
+                        {
+                            "id": "html",
+                            "type": "html",
+                            "x": 720,
+                            "y": 250,
+                            "width": "220px",
+                            "height": "120px",
+                            "content": "<h1>Widget</h1>",
+                            "styles": {"zIndex": 4},
+                        },
+                    ],
+                }
+            ],
+        }
+
+        prs = PptxPresentation(PPTXExporter(state).export())
+        slide = prs.slides[0]
+
+        self.assertEqual(slide.notes_slide.notes_text_frame.text, "Speaker note")
+        self.assertTrue(any(shape.has_table for shape in slide.shapes))
+        self.assertTrue(any(shape.shape_type == MSO_SHAPE_TYPE.LINE for shape in slide.shapes))
+        all_text = "\n".join(shape.text for shape in slide.shapes if getattr(shape, "has_text_frame", False))
+        self.assertIn("Title bold", all_text)
+        self.assertIn("italic", all_text)
+        self.assertIn("HTML embed placeholder", all_text)
+
+        table = next(shape.table for shape in slide.shapes if shape.has_table)
+        self.assertEqual(table.cell(0, 0).text, "Metric")
+        self.assertEqual(table.cell(1, 1).text, "98%")
 
 
 class FrontendExportRegressionTests(TestCase):
@@ -73,3 +381,316 @@ class FrontendExportRegressionTests(TestCase):
         self.assertIn("try {", self.export_js)
         self.assertIn("finally {", self.export_js)
         self.assertNotIn('document.getElementById("slides-container")', self.export_js)
+
+    def test_zip_viewer_preserves_table_dimensions_and_wraps_html_embeds(self):
+        self.assertIn("rawRowHeights", self.export_js)
+        self.assertIn("rawColWidths", self.export_js)
+        self.assertIn("document.createElement('colgroup')", self.export_js)
+        self.assertIn("buildViewerHtmlEmbedSrcdoc", self.export_js)
+        self.assertIn("iframe.setAttribute('sandbox'", self.export_js)
+
+    def test_cropped_images_render_consistently_in_previews_editor_and_zip_viewer(self):
+        project_root = Path(__file__).resolve().parent.parent
+        render_js = (project_root / "js" / "render.js").read_text(encoding="utf-8")
+        crop_js = (project_root / "js" / "crop.js").read_text(encoding="utf-8")
+
+        self.assertIn("function _createImageContentNode", render_js)
+        self.assertIn("_createImageContentNode(elData, { interactive: false })", render_js)
+        self.assertIn("_createImageContentNode(elData, { interactive: true })", render_js)
+        self.assertIn("img.style.setProperty(\"margin\", \"0\", \"important\")", render_js)
+        self.assertIn("img.style.setProperty(\"margin\", \"0\", \"important\")", crop_js)
+        self.assertIn("function normalizeImageCropTransform(crop)", self.export_js)
+        self.assertIn("const crop = normalizeImageCropTransform(elData.cropTransform);", self.export_js)
+        self.assertIn("margin:0!important", self.export_js)
+        self.assertIn("max-height:none; object-fit:fill", self.export_js)
+
+    def test_html_embeds_are_sandboxed_without_same_origin(self):
+        project_root = Path(__file__).resolve().parent.parent
+        html_embed_js = (project_root / "js" / "htmlEmbed.js").read_text(encoding="utf-8")
+        render_js = (project_root / "js" / "render.js").read_text(encoding="utf-8")
+        properties_js = (project_root / "js" / "properties.js").read_text(encoding="utf-8")
+
+        self.assertIn("function applyHtmlEmbedSandbox", html_embed_js)
+        self.assertIn('HTML_EMBED_SANDBOX = "allow-scripts allow-forms allow-popups allow-downloads"', html_embed_js)
+        self.assertNotIn("allow-same-origin", html_embed_js)
+        self.assertIn("applyHtmlEmbedSandbox(frame)", render_js)
+        self.assertIn("applyHtmlEmbedSandbox(iframe)", render_js)
+        self.assertIn("applyHtmlEmbedSandbox(frame)", properties_js)
+        self.assertIn("getViewerHtmlEmbedSandbox", self.export_js)
+        self.assertIn("iframe.setAttribute('referrerpolicy', 'no-referrer')", self.export_js)
+        self.assertNotIn("allow-same-origin", self.export_js)
+
+
+class StaticHardeningSourceTests(TestCase):
+    def test_backend_source_routes_are_not_publicly_served(self):
+        urls_py = (Path(__file__).resolve().parent.parent / "pptmaker_backend" / "urls.py").read_text(encoding="utf-8")
+        self.assertNotIn('r"^bridge/', urls_py)
+        self.assertNotIn('r"^extracted_figures/', urls_py)
+        self.assertIn("if settings.DEBUG:", urls_py)
+
+    def test_frontend_cleanup_todos_are_applied(self):
+        project_root = Path(__file__).resolve().parent.parent
+        index_html = (project_root / "index.html").read_text(encoding="utf-8")
+        main_js = (project_root / "js" / "main.js").read_text(encoding="utf-8")
+        state_js = (project_root / "js" / "state.js").read_text(encoding="utf-8")
+
+        self.assertEqual(index_html.count("katex@0.16.9/dist/katex.min.css"), 1)
+        self.assertIn('for="present-chalk-color-chip"', index_html)
+        self.assertNotIn("console.log(`Grouped", main_js)
+        self.assertNotIn("console.log(`Ungrouped", main_js)
+        self.assertIn("if (modal) {", state_js)
+
+    def test_imported_state_and_text_rendering_are_sanitized(self):
+        project_root = Path(__file__).resolve().parent.parent
+        state_js = (project_root / "js" / "state.js").read_text(encoding="utf-8")
+        text_content_js = (project_root / "js" / "textContent.js").read_text(encoding="utf-8")
+
+        self.assertIn("function sanitizeTextHtml", state_js)
+        self.assertIn("SAFE_TEXT_TAGS", state_js)
+        self.assertIn("SAFE_ELEMENT_TYPES", state_js)
+        self.assertIn("sanitizeElementStyles", state_js)
+        self.assertIn("sanitizeElementContent", state_js)
+        self.assertIn("MAX_PRESENTATION_SLIDES", state_js)
+        self.assertIn("normalizeStateIds();", state_js)
+        self.assertIn("sanitizeTextHtml(elData.content", text_content_js)
+        self.assertIn("sanitizeTextHtml(html)", text_content_js)
+
+
+class AssetUploadHardeningTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = get_user_model().objects.create_user(username="asset-user", password="strong-password-123")
+
+    def _png_upload(self, name="sample.png"):
+        image_bytes = BytesIO()
+        Image.new("RGB", (2, 2), color=(0, 128, 255)).save(image_bytes, format="PNG")
+        return SimpleUploadedFile(name, image_bytes.getvalue(), content_type="image/png")
+
+    def test_asset_upload_requires_authentication(self):
+        response = self.client.post("/api/assets/upload/", {"file": self._png_upload()})
+
+        self.assertEqual(response.status_code, 401)
+        self.assertFalse(Asset.objects.exists())
+
+    @override_settings(PPTMAKER_MAX_ASSET_UPLOAD_BYTES=4)
+    def test_asset_upload_rejects_oversized_file(self):
+        self.client.force_login(self.user)
+        response = self.client.post("/api/assets/upload/", {"file": self._png_upload()})
+
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(response.json(), {"error": "File is too large"})
+
+    def test_asset_upload_rejects_invalid_image_content(self):
+        self.client.force_login(self.user)
+        upload = SimpleUploadedFile("sample.png", b"not an image", content_type="image/png")
+
+        response = self.client.post("/api/assets/upload/", {"file": upload})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json(), {"error": "Uploaded image is not a valid image file"})
+
+    def test_asset_upload_accepts_valid_image_for_authenticated_user(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post("/api/assets/upload/", {"file": self._png_upload()})
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["assetType"], "image")
+        self.assertEqual(Asset.objects.get().owner, self.user)
+
+
+class AiImportHardeningTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="import-user", password="strong-password-123")
+
+    @override_settings(PPTMAKER_ALLOW_REMOTE_LLM=False)
+    def test_bridge_command_omits_remote_llm_flag_by_default(self):
+        command = _bridge_command(Path("input.pdf"), Path("output.json"))
+
+        self.assertNotIn("--allow-remote-llm", command)
+
+    @override_settings(PPTMAKER_ALLOW_REMOTE_LLM=True)
+    def test_bridge_command_includes_remote_llm_flag_when_enabled(self):
+        command = _bridge_command(Path("input.pdf"), Path("output.json"))
+
+        self.assertIn("--allow-remote-llm", command)
+
+    def test_materialize_bridge_visuals_only_copies_verified_images_from_expected_dirs(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir) / "project"
+            media_root = project_root / "media"
+            extracted_dir = project_root / "extracted_figures"
+            unrelated_dir = project_root / "other"
+            pdf_dir = media_root / "imports" / "pdfs"
+            for path in (media_root, extracted_dir, unrelated_dir, pdf_dir):
+                path.mkdir(parents=True, exist_ok=True)
+
+            safe_image = extracted_dir / "safe.png"
+            Image.new("RGB", (2, 2), color=(255, 0, 0)).save(safe_image)
+            unsafe_image = unrelated_dir / "unsafe.png"
+            Image.new("RGB", (2, 2), color=(0, 255, 0)).save(unsafe_image)
+            fake_image = extracted_dir / "fake.png"
+            fake_image.write_text("not an image", encoding="utf-8")
+
+            with override_settings(BASE_DIR=project_root, MEDIA_ROOT=media_root, MEDIA_URL="/media/"):
+                job = ImportJob.objects.create(owner=self.user, source_pdf="imports/pdfs/source.pdf")
+                result = _materialize_bridge_visuals(
+                    {
+                        "slides": [
+                            {
+                                "fig_path": str(safe_image),
+                                "visuals": [{"path": str(unsafe_image)}, {"path": str(fake_image)}],
+                            }
+                        ]
+                    },
+                    job,
+                )
+
+        slide = result["slides"][0]
+        self.assertTrue(slide["fig_path"].startswith("/media/imports/figures/"))
+        self.assertEqual(slide["visuals"][0]["path"], str(unsafe_image))
+        self.assertEqual(slide["visuals"][1]["path"], str(fake_image))
+
+    def test_embedded_pdf_visual_fallback_extracts_image_with_caption(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            image_path = tmp_path / "figure.png"
+            Image.new("RGB", (180, 90), color=(32, 96, 160)).save(image_path)
+
+            pdf_path = tmp_path / "source.pdf"
+            doc = fitz.open()
+            page = doc.new_page(width=420, height=320)
+            page.insert_image(fitz.Rect(72, 60, 252, 150), filename=str(image_path))
+            page.insert_textbox(
+                fitz.Rect(72, 160, 360, 220),
+                "Figure 1. Test caption describes the embedded result.",
+                fontsize=11,
+            )
+            doc.save(pdf_path)
+            doc.close()
+
+            processor = LocalVisionPDFProcessor(str(pdf_path))
+            processor.figures_dir = str(tmp_path / "extracted_figures")
+
+            visuals = processor._extract_visuals_embedded()
+            processor._sync_visual_context(visuals)
+
+            self.assertEqual(len(visuals), 1)
+            self.assertTrue(Path(visuals[0]["path"]).exists())
+            self.assertIn("Figure 1", visuals[0]["caption"])
+            self.assertIn("Test caption", processor.mineru_context["captions"][0])
+
+    def test_storyboard_json_failure_uses_deterministic_fallback_with_debug(self):
+        class BrokenLLM:
+            trace = [{"provider": "test-provider", "error": "bad json"}]
+            last_provider = "test-provider"
+
+            def generate(self, *args, **kwargs):
+                return '{"title": "Broken", "slides": [{"title": "unterminated}'
+
+        bridge = PDF2PPTxBridge(BrokenLLM())
+        events = []
+        paper_brief = {
+            "central_thesis": "String methods estimate transition pathways from swarms of trajectories.",
+            "problem": "Free-energy calculations need tractable transition pathway estimates.",
+            "method_mechanism": ["Initialize images along a trial path", "Evolve swarms from each image"],
+            "key_findings": ["The method updates images toward average swarm drift"],
+            "takeaway": "The workflow turns trajectory ensembles into interpretable pathways.",
+            "evidence_items": [
+                {
+                    "id": "E1",
+                    "claim": "Trial paths are represented by images.",
+                    "support": "The source describes initializing images along the path.",
+                    "section": "Method",
+                    "figure_ids": ["F1"],
+                },
+                {
+                    "id": "E2",
+                    "claim": "Swarms estimate local drift.",
+                    "support": "Short trajectories are launched from each image.",
+                    "section": "Method",
+                },
+            ],
+        }
+
+        storyboard = bridge._plan_storyboard(
+            BrokenLLM(),
+            {"title": "String Method Tutorial"},
+            [{"id": "F1", "caption": "String method schematic"}],
+            lambda event, message, data=None: events.append((event, message, data or {})),
+            document_outline=[
+                OutlineEntry("Introduction", "Introduction", 1, "Transition pathways motivate the method.", 0, 10)
+            ],
+            coarse_context=[{"heading": "Introduction", "level": 1, "preview": "Transition pathways motivate the method."}],
+            paper_brief=paper_brief,
+        )
+
+        self.assertGreaterEqual(len(storyboard["slides"]), 3)
+        self.assertTrue(storyboard["_debug"]["storyboard"]["fallback"])
+        self.assertIn("Failed to parse scientific storyboarding JSON", storyboard["_debug"]["storyboard"]["reason"])
+        self.assertTrue(any(item[2].get("fallback") for item in events))
+
+    def test_local_slide_generation_defaults_to_fast_source_writer(self):
+        class LocalProvider:
+            def provider_label(self):
+                return "ollama:qwen2.5:7b"
+
+        class LocalLLM:
+            providers = [LocalProvider()]
+
+            def generate(self, *args, **kwargs):
+                raise AssertionError("fast local slide writing should not call the LLM")
+
+        bridge = PDF2PPTxBridge(LocalLLM())
+        storyboard = {
+            "title": "String Method Tutorial",
+            "slides": [
+                {
+                    "section": "Method",
+                    "title": "Swarms estimate local drift",
+                    "goal": "Short trajectories estimate drift around each image.",
+                    "evidence_ids": ["E1"],
+                    "layout_hint": "mechanism",
+                    "context_keywords": ["swarms", "trajectories", "drift"],
+                }
+            ],
+        }
+        paper_brief = {
+            "evidence_items": [
+                {
+                    "id": "E1",
+                    "claim": "Short trajectories are launched from each image.",
+                    "support": "The swarm average estimates local drift for path updates.",
+                    "section": "Method",
+                }
+            ]
+        }
+        full_text = (
+            "Methods. Short trajectories are launched from each image. "
+            "The swarm average estimates local drift for path updates. "
+            "The images move toward the average endpoint of the local trajectories."
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "presentation.json"
+            result = bridge._generate_slides(
+                storyboard,
+                [],
+                full_text,
+                {},
+                LocalLLM(),
+                output_path,
+                None,
+                0,
+                0,
+                lambda *args, **kwargs: None,
+                {},
+                {},
+                paper_brief=paper_brief,
+                llm_trace={"slide_writing": LocalLLM()},
+            )
+
+        self.assertEqual(result["generation"]["slide_writing_mode"], "fast")
+        content_slides = [slide for slide in result["slides"] if slide.get("type") == "content"]
+        self.assertEqual(len(content_slides), 1)
+        self.assertEqual(content_slides[0]["review"]["status"], "fast_source_writer")

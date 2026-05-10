@@ -404,8 +404,6 @@ function groupSelected() {
     state.selectedIds.forEach(id => {
         updateElementState(id, { groupId });
     });
-    // Show a small toast or visual feedback if desired
-    console.log(`Grouped ${state.selectedIds.length} elements under ${groupId}`);
     buildPropertiesPanel();
 }
 
@@ -429,7 +427,6 @@ function ungroupSelected() {
         }
     });
 
-    console.log(`Ungrouped ${groupIdsToClear.size} groups`);
     buildPropertiesPanel();
 }
 

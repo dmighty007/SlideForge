@@ -300,7 +300,7 @@ function normalizeSlideBackground(background) {
     }
     if (typeof background !== "object") return null;
     const content = String(background.content || "").trim();
-    if (!content) return null;
+    if (!content || !_isSafeAssetUrl(content, { allowData: true })) return null;
     const type = background.type === "video" ? "video" : "image";
     const fit = ["cover", "contain", "fill"].includes(background.fit) ? background.fit : "cover";
     const opacity = Math.max(0, Math.min(1, Number(background.opacity ?? 1)));
@@ -526,6 +526,144 @@ function setAuthState(user) {
     updateProjectTitleUi();
 }
 
+const SAFE_ELEMENT_TYPES = new Set(["text", "image", "shape", "table", "connector", "video", "html", "pdf", "molecule", "chart", "equation", "latex"]);
+const SAFE_TEXT_TAGS = new Set(["B", "BR", "DIV", "EM", "I", "LI", "MARK", "OL", "P", "S", "SMALL", "SPAN", "STRONG", "SUB", "SUP", "U", "UL"]);
+const SAFE_TEXT_STYLE_PROPS = new Set([
+    "color",
+    "background-color",
+    "font-family",
+    "font-size",
+    "font-style",
+    "font-weight",
+    "text-align",
+    "text-decoration",
+    "vertical-align",
+]);
+const SAFE_ELEMENT_STYLE_PROPS = new Set([
+    "backgroundColor",
+    "borderColor",
+    "borderRadius",
+    "borderStyle",
+    "borderWidth",
+    "color",
+    "fontFamily",
+    "fontSize",
+    "fontStyle",
+    "fontWeight",
+    "letterSpacing",
+    "lineHeight",
+    "opacity",
+    "textAlign",
+    "textDecoration",
+    "textStrokeColor",
+    "textStrokeWidth",
+    "transform",
+    "zIndex",
+]);
+const MAX_PRESENTATION_SLIDES = 250;
+const MAX_ELEMENTS_PER_SLIDE = 300;
+const MAX_TEXT_HTML_LENGTH = 20000;
+const MAX_EMBED_HTML_LENGTH = 100000;
+
+function _truncateStateString(value, maxLength) {
+    return String(value ?? "").slice(0, maxLength);
+}
+
+function _isSafeAssetUrl(value, { allowData = false } = {}) {
+    const url = String(value || "").trim();
+    if (!url) return false;
+    if (url.startsWith("/media/") || url.startsWith("/static/") || url.startsWith("assets/") || url.startsWith("blob:")) {
+        return true;
+    }
+    if (allowData && /^data:(image|video|application\/pdf)\//i.test(url)) {
+        return true;
+    }
+    try {
+        const parsed = new URL(url, window.location.origin);
+        return parsed.protocol === "http:" || parsed.protocol === "https:";
+    } catch (_err) {
+        return false;
+    }
+}
+
+function _isSafeCssValue(value) {
+    const str = String(value ?? "");
+    return !/(?:expression\s*\(|javascript:|data:text\/html|url\s*\()/i.test(str);
+}
+
+function sanitizeTextHtml(html) {
+    const template = document.createElement("template");
+    template.innerHTML = _truncateStateString(html, MAX_TEXT_HTML_LENGTH);
+
+    Array.from(template.content.querySelectorAll("*")).forEach(node => {
+        if (!SAFE_TEXT_TAGS.has(node.tagName)) {
+            node.replaceWith(...Array.from(node.childNodes));
+            return;
+        }
+
+        Array.from(node.attributes).forEach(attr => {
+            const name = attr.name.toLowerCase();
+            if (name === "style") return;
+            node.removeAttribute(attr.name);
+        });
+
+        if (node instanceof HTMLElement) {
+            const kept = {};
+            Array.from(node.style).forEach(prop => {
+                const value = node.style.getPropertyValue(prop);
+                if (SAFE_TEXT_STYLE_PROPS.has(prop) && _isSafeCssValue(value)) {
+                    kept[prop] = value;
+                }
+            });
+            node.removeAttribute("style");
+            Object.entries(kept).forEach(([prop, value]) => node.style.setProperty(prop, value));
+        }
+    });
+
+    return template.innerHTML;
+}
+
+function sanitizeTextContentValue(content) {
+    if (Array.isArray(content)) {
+        return content.map(item => ({
+            ...(item && typeof item === "object" ? item : {}),
+            html: sanitizeTextHtml(item?.html ?? item?.text ?? ""),
+            text: typeof item?.text === "string" ? _truncateStateString(item.text, MAX_TEXT_HTML_LENGTH) : undefined,
+            level: Math.max(0, Math.min(8, Number(item?.level) || 0)),
+        }));
+    }
+    return sanitizeTextHtml(content);
+}
+
+function sanitizeElementStyles(styles = {}) {
+    if (!styles || typeof styles !== "object") return {};
+    return Object.fromEntries(
+        Object.entries(styles)
+            .filter(([prop, value]) => SAFE_ELEMENT_STYLE_PROPS.has(prop) && _isSafeCssValue(value))
+            .map(([prop, value]) => [prop, typeof value === "string" ? _truncateStateString(value, 256) : value]),
+    );
+}
+
+function sanitizeElementContent(safeEl, fallbackType) {
+    if (fallbackType === "text") {
+        return sanitizeTextContentValue(safeEl.content);
+    }
+    if (fallbackType === "html") {
+        return _truncateStateString(safeEl.content || "", MAX_EMBED_HTML_LENGTH);
+    }
+    if (fallbackType === "image" || fallbackType === "video" || fallbackType === "pdf") {
+        const content = String(safeEl.content || "");
+        return _isSafeAssetUrl(content, { allowData: true }) ? content : "";
+    }
+    if (fallbackType === "molecule") {
+        return _truncateStateString(safeEl.content || "", 2000000);
+    }
+    if (fallbackType === "latex") {
+        return _truncateStateString(safeEl.content || safeEl.latexSrc || "", 10000);
+    }
+    return typeof safeEl.content === "string" ? _truncateStateString(safeEl.content, 20000) : "";
+}
+
 function normalizeStateIds() {
     if (!state.presentationTheme || typeof state.presentationTheme !== "string") {
         state.presentationTheme = "editorial";
@@ -535,18 +673,18 @@ function normalizeStateIds() {
     const usedSlideIds = new Set();
     const usedElementIds = new Set();
 
-    state.slides = (state.slides || []).map(slide => {
+    state.slides = (state.slides || []).slice(0, MAX_PRESENTATION_SLIDES).map(slide => {
         const safeSlide = slide || { elements: [] };
         const nextSlideId = safeSlide.id && !usedSlideIds.has(safeSlide.id) ? safeSlide.id : generateId("slide");
         usedSlideIds.add(nextSlideId);
 
-        const nextElements = Array.isArray(safeSlide.elements) ? safeSlide.elements : [];
+        const nextElements = Array.isArray(safeSlide.elements) ? safeSlide.elements.slice(0, MAX_ELEMENTS_PER_SLIDE) : [];
         const normalizedElements = nextElements.map(el => {
             const safeEl = el || {};
             const nextElId = safeEl.id && !usedElementIds.has(safeEl.id) ? safeEl.id : generateId("el");
             usedElementIds.add(nextElId);
 
-            const fallbackType = safeEl.type || "text";
+            const fallbackType = SAFE_ELEMENT_TYPES.has(safeEl.type) ? safeEl.type : "text";
             const fallbackStyles = {
                 zIndex: 1,
                 borderRadius: "0px",
@@ -603,6 +741,31 @@ function normalizeStateIds() {
                     ? {
                           htmlInteractive: safeEl.htmlInteractive ?? true,
                           htmlMode: safeEl.htmlMode === "autofit" ? "autofit" : "responsive",
+                      }
+                    : {}),
+                ...(fallbackType === "molecule"
+                    ? {
+                          moleculeName: typeof safeEl.moleculeName === "string" ? _truncateStateString(safeEl.moleculeName, 240) : "Molecule",
+                          moleculeFormat: typeof normalizeMoleculeFormat === "function" ? normalizeMoleculeFormat(safeEl.moleculeFormat || "pdb") : "pdb",
+                          moleculeIsTrajectory: Boolean(
+                              safeEl.moleculeIsTrajectory ||
+                                  (typeof isMoleculeTrajectoryData === "function" && isMoleculeTrajectoryData(safeEl.content)),
+                          ),
+                          moleculeInteractive: safeEl.moleculeInteractive ?? true,
+                          moleculeAutoRotate: Boolean(safeEl.moleculeAutoRotate),
+                          moleculeProjection: safeEl.moleculeProjection === "orthographic" ? "orthographic" : "perspective",
+                          moleculeDefaultStyle:
+                              ["cartoon", "stick", "sphere", "line", "surface"].includes(safeEl.moleculeDefaultStyle)
+                                  ? safeEl.moleculeDefaultStyle
+                                  : "cartoon",
+                          moleculeDefaultColor:
+                              ["default", "chain", "amino", "ssJmol", "spectrum", "custom"].includes(safeEl.moleculeDefaultColor)
+                                  ? safeEl.moleculeDefaultColor
+                                  : "spectrum",
+                          moleculeRepresentationLayers:
+                              typeof normalizeMoleculeRepresentationLayer === "function" && Array.isArray(safeEl.moleculeRepresentationLayers)
+                                  ? safeEl.moleculeRepresentationLayers.map(normalizeMoleculeRepresentationLayer).slice(0, 12)
+                                  : [],
                       }
                     : {}),
                 ...(fallbackType === "image"
@@ -688,6 +851,8 @@ function normalizeStateIds() {
                             ? "520px"
                           : fallbackType === "html"
                             ? "520px"
+                            : fallbackType === "molecule"
+                              ? "620px"
                             : "auto"),
                 height:
                     safeEl.height ||
@@ -703,18 +868,24 @@ function normalizeStateIds() {
                             ? "360px"
                           : fallbackType === "html"
                             ? "320px"
+                            : fallbackType === "molecule"
+                              ? "420px"
                             : "auto"),
                 content:
                     fallbackType === "text"
-                        ? normalizeTextElementContent(safeEl.content)
+                        ? typeof normalizeTextElementContent === "function"
+                            ? normalizeTextElementContent(sanitizeElementContent(safeEl, fallbackType))
+                            : sanitizeElementContent(safeEl, fallbackType)
                         : typeof safeEl.content === "string"
-                          ? safeEl.content
+                          ? sanitizeElementContent(safeEl, fallbackType)
                           : fallbackType === "image"
                             ? "https://picsum.photos/400/300"
                             : fallbackType === "html"
                               ? "<html><body style='font-family: sans-serif; padding: 16px;'>Embedded HTML</body></html>"
+                              : fallbackType === "molecule" && typeof createDefaultMoleculeContent === "function"
+                                ? createDefaultMoleculeContent()
                               : "",
-                styles: { ...fallbackStyles, ...(safeEl.styles || {}) },
+                styles: { ...fallbackStyles, ...sanitizeElementStyles(safeEl.styles || {}) },
             };
         });
 
@@ -722,7 +893,7 @@ function normalizeStateIds() {
             ...safeSlide,
             id: nextSlideId,
             layoutId: typeof safeSlide.layoutId === "string" && safeSlide.layoutId ? safeSlide.layoutId : "blank-titled",
-            notes: typeof safeSlide.notes === "string" ? safeSlide.notes : "",
+            notes: typeof safeSlide.notes === "string" ? _truncateStateString(safeSlide.notes, 20000) : "",
             background: normalizeSlideBackground(safeSlide.background),
             elements: normalizedElements,
         };
@@ -819,6 +990,7 @@ function getNextZIndex() {
 }
 
 function getPersistableState() {
+    normalizeStateIds();
     return {
         presentationTheme: state.presentationTheme,
         pageSetup: getPresentationPageSetupId(state),
@@ -949,7 +1121,7 @@ function openAuthModal(mode = "login") {
 
 function closeAuthModal() {
     const modal = document.getElementById("auth-modal");
-    if (modal && currentAuthUser) {
+    if (modal) {
         modal.classList.add("hidden");
         modal.classList.remove("flex");
     }
@@ -1061,6 +1233,7 @@ async function loadPresentationRecord(presentationId) {
     ) {
         state = _convertBridgeExportToEditorState(loaded.bridgeResult);
     }
+    normalizeStateIds();
     localStorage.setItem(PRESENTATION_STORAGE_KEY, currentPresentationId);
     _lastPersistedFingerprint = JSON.stringify(hasSlides ? loaded.state : getPersistableState());
     setProjectSaveHint("All changes saved", "success");

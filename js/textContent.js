@@ -81,7 +81,7 @@ function normalizeStructuredBulletItem(item) {
               ? escapeHtml(String(safeItem.text || ""))
               : "";
     return {
-        html,
+        html: typeof sanitizeTextHtml === "function" ? sanitizeTextHtml(html) : html,
         level: Math.max(0, Number(safeItem.level) || 0),
     };
 }
@@ -199,7 +199,8 @@ function normalizeTextElementContent(content) {
     if (isStructuredBulletContent(content)) {
         return content.map(normalizeStructuredBulletItem);
     }
-    return typeof content === "string" ? content : "Double click to edit text";
+    const value = typeof content === "string" ? content : "Double click to edit text";
+    return typeof sanitizeTextHtml === "function" ? sanitizeTextHtml(value) : value;
 }
 
 function getTextListState(content, bulletStyle = "default") {
@@ -370,7 +371,9 @@ function applyTextBulletState(elData, kind, style = "default") {
 
 function renderTextContent(elData) {
     if (!isStructuredBulletContent(elData.content)) {
-        return String(elData.content || "");
+        return typeof sanitizeTextHtml === "function"
+            ? sanitizeTextHtml(elData.content || "")
+            : String(elData.content || "");
     }
 
     const bulletStyle = elData.bulletStyle || "default";

@@ -433,6 +433,8 @@ function generateViewerCss(theme) {
     --slide-height: 768px;
 }
 
+.hidden { display: none !important; }
+
 body {
     background:
         radial-gradient(circle at top, rgba(255,255,255,0.08), transparent 30%),
@@ -1010,6 +1012,47 @@ body {
 
 function generateViewerJs() {
     return `
+const animationEffects = ['fade-in', 'slide-up', 'slide-down', 'slide-left', 'slide-right', 'zoom-in', 'pop-in', 'wipe-in', 'pulse', 'glow'];
+const MOLECULE_EMBED_3DMOL_SRC = ${JSON.stringify(typeof MOLECULE_EMBED_3DMOL_SRC === 'string' ? MOLECULE_EMBED_3DMOL_SRC : 'https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.5.3/3Dmol-min.js')};
+
+${typeof createDefaultMoleculeContent === 'function' ? createDefaultMoleculeContent.toString() : ''}
+${typeof normalizeMoleculeFormat === 'function' ? normalizeMoleculeFormat.toString() : ''}
+${typeof isMoleculeTrajectoryData === 'function' ? isMoleculeTrajectoryData.toString() : ''}
+${typeof normalizeMoleculeRepresentationLayer === 'function' ? normalizeMoleculeRepresentationLayer.toString() : ''}
+${typeof _escapeMoleculeHtml === 'function' ? _escapeMoleculeHtml.toString() : ''}
+${typeof _moleculeSrcdocScript === 'function' ? _moleculeSrcdocScript.toString() : ''}
+${typeof buildMoleculeEmbedSrcdoc === 'function' ? buildMoleculeEmbedSrcdoc.toString() : ''}
+${typeof applyMoleculeEmbedSandbox === 'function' ? applyMoleculeEmbedSandbox.toString() : ''}
+
+function normalizeImageCropTransform(crop) {
+    if (!crop || typeof crop !== 'object') return { widthPercent: 100, heightPercent: 100, leftPercent: 0, topPercent: 0 };
+    const widthPercent = Math.max(100, Number(crop.widthPercent) || 100);
+    const heightPercent = Math.max(100, Number(crop.heightPercent) || 100);
+    const clamp = (value, min, max) => Math.min(max, Math.max(min, Number(value) || 0));
+    return {
+        widthPercent,
+        heightPercent,
+        leftPercent: clamp(crop.leftPercent, 100 - widthPercent, 0),
+        topPercent: clamp(crop.topPercent, 100 - heightPercent, 0),
+    };
+}
+
+function normalizeAnimation(el) {
+    const legacyValue = typeof el.animation === 'string' ? el.animation.trim() : '';
+    const raw = legacyValue ? { effect: legacyValue } : (el.animation && typeof el.animation === 'object' ? el.animation : null);
+    if (!raw || !raw.effect || !animationEffects.includes(raw.effect)) return null;
+    return {
+        effect: raw.effect,
+        trigger: raw.trigger === 'on-click' ? 'on-click' : 'on-slide',
+        order: Number.isFinite(Number(raw.order)) ? Number(raw.order) : 0,
+        durationMs: Math.max(100, Number(raw.durationMs ?? el.animDuration) || 800),
+        delayMs: Math.max(0, Number(raw.delayMs ?? el.animDelay) || 0),
+        easing: ['ease-out', 'ease-in-out', 'linear'].includes(raw.easing) ? raw.easing : 'ease-out',
+        distancePx: Number.isFinite(Number(raw.distancePx)) ? Number(raw.distancePx) : 48,
+        scaleFrom: Number.isFinite(Number(raw.scaleFrom)) ? Number(raw.scaleFrom) : 0.88
+    };
+}
+
 function initViewer(data) {
     const container = document.getElementById('slides-container');
     const stage = document.getElementById('viewer-stage');
@@ -1052,26 +1095,9 @@ function initViewer(data) {
     };
     const pageSetupId = pageSetups[data.pageSetup] ? data.pageSetup : 'standard-4-3';
     const page = pageSetups[pageSetupId];
-    const animationEffects = ['fade-in', 'slide-up', 'slide-down', 'slide-left', 'slide-right', 'zoom-in', 'pop-in', 'wipe-in', 'pulse', 'glow'];
     const runtime = { clickGroups: [], revealedGroups: 0, slideIndex: -1 };
     document.documentElement.style.setProperty('--slide-width', page.width + 'px');
     document.documentElement.style.setProperty('--slide-height', page.height + 'px');
-
-    function normalizeAnimation(el) {
-        const legacyValue = typeof el.animation === 'string' ? el.animation.trim() : '';
-        const raw = legacyValue ? { effect: legacyValue } : (el.animation && typeof el.animation === 'object' ? el.animation : null);
-        if (!raw || !raw.effect || !animationEffects.includes(raw.effect)) return null;
-        return {
-            effect: raw.effect,
-            trigger: raw.trigger === 'on-click' ? 'on-click' : 'on-slide',
-            order: Number.isFinite(Number(raw.order)) ? Number(raw.order) : 0,
-            durationMs: Math.max(100, Number(raw.durationMs ?? el.animDuration) || 800),
-            delayMs: Math.max(0, Number(raw.delayMs ?? el.animDelay) || 0),
-            easing: ['ease-out', 'ease-in-out', 'linear'].includes(raw.easing) ? raw.easing : 'ease-out',
-            distancePx: Number.isFinite(Number(raw.distancePx)) ? Number(raw.distancePx) : 48,
-            scaleFrom: Number.isFinite(Number(raw.scaleFrom)) ? Number(raw.scaleFrom) : 0.88
-        };
-    }
 
     function closeMenus() {
         if (menu) menu.classList.add('hidden');
@@ -1367,8 +1393,8 @@ function initViewer(data) {
         }
     }
 
-    prevBtn && prevBtn.addEventListener('click', prevStep);
-    nextBtn && nextBtn.addEventListener('click', nextStep);
+    prevBtn && prevBtn.addEventListener('click', () => { prevStep(); closeMenus(); });
+    nextBtn && nextBtn.addEventListener('click', () => { nextStep(); closeMenus(); });
     menuToggle && menuToggle.addEventListener('click', event => {
         event.stopPropagation();
         toggleMenu();
@@ -1504,10 +1530,47 @@ function initViewer(data) {
 }
 
 function createViewerElement(elData) {
+    function ensureViewerDocumentShell(content) {
+        const raw = String(content || '');
+        if (/<!doctype|<html[\\s>]/i.test(raw)) return raw;
+        return '<!doctype html><html><head></head><body>' + raw + '</body></html>';
+    }
+
+    function injectViewerIntoHead(doc, html) {
+        if (/<\\/head>/i.test(doc)) return doc.replace(/<\\/head>/i, html + '</head>');
+        return doc.replace(/<html[^>]*>/i, match => match + '<head>' + html + '</head>');
+    }
+
+    function injectViewerIntoBodyEnd(doc, html) {
+        if (/<\\/body>/i.test(doc)) return doc.replace(/<\\/body>/i, html + '</body>');
+        return doc + html;
+    }
+
+    function buildViewerHtmlEmbedSrcdoc(content, elData) {
+        let doc = ensureViewerDocumentShell(content);
+        if (!/name=["']viewport["']/i.test(doc)) {
+            doc = injectViewerIntoHead(doc, '<meta name="viewport" content="width=device-width, initial-scale=1" />');
+        }
+        const fit = elData?.htmlFit || 'contain';
+        const styles =
+            '<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;}body{box-sizing:border-box;}img,svg,canvas,video{max-width:100%;height:auto;}body[data-fit="fill"]>*:first-child{width:100%;height:100%;}body[data-fit="contain"]{display:flex;align-items:center;justify-content:center;}body[data-fit="contain"]>*:first-child{max-width:100%;max-height:100%;}</style>';
+        const script =
+            '<script>(function(){document.body.dataset.fit=' + JSON.stringify(fit) + ';})();<\/script>';
+        doc = injectViewerIntoHead(doc, styles);
+        doc = injectViewerIntoBodyEnd(doc, script);
+        return doc;
+    }
+
+    function getViewerHtmlEmbedSandbox() {
+        return 'allow-scripts allow-forms allow-popups allow-downloads';
+    }
+
     const normalizeTableDataLocal = tableData => {
         const rows = Math.max(1, Number(tableData?.rows) || 3);
         const cols = Math.max(1, Number(tableData?.cols) || 4);
         const rawCells = Array.isArray(tableData?.cells) ? tableData.cells : [];
+        const rawRowHeights = Array.isArray(tableData?.rowHeights) ? tableData.rowHeights : [];
+        const rawColWidths = Array.isArray(tableData?.colWidths) ? tableData.colWidths : [];
         return {
             rows,
             cols,
@@ -1521,6 +1584,14 @@ function createViewerElement(elData) {
             altFill: tableData?.altFill || '#f8fafc',
             textColor: tableData?.textColor || '#172033',
             headerTextColor: tableData?.headerTextColor || '#172033',
+            rowHeights: Array.from({ length: rows }, (_, rowIndex) => {
+                const value = Number(rawRowHeights[rowIndex]);
+                return Number.isFinite(value) && value >= 24 ? value : 44;
+            }),
+            colWidths: Array.from({ length: cols }, (_, colIndex) => {
+                const value = Number(rawColWidths[colIndex]);
+                return Number.isFinite(value) && value >= 36 ? value : 140;
+            }),
             cells: Array.from({ length: rows }, (_, rowIndex) =>
                 Array.from({ length: cols }, (_, colIndex) => {
                     const rawCell = rawCells[rowIndex]?.[colIndex];
@@ -1583,9 +1654,17 @@ function createViewerElement(elData) {
         table.style.width = '100%';
         table.style.height = '100%';
         table.style.tableLayout = 'fixed';
+        const colgroup = document.createElement('colgroup');
+        tableData.colWidths.forEach(width => {
+            const col = document.createElement('col');
+            col.style.width = Math.max(36, Number(width) || 140) + 'px';
+            colgroup.appendChild(col);
+        });
+        table.appendChild(colgroup);
         const tbody = document.createElement('tbody');
         for (let rowIndex = 0; rowIndex < tableData.rows; rowIndex += 1) {
             const tr = document.createElement('tr');
+            tr.style.height = Math.max(24, Number(tableData.rowHeights[rowIndex]) || 44) + 'px';
             for (let colIndex = 0; colIndex < tableData.cols; colIndex += 1) {
                 const cellData = tableData.cells[rowIndex]?.[colIndex] || { text: '', styles: {} };
                 const cell = document.createElement(rowIndex === 0 && tableData.headerRow ? 'th' : 'td');
@@ -1612,15 +1691,16 @@ function createViewerElement(elData) {
         el.appendChild(shell);
     } else if (elData.type === 'image') {
         if (elData.cropTransform) {
+            const crop = normalizeImageCropTransform(elData.cropTransform);
             const wrapper = document.createElement("div");
             wrapper.style.cssText = "width:100%; height:100%; border-radius:inherit; overflow:hidden; position:relative;";
             const img = document.createElement("img");
             img.src = elData.content;
-            img.style.cssText = "position:absolute; max-width:none; " + 
-                               "left:" + elData.cropTransform.leftPercent + "%; " + 
-                               "top:" + elData.cropTransform.topPercent + "%; " + 
-                               "width:" + elData.cropTransform.widthPercent + "%; " + 
-                               "height:" + elData.cropTransform.heightPercent + "%;";
+            img.style.cssText = "position:absolute; display:block; margin:0!important; max-width:none; max-height:none; object-fit:fill; " +
+                               "left:" + crop.leftPercent + "%; " +
+                               "top:" + crop.topPercent + "%; " +
+                               "width:" + crop.widthPercent + "%; " +
+                               "height:" + crop.heightPercent + "%;";
             wrapper.appendChild(img);
             el.appendChild(wrapper);
         } else {
@@ -1690,8 +1770,23 @@ function createViewerElement(elData) {
         renderConnectorElement(el, elData);
     } else if (elData.type === 'html') {
         const iframe = document.createElement('iframe');
-        iframe.srcdoc = elData.content;
+        iframe.srcdoc = buildViewerHtmlEmbedSrcdoc(elData.content || '', elData);
+        iframe.setAttribute('sandbox', getViewerHtmlEmbedSandbox());
+        iframe.setAttribute('referrerpolicy', 'no-referrer');
         iframe.className = 'media-fill rounded-inherit';
+        el.appendChild(iframe);
+    } else if (elData.type === 'molecule') {
+        const iframe = document.createElement('iframe');
+        iframe.srcdoc = typeof buildMoleculeEmbedSrcdoc === 'function'
+            ? buildMoleculeEmbedSrcdoc({ ...elData, moleculePresentationMode: true })
+            : '';
+        if (typeof applyMoleculeEmbedSandbox === 'function') applyMoleculeEmbedSandbox(iframe);
+        else {
+            iframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-popups allow-downloads');
+            iframe.setAttribute('referrerpolicy', 'no-referrer');
+        }
+        iframe.className = 'media-fill rounded-inherit';
+        iframe.setAttribute('title', elData.moleculeIsTrajectory ? 'Molecular trajectory viewer' : 'Molecular structure viewer');
         el.appendChild(iframe);
     } else if (elData.type === 'pdf') {
         const wrapper = document.createElement('div');

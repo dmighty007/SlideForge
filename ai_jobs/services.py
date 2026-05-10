@@ -13,12 +13,16 @@ from pathlib import Path
 
 from django.conf import settings
 from django.db import close_old_connections
+from PIL import Image, UnidentifiedImageError
 
 from studio.models import Presentation
 
 from .models import ImportJob
 
-_IMPORT_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="import_worker")
+_IMPORT_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    max_workers=getattr(settings, "PPTMAKER_IMPORT_WORKERS", 1),
+    thread_name_prefix="import_worker",
+)
 
 _OLLAMA_LOCK = threading.Lock()
 _OLLAMA_REF_COUNT = 0
@@ -49,6 +53,30 @@ def _release_ollama():
             _OLLAMA_PROC = None
 
 
+def _unload_ollama_models():
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:11434/api/ps", timeout=5) as response:
+            payload = json.loads(response.read().decode("utf-8") or "{}")
+    except Exception:
+        return
+
+    for model in payload.get("models", []) or []:
+        name = model.get("name")
+        if not name:
+            continue
+        body = json.dumps({"model": name, "prompt": "", "keep_alive": 0}).encode("utf-8")
+        request = urllib.request.Request(
+            "http://127.0.0.1:11434/api/generate",
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            urllib.request.urlopen(request, timeout=5).close()
+        except Exception:
+            continue
+
+
 EVENT_PROGRESS = {
     "queued": 2,
     "upload": 6,
@@ -74,8 +102,9 @@ def _bridge_command(pdf_path: Path, output_path: Path) -> list[str]:
         "-o",
         str(output_path),
         "--json-progress",
-        "--allow-remote-llm",
     ]
+    if settings.PPTMAKER_ALLOW_REMOTE_LLM:
+        bridge_args.append("--allow-remote-llm")
     executable_path = Path(sys.executable).resolve()
     if "envs/django_env" in executable_path.as_posix():
         return [str(executable_path), *bridge_args]
@@ -107,6 +136,30 @@ def _materialize_bridge_visuals(bridge_result: dict, job: ImportJob) -> dict:
     target_dir.mkdir(parents=True, exist_ok=True)
 
     copied_urls: dict[str, str] = {}
+    allowed_source_dirs = [
+        Path(settings.BASE_DIR) / "extracted_figures",
+        Path(settings.BASE_DIR) / "bridge" / "extracted_figures",
+        Path(settings.BASE_DIR) / "bridge" / ".vision_cache",
+        pdf_parent if (pdf_parent := Path(job.source_pdf.path).resolve().parent) else None,
+    ]
+    allowed_source_dirs = [path.resolve() for path in allowed_source_dirs if path is not None and path.exists()]
+
+    def is_allowed_source(source: Path) -> bool:
+        for allowed_dir in allowed_source_dirs:
+            try:
+                source.relative_to(allowed_dir)
+                return True
+            except ValueError:
+                continue
+        return False
+
+    def is_verified_image(source: Path) -> bool:
+        try:
+            with Image.open(source) as image:
+                image.verify()
+            return True
+        except (UnidentifiedImageError, OSError, ValueError):
+            return False
 
     def localize_path(raw_path: str) -> str:
         normalized = str(raw_path or "").strip()
@@ -121,10 +174,8 @@ def _materialize_bridge_visuals(bridge_result: dict, job: ImportJob) -> dict:
         if not source.exists() or not source.is_file():
             return normalized
 
-        try:
-            source.relative_to(settings.BASE_DIR)
-        except ValueError:
-            return normalized  # Prevent Path Traversal
+        if not is_allowed_source(source) or not is_verified_image(source):
+            return normalized
 
         destination = target_dir / source.name
         if destination.exists():
@@ -200,11 +251,12 @@ def queue_import_job(import_job: ImportJob):
 
 
 def _run_import_job(job_id):
-    _acquire_ollama()
     close_old_connections()
     job = ImportJob.objects.get(id=job_id)
+    ollama_acquired = False
+    proc = None
     pdf_path = Path(job.source_pdf.path)
-    output_path = pdf_path.with_name("presentation_export.json")
+    output_path = pdf_path.with_name(f"presentation_export_{job.id}.json")
 
     job.status = "running"
     job.event = "processing"
@@ -212,17 +264,19 @@ def _run_import_job(job_id):
     job.progress_percent = 10
     job.save(update_fields=["status", "event", "message", "progress_percent", "updated_at"])
 
-    cmd = _bridge_command(pdf_path, output_path)
-    proc = subprocess.Popen(
-        cmd,
-        cwd=str(settings.BASE_DIR),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-    )
-
     try:
+        _acquire_ollama()
+        ollama_acquired = True
+        cmd = _bridge_command(pdf_path, output_path)
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(settings.BASE_DIR),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+
         if proc.stdout is not None:
             for raw_line in proc.stdout:
                 line = raw_line.strip()
@@ -280,8 +334,10 @@ def _run_import_job(job_id):
         job.progress_percent = 100
         job.save(update_fields=["status", "event", "message", "error", "progress_percent", "updated_at"])
     finally:
-        if 'proc' in locals() and proc is not None and proc.poll() is None:
+        if proc is not None and proc.poll() is None:
             proc.kill()
             proc.wait()
-        _release_ollama()
+        _unload_ollama_models()
+        if ollama_acquired:
+            _release_ollama()
         close_old_connections()

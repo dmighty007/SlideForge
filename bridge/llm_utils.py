@@ -107,13 +107,13 @@ def _choose_text_model() -> str | None:
 
 def _ollama_text_options() -> dict:
     try:
-        num_ctx = int(os.getenv("PPTMAKER_OLLAMA_NUM_CTX", "8192"))
+        num_ctx = int(os.getenv("PPTMAKER_OLLAMA_NUM_CTX", "4096"))
     except ValueError:
-        num_ctx = 8192
+        num_ctx = 4096
     try:
-        num_predict = int(os.getenv("PPTMAKER_OLLAMA_NUM_PREDICT", "1200"))
+        num_predict = int(os.getenv("PPTMAKER_OLLAMA_NUM_PREDICT", "800"))
     except ValueError:
-        num_predict = 1200
+        num_predict = 800
     return {
         "num_ctx": max(2048, num_ctx),
         "num_predict": max(128, num_predict),
