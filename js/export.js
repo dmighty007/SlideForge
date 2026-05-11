@@ -1081,10 +1081,13 @@ function _viewerGetBulletIndent(level, levelStyle) {
 }
 
 ${typeof createDefaultMoleculeContent === 'function' ? createDefaultMoleculeContent.toString() : ''}
+${typeof MOLECULE_SUPPORTED_FORMATS !== 'undefined' ? `const MOLECULE_SUPPORTED_FORMATS = new Set(${JSON.stringify(Array.from(MOLECULE_SUPPORTED_FORMATS))});` : ''}
 ${typeof normalizeMoleculeFormat === 'function' ? normalizeMoleculeFormat.toString() : ''}
+${typeof normalizeMoleculeBackgroundColor === 'function' ? normalizeMoleculeBackgroundColor.toString() : ''}
 ${typeof isMoleculeTrajectoryData === 'function' ? isMoleculeTrajectoryData.toString() : ''}
 ${typeof normalizeMoleculeRepresentationLayer === 'function' ? normalizeMoleculeRepresentationLayer.toString() : ''}
 ${typeof _escapeMoleculeHtml === 'function' ? _escapeMoleculeHtml.toString() : ''}
+${typeof _serializeMoleculePayload === 'function' ? _serializeMoleculePayload.toString() : ''}
 ${typeof _moleculeSrcdocScript === 'function' ? _moleculeSrcdocScript.toString() : ''}
 ${typeof buildMoleculeEmbedSrcdoc === 'function' ? buildMoleculeEmbedSrcdoc.toString() : ''}
 ${typeof applyMoleculeEmbedSandbox === 'function' ? applyMoleculeEmbedSandbox.toString() : ''}

@@ -1,4 +1,5 @@
 const MOLECULE_EMBED_3DMOL_SRC = "https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.5.3/3Dmol-min.js";
+const MOLECULE_SUPPORTED_FORMATS = new Set(["pdb", "ent", "gro", "mol2", "xyz", "sdf", "cif", "mmcif"]);
 
 function createDefaultMoleculeContent() {
     return [
@@ -19,11 +20,23 @@ function createDefaultMoleculeContent() {
 
 function normalizeMoleculeFormat(format = "pdb") {
     const value = String(format || "pdb").toLowerCase().replace(/^\./, "");
-    return value === "ent" ? "pdb" : value;
+    const normalized = value === "ent" ? "pdb" : value;
+    return MOLECULE_SUPPORTED_FORMATS.has(normalized) ? normalized : "pdb";
+}
+
+function normalizeMoleculeBackgroundColor(value = "#020617") {
+    const color = String(value || "").trim();
+    if (!color || color.toLowerCase() === "transparent" || /^rgba?\([^)]*,\s*0(?:\.0+)?\s*\)$/i.test(color)) return "transparent";
+    if (/^#[0-9a-f]{6}$/i.test(color)) return color;
+    if (/^#[0-9a-f]{3}$/i.test(color)) {
+        return `#${color[1]}${color[1]}${color[2]}${color[2]}${color[3]}${color[3]}`;
+    }
+    return "#020617";
 }
 
 function isMoleculeTrajectoryData(data) {
-    return /^MODEL\b/m.test(String(data || "")) && /^ENDMDL\b/m.test(String(data || ""));
+    const text = String(data || "");
+    return (text.match(/^MODEL\b/gm) || []).length > 1 || (/^MODEL\b/m.test(text) && /^ENDMDL\b/m.test(text));
 }
 
 function createMoleculeElementData({ data, name = "Molecule", format = "pdb", isTrajectory = false } = {}) {
@@ -67,10 +80,19 @@ function _escapeMoleculeHtml(value) {
         .replace(/"/g, "&quot;");
 }
 
+function _serializeMoleculePayload(payload) {
+    return JSON.stringify(payload)
+        .replace(/</g, "\\u003c")
+        .replace(/>/g, "\\u003e")
+        .replace(/&/g, "\\u0026")
+        .replace(/\u2028/g, "\\u2028")
+        .replace(/\u2029/g, "\\u2029");
+}
+
 function _moleculeSrcdocScript(payload) {
     return `
 (() => {
-const payload = ${JSON.stringify(payload)};
+const payload = ${_serializeMoleculePayload(payload)};
 const root = document.getElementById("viewer");
 const status = document.getElementById("status");
 const framePanel = document.getElementById("trajectory-panel");
@@ -87,12 +109,33 @@ let repId = 0;
 let layers = [];
 let frameCount = 0;
 let currentFrame = 0;
+let resizeQueued = false;
 
 function setStatus(text) { status.textContent = text; }
 function has3Dmol() { return Boolean(window.$3Dmol); }
 function fmt(value) { return String(value || "pdb").toLowerCase() === "ent" ? "pdb" : String(value || "pdb").toLowerCase(); }
 function trajectoryCount(data) { return (String(data || "").match(/^MODEL\\b/gm) || []).length; }
 function esc(value) { return String(value ?? "").replace(/[&<>"']/g, ch => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[ch])); }
+function applyBackground(color) {
+  const transparent = color === "transparent";
+  const bg = transparent ? "transparent" : (color || "#020617");
+  document.documentElement.style.background = bg;
+  document.body.style.background = bg;
+  root.style.background = bg;
+  if (viewer && viewer.setBackgroundColor) {
+    viewer.setBackgroundColor(transparent ? "#020617" : bg, transparent ? 0 : 1);
+    viewer.render();
+  }
+}
+function resizeViewer() {
+  if (!viewer || resizeQueued) return;
+  resizeQueued = true;
+  requestAnimationFrame(() => {
+    resizeQueued = false;
+    viewer.resize();
+    viewer.render();
+  });
+}
 function parseSelection(query) {
   const q = String(query || "").trim();
   const l = q.toLowerCase();
@@ -163,7 +206,7 @@ async function applySavedLayers() {
 function stop() {
   if (timer) window.clearInterval(timer);
   timer = null;
-  playBtn.textContent = "Play";
+  if (playBtn) playBtn.textContent = "Play";
   if (presentPlayBtn) presentPlayBtn.textContent = "Play";
 }
 function setFrame(index) {
@@ -171,8 +214,8 @@ function setFrame(index) {
   currentFrame = Math.max(0, Math.min(Number(index) || 0, frameCount - 1));
   if (model && model.setFrame) model.setFrame(currentFrame);
   else if (viewer.setFrame) viewer.setFrame(currentFrame);
-  frameInput.value = String(currentFrame);
-  frameLabel.textContent = (currentFrame + 1) + " / " + frameCount;
+  if (frameInput) frameInput.value = String(currentFrame);
+  if (frameLabel) frameLabel.textContent = (currentFrame + 1) + " / " + frameCount;
   viewer.render();
 }
 function play() {
@@ -183,13 +226,28 @@ function play() {
   playBtn.textContent = "Pause";
   if (presentPlayBtn) presentPlayBtn.textContent = "Pause";
 }
+function setupTrajectoryControls() {
+  const hasFrames = frameCount > 1;
+  framePanel.hidden = !hasFrames;
+  if (presentPlayBtn) presentPlayBtn.hidden = !hasFrames;
+  if (!hasFrames) return;
+  if (frameInput) {
+    frameInput.max = String(frameCount - 1);
+    frameInput.value = "0";
+  }
+  if (frameLabel) frameLabel.textContent = "1 / " + frameCount;
+}
 function load() {
   if (!has3Dmol()) {
     setStatus("3Dmol.js failed to load");
     return;
   }
-  viewer = window.$3Dmol.createViewer(root, { backgroundColor: "#020617", antialias: true, cartoonQuality: 20 });
+  applyBackground(payload.backgroundColor);
+  const transparentBg = payload.backgroundColor === "transparent";
+  const viewerBg = transparentBg ? "#020617" : payload.backgroundColor;
+  viewer = window.$3Dmol.createViewer(root, { backgroundColor: viewerBg, alpha: transparentBg ? 0 : 1, antialias: true, cartoonQuality: 20 });
   try {
+    if (transparentBg && viewer.setBackgroundColor) viewer.setBackgroundColor(viewerBg, 0);
     const format = fmt(payload.format);
     frameCount = payload.isTrajectory ? trajectoryCount(payload.data) : 0;
     if (payload.isTrajectory && frameCount > 0) model = viewer.addModelsAsFrames(payload.data, format);
@@ -198,9 +256,9 @@ function load() {
     applySavedLayers().then(() => {
       viewer.zoomTo();
       viewer.render();
-      setTimeout(() => { viewer.resize(); viewer.render(); }, 120);
-      setTimeout(() => { viewer.resize(); viewer.render(); }, 650);
-      setTimeout(() => { viewer.resize(); viewer.render(); }, 1400);
+      setTimeout(resizeViewer, 120);
+      setTimeout(resizeViewer, 650);
+      setTimeout(resizeViewer, 1400);
     });
     viewer.zoomTo();
     viewer.spin(payload.autoRotate ? "y" : false);
@@ -208,12 +266,14 @@ function load() {
     viewer.render();
     const atoms = model.selectedAtoms({}) || [];
     const residues = new Set(atoms.map(atom => (atom.chain || "") + "-" + atom.resi)).size;
-    setStatus((payload.name || "Molecule") + " · " + atoms.length + " atoms · " + residues + " residues");
-    framePanel.hidden = !(frameCount > 0);
-    if (presentPlayBtn) presentPlayBtn.hidden = !(frameCount > 0);
-    frameInput.max = String(Math.max(0, frameCount - 1));
-    frameLabel.textContent = frameCount ? "1 / " + frameCount : "0 / 0";
-    new ResizeObserver(() => viewer.resize()).observe(root);
+    setStatus((payload.name || "Molecule") + " · " + atoms.length + " atoms · " + residues + " residues" + (frameCount > 1 ? " · " + frameCount + " frames" : ""));
+    setupTrajectoryControls();
+    root.addEventListener("dblclick", () => {
+      if (!viewer) return;
+      viewer.zoomTo();
+      viewer.render();
+    });
+    new ResizeObserver(resizeViewer).observe(root);
   } catch (err) {
     setStatus("Could not load molecule: " + err.message);
   }
@@ -237,7 +297,15 @@ if (playBtn) playBtn.addEventListener("click", () => timer ? stop() : play());
 if (presentPlayBtn) presentPlayBtn.addEventListener("click", () => timer ? stop() : play());
 if (frameInput) frameInput.addEventListener("input", () => { stop(); setFrame(frameInput.value); });
 if (speedInput) speedInput.addEventListener("input", () => { if (timer) play(); });
-window.addEventListener("resize", () => viewer && viewer.resize());
+window.addEventListener("message", event => {
+  const message = event.data || {};
+  if (!message || message.type !== "pptmaker:molecule:update") return;
+  if (Object.prototype.hasOwnProperty.call(message, "backgroundColor")) {
+    payload.backgroundColor = message.backgroundColor || "#020617";
+    applyBackground(payload.backgroundColor);
+  }
+});
+window.addEventListener("resize", resizeViewer);
 load();
 })();
 `;
@@ -261,8 +329,10 @@ function buildMoleculeEmbedSrcdoc(elementData = {}) {
             ? elementData.moleculeRepresentationLayers.map(normalizeMoleculeRepresentationLayer).slice(0, 12)
             : [],
         presentationMode: Boolean(elementData.moleculePresentationMode),
+        backgroundColor: normalizeMoleculeBackgroundColor(elementData.styles?.backgroundColor || "#020617"),
     };
     const title = _escapeMoleculeHtml(payload.name);
+    const background = payload.backgroundColor === "transparent" ? "transparent" : payload.backgroundColor;
     return `<!doctype html>
 <html lang="en">
 <head>
@@ -270,10 +340,17 @@ function buildMoleculeEmbedSrcdoc(elementData = {}) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="${MOLECULE_EMBED_3DMOL_SRC}"><\/script>
 <style>
-html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#020617;color:#e2e8f0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-#viewer{position:absolute;inset:0}
+html,body{width:100%;height:100%;margin:0;overflow:hidden;background:${background};color:#e2e8f0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+#viewer{position:absolute;inset:0;background:${background}}
 .hud{position:absolute;left:10px;right:10px;bottom:10px;display:flex;justify-content:center;gap:8px;align-items:end;pointer-events:none}
 .panel{pointer-events:auto;border:1px solid rgba(148,163,184,.24);background:rgba(15,23,42,.82);backdrop-filter:blur(12px);border-radius:8px;padding:8px;box-shadow:0 12px 28px rgba(0,0,0,.28)}
+.trajectory-controls{display:flex;align-items:center;gap:8px;min-width:min(520px,calc(100vw - 24px))}
+.trajectory-controls button{min-width:56px}
+.trajectory-controls input[type=range]{accent-color:#818cf8}
+.trajectory-controls #traj-frame{flex:1;min-width:120px}
+.trajectory-speed{display:flex;align-items:center;gap:6px;font-size:10px;color:#cbd5e1;white-space:nowrap}
+.trajectory-speed input{width:70px}
+.trajectory-frame-label{min-width:54px;text-align:right;font-size:11px;color:#e2e8f0;font-variant-numeric:tabular-nums}
 .top{position:absolute;top:10px;left:10px;right:10px;display:flex;justify-content:space-between;gap:8px;pointer-events:none}
 .status{pointer-events:auto;max-width:70%;border:1px solid rgba(148,163,184,.22);background:rgba(15,23,42,.82);border-radius:999px;padding:6px 10px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#cbd5e1}
 input,select,button{font:inherit}
@@ -284,7 +361,7 @@ button.secondary{background:rgba(30,41,59,.9);border-color:rgba(100,116,139,.55)
 body.presentation-mode .presentation-only{display:flex}
 .presentation-controls{gap:8px;padding:7px;background:rgba(15,23,42,.62)}
 body.presentation-mode .presentation-controls button[hidden]{display:none}
-@media(max-width:520px){.status{max-width:100%}}
+@media(max-width:520px){.status{max-width:100%}.trajectory-controls{gap:6px}.trajectory-speed span{display:none}.trajectory-speed input{width:52px}}
 </style>
 </head>
 <body class="${payload.presentationMode ? "presentation-mode" : ""}">
@@ -295,11 +372,12 @@ body.presentation-mode .presentation-controls button[hidden]{display:none}
     <button id="present-play" type="button" hidden>Play</button>
     <button id="present-rotate" class="secondary" type="button">Rotate</button>
   </div>
-  <div id="trajectory-panel" hidden></div>
-  <button id="traj-play" type="button" hidden>Play</button>
-  <input id="traj-frame" type="range" min="0" max="0" value="0" hidden aria-label="Trajectory frame">
-  <span id="traj-label" hidden>0 / 0</span>
-  <input id="traj-speed" type="range" min="40" max="500" step="10" value="120" hidden aria-label="Trajectory speed">
+  <div id="trajectory-panel" class="panel trajectory-controls" hidden>
+    <button id="traj-play" type="button">Play</button>
+    <input id="traj-frame" type="range" min="0" max="0" value="0" aria-label="Trajectory frame">
+    <span id="traj-label" class="trajectory-frame-label">0 / 0</span>
+    <label class="trajectory-speed"><span>Speed</span><input id="traj-speed" type="range" min="40" max="500" step="10" value="120" aria-label="Trajectory speed"></label>
+  </div>
 </div>
 <script>${_moleculeSrcdocScript(payload)}<\/script>
 </body>

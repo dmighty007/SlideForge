@@ -3221,6 +3221,106 @@ body.entry-gate-active .entry-hero {
     pointer-events: auto;
 }
 
+.molecule-editor-shield {
+    position: absolute;
+    inset: 0;
+    z-index: 12;
+    cursor: move;
+    pointer-events: auto;
+    border-radius: inherit;
+    background: rgba(2, 6, 23, 0.02);
+}
+
+.molecule-editor-shield[hidden] {
+    display: none !important;
+}
+
+.molecule-editor-hint {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: calc(100% - 24px);
+    transform: translate(-50%, -50%);
+    padding: 6px 10px;
+    border: 1px solid rgba(148, 163, 184, 0.32);
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.82);
+    color: #e2e8f0;
+    font-size: 11px;
+    line-height: 1;
+    white-space: nowrap;
+    box-shadow: 0 10px 26px rgba(2, 6, 23, 0.24);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.16s ease;
+}
+
+.canvas-element[data-type="molecule"]:hover .molecule-editor-hint,
+.canvas-element[data-type="molecule"].selected .molecule-editor-hint {
+    opacity: 1;
+}
+
+.molecule-editor-controls {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 130;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.16s ease;
+}
+
+.canvas-element[data-type="molecule"]:hover .molecule-editor-controls,
+.canvas-element[data-type="molecule"].selected .molecule-editor-controls {
+    opacity: 1;
+}
+
+.molecule-editor-toggle,
+.molecule-editor-grip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 26px;
+    border: 1px solid rgba(148, 163, 184, 0.36);
+    border-radius: 7px;
+    background: rgba(15, 23, 42, 0.88);
+    color: #e2e8f0;
+    font-size: 11px;
+    line-height: 1;
+    box-shadow: 0 8px 20px rgba(2, 6, 23, 0.22);
+    backdrop-filter: blur(10px);
+    pointer-events: auto;
+}
+
+.molecule-editor-toggle {
+    gap: 6px;
+    padding: 0 9px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.molecule-editor-toggle.active {
+    border-color: rgba(99, 102, 241, 0.58);
+    background: rgba(79, 70, 229, 0.92);
+    color: #fff;
+}
+
+.molecule-editor-grip {
+    width: 26px;
+    cursor: move;
+}
+
+.play-mode-active .molecule-editor-shield,
+.play-mode-active .molecule-editor-controls {
+    display: none !important;
+}
+
 .pdf-annotation-layer {
     position: absolute;
     inset: 0;

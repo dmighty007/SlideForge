@@ -1572,10 +1572,24 @@ function handleMoleculeFileInsert(event) {
     event.target.value = "";
     if (!file) return;
 
+    const maxBytes = 2 * 1024 * 1024;
+    const rawExt = String(file.name || "").split(".").pop().toLowerCase();
+    const allowedFormats = typeof MOLECULE_SUPPORTED_FORMATS !== "undefined"
+        ? MOLECULE_SUPPORTED_FORMATS
+        : new Set(["pdb", "ent", "gro", "mol2", "xyz", "sdf", "cif", "mmcif"]);
+    if (!allowedFormats.has(rawExt)) {
+        setProjectSaveHint?.("Choose a supported molecule file: PDB, ENT, GRO, MOL2, XYZ, SDF, CIF, or mmCIF", "danger");
+        return;
+    }
+    if (file.size > maxBytes) {
+        setProjectSaveHint?.("Molecule file is too large for inline import. Limit: 2 MB.", "danger");
+        return;
+    }
+
     const reader = new FileReader();
     reader.onload = ev => {
         const data = String(ev.target.result || "");
-        const ext = file.name.split(".").pop() || "pdb";
+        const ext = rawExt || "pdb";
         const moleculeData = typeof createMoleculeElementData === "function"
             ? createMoleculeElementData({
                   data,
@@ -1594,11 +1608,13 @@ function handleMoleculeFileInsert(event) {
         const selectedMoleculeId = state.selectedIds?.find(selectedId =>
             state.slides[activeIndex].elements.some(el => el.id === selectedId && el.type === "molecule"),
         );
+        let targetMoleculeId = selectedMoleculeId;
         if (selectedMoleculeId) {
             const target = state.slides[activeIndex].elements.find(el => el.id === selectedMoleculeId);
             Object.assign(target, moleculeData);
         } else {
             const id = generateId("el");
+            targetMoleculeId = id;
             state.slides[activeIndex].elements.push({
                 id,
                 type: "molecule",
@@ -1614,10 +1630,9 @@ function handleMoleculeFileInsert(event) {
                     border: "1px solid #334155",
                 },
             });
-            selectElement(id);
         }
         renderSlidesFromState();
-        if (selectedMoleculeId) selectElement(selectedMoleculeId);
+        if (targetMoleculeId) selectElement(targetMoleculeId);
         setProjectSaveHint?.(
             `${moleculeData.moleculeIsTrajectory ? "Trajectory" : "PDB structure"} ${selectedMoleculeId ? "replaced" : "added"}`,
             "success",

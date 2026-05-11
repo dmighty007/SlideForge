@@ -2217,6 +2217,11 @@ function buildPropertiesPanel() {
         if (data.type === "molecule") {
             const moleculeGrp = createGroup("Molecule Viewer");
             const moleculeName = String(data.moleculeName || "Molecule").replace(/"/g, "&quot;");
+            const moleculeBackground = typeof normalizeMoleculeBackgroundColor === "function"
+                ? normalizeMoleculeBackgroundColor(data.styles?.backgroundColor || "#020617")
+                : (data.styles?.backgroundColor || "#020617");
+            const moleculeBackgroundInput = _normalizeColorForInput(moleculeBackground, "#020617");
+            const moleculeBackgroundTransparent = moleculeBackground === "transparent";
             const moleculeLayers = (Array.isArray(data.moleculeRepresentationLayers) ? data.moleculeRepresentationLayers : [])
                 .map(layer => typeof normalizeMoleculeRepresentationLayer === "function" ? normalizeMoleculeRepresentationLayer(layer) : layer)
                 .slice(0, 12);
@@ -2228,8 +2233,18 @@ function buildPropertiesPanel() {
                     </button>
                 </div>
                 <button id="prop-molecule-toggle" class="w-full py-2 rounded bg-gray-900 border border-gray-700 text-xs text-gray-200 mb-2">
-                    ${data.moleculeInteractive ? "Disable Editor Interaction" : "Enable Editor Interaction"}
+                    ${data.moleculeInteractive ? "3D Orbit Mode On" : "Select / Resize Mode On"}
                 </button>
+                <div class="grid grid-cols-[1fr_auto] items-end gap-2 mb-2">
+                    <label class="flex flex-col gap-1 text-[11px] text-gray-400">
+                        Background
+                        <input id="prop-molecule-bg" type="color" class="w-full h-8 rounded bg-transparent" value="${moleculeBackgroundInput}" ${moleculeBackgroundTransparent ? "disabled" : ""}>
+                    </label>
+                    <label class="flex items-center gap-2 h-8 px-2 rounded bg-gray-900 border border-gray-700 text-[11px] text-gray-300">
+                        <input id="prop-molecule-bg-transparent" type="checkbox" ${moleculeBackgroundTransparent ? "checked" : ""}>
+                        Transparent
+                    </label>
+                </div>
                 <div class="grid grid-cols-2 gap-2 mb-2">
                     <label class="flex flex-col gap-1 text-[11px] text-gray-400">
                         Style
@@ -3157,10 +3172,37 @@ function buildPropertiesPanel() {
                 const refreshMoleculeDom = updates => {
                     const dom = document.getElementById(data.id);
                     if (!dom) return;
-                    const merged = { ...data, ...updates };
+                    const merged = { ...data, ...updates, styles: { ...(data.styles || {}), ...(updates.styles || {}) } };
+                    const background = typeof normalizeMoleculeBackgroundColor === "function"
+                        ? normalizeMoleculeBackgroundColor(merged.styles.backgroundColor || "#020617")
+                        : (merged.styles.backgroundColor || "#020617");
+                    dom.style.backgroundColor = background;
+                    const wrapper = dom.querySelector(".molecule-embed-wrapper");
+                    if (wrapper) wrapper.style.backgroundColor = background;
                     dom.classList.toggle("molecule-interactive", Boolean(merged.moleculeInteractive));
+                    dom.setAttribute("data-molecule-interactive", merged.moleculeInteractive ? "true" : "false");
+                    const shield = dom.querySelector(".molecule-editor-shield");
+                    if (shield) shield.hidden = Boolean(merged.moleculeInteractive);
+                    const editorToggle = dom.querySelector(".molecule-editor-toggle");
+                    if (editorToggle) {
+                        const enabled = Boolean(merged.moleculeInteractive);
+                        editorToggle.classList.toggle("active", enabled);
+                        editorToggle.title = enabled ? "Switch to select and resize mode" : "Enable 3D orbit mode";
+                        editorToggle.setAttribute("aria-label", enabled ? "Switch molecule to select and resize mode" : "Enable molecule 3D orbit mode");
+                        const icon = editorToggle.querySelector("i");
+                        if (icon) icon.className = `fa-solid ${enabled ? "fa-cube" : "fa-arrow-pointer"}`;
+                        const label = editorToggle.querySelector("span");
+                        if (label) label.textContent = enabled ? "Orbit" : "Select";
+                    }
                     const iframe = dom.querySelector(".molecule-embed-frame");
-                    if (iframe && typeof buildMoleculeEmbedSrcdoc === "function") {
+                    const backgroundOnly = Object.keys(updates || {}).length === 1 && updates.styles && Object.keys(updates.styles || {}).length === 1 && Object.prototype.hasOwnProperty.call(updates.styles, "backgroundColor");
+                    if (iframe && backgroundOnly && iframe.contentWindow) {
+                        iframe.contentWindow.postMessage({
+                            type: "pptmaker:molecule:update",
+                            backgroundColor: background,
+                        }, "*");
+                    }
+                    if (iframe && !backgroundOnly && typeof buildMoleculeEmbedSrcdoc === "function") {
                         iframe.srcdoc = buildMoleculeEmbedSrcdoc(merged);
                     }
                 };
@@ -3181,6 +3223,32 @@ function buildPropertiesPanel() {
                     };
                     nameInput.onchange = commitName;
                     nameInput.onblur = commitName;
+                }
+
+                const bgInput = document.getElementById("prop-molecule-bg");
+                const bgTransparent = document.getElementById("prop-molecule-bg-transparent");
+                const applyMoleculeBackground = (next, commit = false) => {
+                    const normalized = typeof normalizeMoleculeBackgroundColor === "function"
+                        ? normalizeMoleculeBackgroundColor(next)
+                        : next;
+                    data.styles = { ...(data.styles || {}), backgroundColor: normalized };
+                    if (commit) {
+                        onCommit(() => updateElementState(data.id, { styles: { backgroundColor: normalized } }));
+                    } else {
+                        updateElementState(data.id, { styles: { backgroundColor: normalized } });
+                    }
+                    refreshMoleculeDom({ styles: { backgroundColor: normalized } });
+                };
+                if (bgInput) {
+                    bgInput.oninput = event => applyMoleculeBackground(event.target.value);
+                    bgInput.onchange = event => applyMoleculeBackground(event.target.value, true);
+                }
+                if (bgTransparent) {
+                    bgTransparent.onchange = event => {
+                        const transparent = event.target.checked;
+                        if (bgInput) bgInput.disabled = transparent;
+                        applyMoleculeBackground(transparent ? "transparent" : (bgInput?.value || "#020617"), true);
+                    };
                 }
 
                 const toggleBtn = document.getElementById("prop-molecule-toggle");

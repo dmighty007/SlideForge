@@ -1866,9 +1866,13 @@ function _applyTypeContent(el, elData) {
         el.appendChild(badge);
     } else if (elData.type === "molecule") {
         el.classList.toggle("molecule-interactive", Boolean(elData.moleculeInteractive));
+        el.setAttribute("data-molecule-interactive", elData.moleculeInteractive ? "true" : "false");
 
         const wrapper = document.createElement("div");
         wrapper.className = "molecule-embed-wrapper";
+        wrapper.style.backgroundColor = typeof normalizeMoleculeBackgroundColor === "function"
+            ? normalizeMoleculeBackgroundColor(elData.styles?.backgroundColor || "#020617")
+            : (elData.styles?.backgroundColor || "#020617");
 
         const iframe = document.createElement("iframe");
         iframe.srcdoc = typeof buildMoleculeEmbedSrcdoc === "function"
@@ -1884,14 +1888,53 @@ function _applyTypeContent(el, elData) {
         wrapper.appendChild(iframe);
         el.appendChild(wrapper);
 
-        const overlay = document.createElement("div");
-        overlay.className = "absolute inset-0 z-10 cursor-move play-mode-hidden";
-        overlay.style.display = elData.moleculeInteractive ? "none" : "";
-        el.appendChild(overlay);
+        const shield = document.createElement("div");
+        shield.className = "molecule-editor-shield play-mode-hidden";
+        shield.hidden = Boolean(elData.moleculeInteractive);
+        shield.innerHTML = `<div class="molecule-editor-hint"><i class="fa-solid fa-up-down-left-right"></i><span>Select / move</span></div>`;
+        el.appendChild(shield);
+
+        const controls = document.createElement("div");
+        controls.className = "molecule-editor-controls play-mode-hidden";
+        const orbitActive = Boolean(elData.moleculeInteractive);
+        controls.innerHTML = `
+            <button type="button" class="molecule-editor-toggle${orbitActive ? " active" : ""}" title="${orbitActive ? "Switch to select and resize mode" : "Enable 3D orbit mode"}" aria-label="${orbitActive ? "Switch molecule to select and resize mode" : "Enable molecule 3D orbit mode"}">
+                <i class="fa-solid ${orbitActive ? "fa-cube" : "fa-arrow-pointer"}"></i>
+                <span>${orbitActive ? "Orbit" : "Select"}</span>
+            </button>
+            <span class="molecule-editor-grip" title="Drag to move"><i class="fa-solid fa-up-down-left-right"></i></span>
+        `;
+        const toggle = controls.querySelector(".molecule-editor-toggle");
+        if (toggle) {
+            toggle.addEventListener("pointerdown", event => {
+                event.preventDefault();
+                event.stopPropagation();
+            });
+            toggle.addEventListener("click", event => {
+                event.preventDefault();
+                event.stopPropagation();
+                const next = !el.classList.contains("molecule-interactive");
+                if (typeof saveStateToUndo === "function") saveStateToUndo();
+                elData.moleculeInteractive = next;
+                if (typeof updateElementState === "function") updateElementState(elData.id, { moleculeInteractive: next });
+                el.classList.toggle("molecule-interactive", next);
+                el.setAttribute("data-molecule-interactive", next ? "true" : "false");
+                shield.hidden = next;
+                toggle.classList.toggle("active", next);
+                toggle.title = next ? "Switch to select and resize mode" : "Enable 3D orbit mode";
+                toggle.setAttribute("aria-label", next ? "Switch molecule to select and resize mode" : "Enable molecule 3D orbit mode");
+                const icon = toggle.querySelector("i");
+                if (icon) icon.className = `fa-solid ${next ? "fa-cube" : "fa-arrow-pointer"}`;
+                const label = toggle.querySelector("span");
+                if (label) label.textContent = next ? "Orbit" : "Select";
+                if (typeof buildPropertiesPanel === "function") buildPropertiesPanel();
+            });
+        }
+        el.appendChild(controls);
 
         const badge = document.createElement("span");
         badge.innerHTML = `<i class="fa-solid fa-atom mr-1"></i> ${elData.moleculeIsTrajectory ? "Trajectory" : "PDB"}`;
-        badge.className = "molecule-embed-badge absolute top-2 left-2 px-2 py-1 bg-gray-900/80 text-white text-[10px] rounded border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity";
+        badge.className = "molecule-embed-badge absolute top-2 left-2 px-2 py-1 bg-gray-900/80 text-white text-[10px] rounded border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none";
         el.appendChild(badge);
     } else if (elData.type === "pdf") {
         el.classList.toggle("pdf-interactive", Boolean(elData.pdfInteractive));
