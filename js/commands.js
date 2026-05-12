@@ -1567,12 +1567,92 @@ function handleHtmlFileInsert(event) {
     reader.readAsText(file);
 }
 
-function handleMoleculeFileInsert(event) {
+async function _readMoleculeFileText(file) {
+    return await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = ev => resolve(String(ev.target.result || ""));
+        reader.onerror = () => reject(reader.error || new Error("Could not read molecule file"));
+        reader.readAsText(file);
+    });
+}
+
+async function _detectMoleculeFileTrajectory(file) {
+    if (!file || typeof file.stream !== "function") return false;
+    const decoder = new TextDecoder();
+    const reader = file.stream().getReader();
+    let buffered = "";
+    let modelCount = 0;
+    let endCount = 0;
+    let atomOneCount = 0;
+    try {
+        while (true) {
+            const { value, done } = await reader.read();
+            buffered += decoder.decode(value || new Uint8Array(), { stream: !done });
+            const lines = buffered.split(/\r?\n/);
+            buffered = done ? "" : (lines.pop() || "");
+            for (const line of lines) {
+                if (/^MODEL\b/.test(line)) {
+                    modelCount += 1;
+                    if (modelCount > 1) return true;
+                } else if (/^ENDMDL\b/.test(line) && modelCount > 0) {
+                    return true;
+                } else if (/^END\s*$/.test(line)) {
+                    endCount += 1;
+                    if (endCount > 1 && atomOneCount > 1) return true;
+                } else if (/^ATOM\s+1\b/.test(line)) {
+                    atomOneCount += 1;
+                    if (endCount > 0 && atomOneCount > 1) return true;
+                }
+            }
+            if (done) break;
+        }
+    } finally {
+        reader.releaseLock?.();
+    }
+    return false;
+}
+
+function _upsertMoleculeElement(moleculeData) {
+    const activeIndex = ensureActiveSlideSync();
+    saveStateToUndo();
+    const selectedMoleculeId = state.selectedIds?.find(selectedId =>
+        state.slides[activeIndex].elements.some(el => el.id === selectedId && el.type === "molecule"),
+    );
+    let targetMoleculeId = selectedMoleculeId;
+    if (selectedMoleculeId) {
+        const target = state.slides[activeIndex].elements.find(el => el.id === selectedMoleculeId);
+        Object.assign(target, moleculeData);
+    } else {
+        const id = generateId("el");
+        targetMoleculeId = id;
+        state.slides[activeIndex].elements.push({
+            id,
+            type: "molecule",
+            ...moleculeData,
+            x: 100,
+            y: 90,
+            width: "620px",
+            height: "420px",
+            styles: {
+                zIndex: getNextZIndex(),
+                borderRadius: "8px",
+                backgroundColor: "#020617",
+                border: "1px solid #334155",
+            },
+        });
+    }
+    renderSlidesFromState();
+    if (targetMoleculeId) selectElement(targetMoleculeId);
+    return Boolean(selectedMoleculeId);
+}
+
+async function handleMoleculeFileInsert(event) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
 
-    const maxBytes = 2 * 1024 * 1024;
+    const inlineMaxBytes = typeof MOLECULE_INLINE_CONTENT_LIMIT === "number" ? MOLECULE_INLINE_CONTENT_LIMIT : 2 * 1024 * 1024;
+    const largeMaxBytes = typeof MOLECULE_LARGE_CONTENT_LIMIT === "number" ? MOLECULE_LARGE_CONTENT_LIMIT : 64 * 1024 * 1024;
     const rawExt = String(file.name || "").split(".").pop().toLowerCase();
     const allowedFormats = typeof MOLECULE_SUPPORTED_FORMATS !== "undefined"
         ? MOLECULE_SUPPORTED_FORMATS
@@ -1581,64 +1661,55 @@ function handleMoleculeFileInsert(event) {
         setProjectSaveHint?.("Choose a supported molecule file: PDB, ENT, GRO, MOL2, XYZ, SDF, CIF, or mmCIF", "danger");
         return;
     }
-    if (file.size > maxBytes) {
-        setProjectSaveHint?.("Molecule file is too large for inline import. Limit: 2 MB.", "danger");
+    if (file.size > largeMaxBytes) {
+        setProjectSaveHint?.("Molecule file is too large. Limit: 64 MB.", "danger");
         return;
     }
 
-    const reader = new FileReader();
-    reader.onload = ev => {
-        const data = String(ev.target.result || "");
+    try {
+        if (file.size > inlineMaxBytes) setProjectSaveHint?.("Preparing large molecule asset...", "warn");
         const ext = rawExt || "pdb";
+        let data = "";
+        let sourceUrl = "";
+        let isTrajectory = false;
+        if (file.size <= inlineMaxBytes) {
+            data = await _readMoleculeFileText(file);
+            isTrajectory = typeof isMoleculeTrajectoryData === "function" ? isMoleculeTrajectoryData(data) : /^MODEL\b/m.test(data) && /^ENDMDL\b/m.test(data);
+        } else {
+            isTrajectory = await _detectMoleculeFileTrajectory(file);
+            try {
+                const upload = await _uploadAssetFile(file);
+                sourceUrl = upload.url;
+            } catch (err) {
+                if (!_isSessionOnlyAssetFallbackError(err)) throw err;
+                sourceUrl = _createSessionObjectUrl(file);
+                setProjectSaveHint?.("Large molecule stored for this session only", "warn");
+            }
+        }
         const moleculeData = typeof createMoleculeElementData === "function"
             ? createMoleculeElementData({
                   data,
                   name: file.name,
                   format: ext,
-                  isTrajectory: typeof isMoleculeTrajectoryData === "function" ? isMoleculeTrajectoryData(data) : false,
+                  isTrajectory,
+                  sourceUrl,
               })
             : {
-                  content: data,
+                  content: sourceUrl || data,
                   moleculeName: file.name,
                   moleculeFormat: ext,
-                  moleculeIsTrajectory: /^MODEL\b/m.test(data) && /^ENDMDL\b/m.test(data),
+                  moleculeIsTrajectory: isTrajectory,
+                  moleculeSourceType: sourceUrl ? "url" : "inline",
               };
-        const activeIndex = ensureActiveSlideSync();
-        saveStateToUndo();
-        const selectedMoleculeId = state.selectedIds?.find(selectedId =>
-            state.slides[activeIndex].elements.some(el => el.id === selectedId && el.type === "molecule"),
-        );
-        let targetMoleculeId = selectedMoleculeId;
-        if (selectedMoleculeId) {
-            const target = state.slides[activeIndex].elements.find(el => el.id === selectedMoleculeId);
-            Object.assign(target, moleculeData);
-        } else {
-            const id = generateId("el");
-            targetMoleculeId = id;
-            state.slides[activeIndex].elements.push({
-                id,
-                type: "molecule",
-                ...moleculeData,
-                x: 100,
-                y: 90,
-                width: "620px",
-                height: "420px",
-                styles: {
-                    zIndex: getNextZIndex(),
-                    borderRadius: "8px",
-                    backgroundColor: "#020617",
-                    border: "1px solid #334155",
-                },
-            });
-        }
-        renderSlidesFromState();
-        if (targetMoleculeId) selectElement(targetMoleculeId);
+        const replaced = _upsertMoleculeElement(moleculeData);
         setProjectSaveHint?.(
-            `${moleculeData.moleculeIsTrajectory ? "Trajectory" : "PDB structure"} ${selectedMoleculeId ? "replaced" : "added"}`,
+            `${moleculeData.moleculeIsTrajectory ? "Trajectory" : "PDB structure"} ${replaced ? "replaced" : "added"}`,
             "success",
         );
-    };
-    reader.readAsText(file);
+    } catch (err) {
+        console.error(err);
+        setProjectSaveHint?.(err?.message || "Could not import molecule file", "danger");
+    }
 }
 
 function _makeTextElement({
@@ -3128,6 +3199,7 @@ function _resizePresentationChalkboard() {
     const width = Number(slideConfig.width) || 1024;
     const height = Number(slideConfig.height) || 768;
     const scale = Math.max(0.1, Math.min(wrapper.clientWidth / width, wrapper.clientHeight / height));
+    document.documentElement.style.setProperty("--presentation-scale", String(scale));
     const snapshot =
         chalkboard.width > 0 && chalkboard.height > 0
             ? chalkboard.getContext("2d")?.getImageData(0, 0, chalkboard.width, chalkboard.height)
@@ -3794,6 +3866,7 @@ async function togglePlayMode() {
             controls: false,
             progress: false,
             keyboard: false,
+            disableLayout: isPlaying,
         });
         Reveal.sync?.();
     }
@@ -3816,6 +3889,7 @@ async function togglePlayMode() {
     } else {
         _resetAnimations();
         resetPresentationTools();
+        document.documentElement.style.removeProperty("--presentation-scale");
         await _syncBrowserFullscreen(false);
         requestAnimationFrame(() => {
             if (typeof restoreEditorZoom === "function") restoreEditorZoom();
@@ -3836,6 +3910,7 @@ function handlePresentationFullscreenChange() {
                 controls: false,
                 progress: false,
                 keyboard: false,
+                disableLayout: false,
             });
             Reveal.sync?.();
         }
@@ -3846,6 +3921,7 @@ function handlePresentationFullscreenChange() {
         });
         _resetAnimations();
         resetPresentationTools();
+        document.documentElement.style.removeProperty("--presentation-scale");
         requestAnimationFrame(() => {
             if (typeof restoreEditorZoom === "function") restoreEditorZoom();
         });

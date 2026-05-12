@@ -46,6 +46,7 @@ class Asset(models.Model):
         ("image", "Image"),
         ("video", "Video"),
         ("pdf", "PDF"),
+        ("molecule", "Molecule"),
         ("export", "Export"),
         ("other", "Other"),
     ]

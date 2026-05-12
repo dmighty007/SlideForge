@@ -2521,6 +2521,26 @@ body.entry-gate-active .entry-hero {
 .play-mode-active .reveal {
     width: 100% !important;
     height: 100% !important;
+    display: grid !important;
+    place-items: center !important;
+    overflow: hidden !important;
+}
+
+.play-mode-active .reveal .slides {
+    position: relative !important;
+    left: auto !important;
+    top: auto !important;
+    width: var(--slide-width, 1024px) !important;
+    height: var(--slide-height, 768px) !important;
+    transform: none !important;
+    transform-origin: center center !important;
+    zoom: var(--presentation-scale, 1);
+}
+
+@supports not (zoom: 1) {
+    .play-mode-active .reveal .slides {
+        transform: scale(var(--presentation-scale, 1)) !important;
+    }
 }
 
 .presentation-overlay {

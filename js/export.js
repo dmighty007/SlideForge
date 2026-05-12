@@ -303,7 +303,7 @@ async function processStateAssets(originalState) {
             }
         }
         for (const el of slide.elements) {
-            // Extract image/video/pdf content if it's a data URL
+            // Extract local media/molecule content if it's a data URL or app asset URL.
             if ((el.type === "image" || el.type === "video" || el.type === "pdf") && el.content?.startsWith("data:")) {
                 const parts = el.content.split(",");
                 if (parts.length < 2) continue;
@@ -317,13 +317,19 @@ async function processStateAssets(originalState) {
                 const fileName = `asset_${assetCounter++}.${ext}`;
                 assets[fileName] = base64Data;
                 el.content = `assets/${fileName}`;
-            } else if ((el.type === "image" || el.type === "video" || el.type === "pdf") && (isBundlableLocalAsset(el.content) || String(el.content || "").startsWith("blob:"))) {
+            } else if ((el.type === "image" || el.type === "video" || el.type === "pdf" || el.type === "molecule") && (isBundlableLocalAsset(el.content) || String(el.content || "").startsWith("blob:"))) {
                 const sourceUrl = new URL(el.content, window.location.href);
                 const response = await fetch(sourceUrl.toString());
                 if (!response.ok) continue;
 
                 const blob = await response.blob();
-                const mime = blob.type || (el.type === "image" ? "image/png" : el.type === "pdf" ? "application/pdf" : "video/mp4");
+                if (el.type === "molecule") {
+                    el.content = await blob.text();
+                    el.moleculeSourceType = "inline";
+                    continue;
+                }
+
+                const mime = blob.type || (el.type === "image" ? "image/png" : el.type === "pdf" ? "application/pdf" : el.type === "molecule" ? "chemical/x-pdb" : "video/mp4");
                 const ext = mime === "application/pdf" ? "pdf" : mime.split("/")[1] || (el.type === "image" ? "png" : "mp4");
                 const fileName = `asset_${assetCounter++}.${ext}`;
                 assets[fileName] = await toBase64(blob);
@@ -1026,7 +1032,7 @@ body {
 function generateViewerJs() {
     return `
 const animationEffects = ['fade-in', 'slide-up', 'slide-down', 'slide-left', 'slide-right', 'zoom-in', 'pop-in', 'wipe-in', 'pulse', 'glow'];
-const MOLECULE_EMBED_3DMOL_SRC = ${JSON.stringify(typeof MOLECULE_EMBED_3DMOL_SRC === 'string' ? MOLECULE_EMBED_3DMOL_SRC : 'https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.5.3/3Dmol-min.js')};
+const MOLECULE_EMBED_NGL_SRC = ${JSON.stringify(typeof MOLECULE_EMBED_NGL_SRC === 'string' ? MOLECULE_EMBED_NGL_SRC : 'https://unpkg.com/ngl@2.4.0/dist/ngl.js')};
 
 const BULLET_STYLE_THEMES = {
     default: { levels: [
@@ -1082,8 +1088,11 @@ function _viewerGetBulletIndent(level, levelStyle) {
 
 ${typeof createDefaultMoleculeContent === 'function' ? createDefaultMoleculeContent.toString() : ''}
 ${typeof MOLECULE_SUPPORTED_FORMATS !== 'undefined' ? `const MOLECULE_SUPPORTED_FORMATS = new Set(${JSON.stringify(Array.from(MOLECULE_SUPPORTED_FORMATS))});` : ''}
+${typeof MOLECULE_INLINE_CONTENT_LIMIT !== 'undefined' ? `const MOLECULE_INLINE_CONTENT_LIMIT = ${Number(MOLECULE_INLINE_CONTENT_LIMIT) || 2097152};` : ''}
+${typeof MOLECULE_LARGE_CONTENT_LIMIT !== 'undefined' ? `const MOLECULE_LARGE_CONTENT_LIMIT = ${Number(MOLECULE_LARGE_CONTENT_LIMIT) || 26214400};` : ''}
 ${typeof normalizeMoleculeFormat === 'function' ? normalizeMoleculeFormat.toString() : ''}
 ${typeof normalizeMoleculeBackgroundColor === 'function' ? normalizeMoleculeBackgroundColor.toString() : ''}
+${typeof isMoleculeContentUrl === 'function' ? isMoleculeContentUrl.toString() : ''}
 ${typeof isMoleculeTrajectoryData === 'function' ? isMoleculeTrajectoryData.toString() : ''}
 ${typeof normalizeMoleculeRepresentationLayer === 'function' ? normalizeMoleculeRepresentationLayer.toString() : ''}
 ${typeof _escapeMoleculeHtml === 'function' ? _escapeMoleculeHtml.toString() : ''}
@@ -1091,6 +1100,7 @@ ${typeof _serializeMoleculePayload === 'function' ? _serializeMoleculePayload.to
 ${typeof _moleculeSrcdocScript === 'function' ? _moleculeSrcdocScript.toString() : ''}
 ${typeof buildMoleculeEmbedSrcdoc === 'function' ? buildMoleculeEmbedSrcdoc.toString() : ''}
 ${typeof applyMoleculeEmbedSandbox === 'function' ? applyMoleculeEmbedSandbox.toString() : ''}
+${typeof attachMoleculeDataBridge === 'function' ? attachMoleculeDataBridge.toString() : ''}
 
 function normalizeImageCropTransform(crop) {
     if (!crop || typeof crop !== 'object') return { widthPercent: 100, heightPercent: 100, leftPercent: 0, topPercent: 0 };
@@ -1155,7 +1165,7 @@ function initViewer(data) {
     let isDrawing = false;
     let lastDrawPoint = null;
     let chalkColor = '#fff59d';
-    const chalkCtx = chalkboard ? chalkboard.getContext('2d') : null;
+    const chalkCtx = chalkboard ? chalkboard.getContext('2d', { willReadFrequently: true }) : null;
     const pageSetups = {
         'standard-4-3': { width: 1024, height: 768 },
         'widescreen-16-9': { width: 1280, height: 720 },
@@ -1404,7 +1414,9 @@ function initViewer(data) {
     }
 
     function syncHash() {
-        history.replaceState(null, '', '#slide-' + (activeSlideIndex + 1) + '-' + Math.max(0, activeFragmentIndex + 1));
+            if (window.location.protocol !== 'file:') {
+                history.replaceState(null, '', '#slide-' + (activeSlideIndex + 1) + '-' + Math.max(0, activeFragmentIndex + 1));
+            }
     }
 
     function applySlideState() {
@@ -1600,17 +1612,17 @@ function initViewer(data) {
 function createViewerElement(elData) {
     function ensureViewerDocumentShell(content) {
         const raw = String(content || '');
-        if (/<!doctype|<html[\s>]/i.test(raw)) return raw;
+        if (/<!doctype|<html[\\s>]/i.test(raw)) return raw;
         return '<!doctype html><html><head></head><body>' + raw + '</body></html>';
     }
 
     function injectViewerIntoHead(doc, html) {
-        if (/<\/head>/i.test(doc)) return doc.replace(/<\/head>/i, html + '</head>');
+        if (/<\\/head>/i.test(doc)) return doc.replace(/<\\/head>/i, html + '</head>');
         return doc.replace(/<html[^>]*>/i, match => match + '<head>' + html + '</head>');
     }
 
     function injectViewerIntoBodyEnd(doc, html) {
-        if (/<\/body>/i.test(doc)) return doc.replace(/<\/body>/i, html + '</body>');
+        if (/<\\/body>/i.test(doc)) return doc.replace(/<\\/body>/i, html + '</body>');
         return doc + html;
     }
 
@@ -1855,6 +1867,7 @@ function createViewerElement(elData) {
         }
         iframe.className = 'media-fill rounded-inherit';
         iframe.setAttribute('title', elData.moleculeIsTrajectory ? 'Molecular trajectory viewer' : 'Molecular structure viewer');
+        if (typeof attachMoleculeDataBridge === 'function') attachMoleculeDataBridge(iframe, elData);
         el.appendChild(iframe);
     } else if (elData.type === 'pdf') {
         const wrapper = document.createElement('div');

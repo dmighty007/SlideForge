@@ -592,7 +592,7 @@ function _truncateStateString(value, maxLength) {
 function _isSafeAssetUrl(value, { allowData = false } = {}) {
     const url = String(value || "").trim();
     if (!url) return false;
-    if (url.startsWith("/media/") || url.startsWith("/static/") || url.startsWith("assets/") || url.startsWith("blob:")) {
+    if (url.startsWith("/media/") || url.startsWith("/static/") || url.startsWith("assets/") || url.startsWith("/assets/") || url.startsWith("blob:")) {
         return true;
     }
     if (allowData && /^data:(image|video|application\/pdf)\//i.test(url)) {
@@ -676,7 +676,11 @@ function sanitizeElementContent(safeEl, fallbackType) {
         return _isSafeAssetUrl(content, { allowData: true }) ? content : "";
     }
     if (fallbackType === "molecule") {
-        return _truncateStateString(safeEl.content || "", 2000000);
+        const content = String(safeEl.content || "");
+        if (typeof isMoleculeContentUrl === "function" && isMoleculeContentUrl(content)) {
+            return _isSafeAssetUrl(content) ? content : "";
+        }
+        return _truncateStateString(content, 2000000);
     }
     if (fallbackType === "latex") {
         return _truncateStateString(safeEl.content || safeEl.latexSrc || "", 10000);
@@ -769,8 +773,14 @@ function normalizeStateIds() {
                           moleculeFormat: typeof normalizeMoleculeFormat === "function" ? normalizeMoleculeFormat(safeEl.moleculeFormat || "pdb") : "pdb",
                           moleculeIsTrajectory: Boolean(
                               safeEl.moleculeIsTrajectory ||
-                                  (typeof isMoleculeTrajectoryData === "function" && isMoleculeTrajectoryData(safeEl.content)),
+                                  (typeof isMoleculeTrajectoryData === "function" &&
+                                      !(typeof isMoleculeContentUrl === "function" && isMoleculeContentUrl(safeEl.content)) &&
+                                      isMoleculeTrajectoryData(safeEl.content)),
                           ),
+                          moleculeSourceType:
+                              typeof isMoleculeContentUrl === "function" && isMoleculeContentUrl(safeEl.content)
+                                  ? "url"
+                                  : "inline",
                           moleculeInteractive: safeEl.moleculeInteractive ?? true,
                           moleculeAutoRotate: Boolean(safeEl.moleculeAutoRotate),
                           moleculeProjection: safeEl.moleculeProjection === "orthographic" ? "orthographic" : "perspective",

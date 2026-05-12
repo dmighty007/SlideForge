@@ -1885,6 +1885,7 @@ function _applyTypeContent(el, elData) {
         iframe.className = "w-full h-full molecule-embed-frame";
         iframe.style.border = "0";
         iframe.setAttribute("title", elData.moleculeIsTrajectory ? "Molecular trajectory viewer" : "Molecular structure viewer");
+        if (typeof attachMoleculeDataBridge === "function") attachMoleculeDataBridge(iframe, elData);
         wrapper.appendChild(iframe);
         el.appendChild(wrapper);
 

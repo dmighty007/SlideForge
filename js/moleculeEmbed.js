@@ -1,5 +1,7 @@
-const MOLECULE_EMBED_3DMOL_SRC = "https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.5.3/3Dmol-min.js";
+const MOLECULE_EMBED_NGL_SRC = "https://unpkg.com/ngl@2.4.0/dist/ngl.js";
 const MOLECULE_SUPPORTED_FORMATS = new Set(["pdb", "ent", "gro", "mol2", "xyz", "sdf", "cif", "mmcif"]);
+const MOLECULE_INLINE_CONTENT_LIMIT = 2 * 1024 * 1024;
+const MOLECULE_LARGE_CONTENT_LIMIT = 64 * 1024 * 1024;
 
 function createDefaultMoleculeContent() {
     return [
@@ -34,17 +36,46 @@ function normalizeMoleculeBackgroundColor(value = "#020617") {
     return "#020617";
 }
 
-function isMoleculeTrajectoryData(data) {
-    const text = String(data || "");
-    return (text.match(/^MODEL\b/gm) || []).length > 1 || (/^MODEL\b/m.test(text) && /^ENDMDL\b/m.test(text));
+function isMoleculeContentUrl(value) {
+    const text = String(value || "").trim();
+    return /^(?:blob:|https?:\/\/|\/media\/|\/static\/|assets\/|\/assets\/)/i.test(text);
 }
 
-function createMoleculeElementData({ data, name = "Molecule", format = "pdb", isTrajectory = false } = {}) {
+function isMoleculeTrajectoryData(data) {
+    if (isMoleculeContentUrl(data)) return false;
+    const text = String(data || "");
+    let modelCount = 0;
+    let endCount = 0;
+    let atomOneCount = 0;
+    const recordPattern = /^(MODEL|ENDMDL)\b/gm;
+    let match;
+    while ((match = recordPattern.exec(text))) {
+        if (match[1] === "MODEL") {
+            modelCount += 1;
+            if (modelCount > 1) return true;
+        } else if (modelCount > 0) return true;
+    }
+    const framePattern = /^(END|ATOM\s+1\b)/gm;
+    while ((match = framePattern.exec(text))) {
+        if (match[1] === "END") {
+            endCount += 1;
+            if (endCount > 1 && atomOneCount > 1) return true;
+        } else {
+            atomOneCount += 1;
+            if (endCount > 0 && atomOneCount > 1) return true;
+        }
+    }
+    return false;
+}
+
+function createMoleculeElementData({ data, name = "Molecule", format = "pdb", isTrajectory = false, sourceUrl = "" } = {}) {
+    const content = sourceUrl || String(data || createDefaultMoleculeContent());
     return {
         moleculeName: name,
         moleculeFormat: normalizeMoleculeFormat(format),
-        moleculeIsTrajectory: Boolean(isTrajectory || isMoleculeTrajectoryData(data)),
-        content: String(data || createDefaultMoleculeContent()),
+        moleculeIsTrajectory: Boolean(isTrajectory || (!sourceUrl && isMoleculeTrajectoryData(data))),
+        content,
+        moleculeSourceType: sourceUrl ? "url" : "inline",
         moleculeInteractive: true,
         moleculeAutoRotate: false,
         moleculeProjection: "perspective",
@@ -102,19 +133,106 @@ const frameLabel = document.getElementById("traj-label");
 const speedInput = document.getElementById("traj-speed");
 const presentPlayBtn = document.getElementById("present-play");
 const presentRotateBtn = document.getElementById("present-rotate");
-let viewer = null;
-let model = null;
+let stage = null;
+let component = null;
+let trajectory = null;
 let timer = null;
-let repId = 0;
-let layers = [];
 let frameCount = 0;
 let currentFrame = 0;
 let resizeQueued = false;
 
 function setStatus(text) { status.textContent = text; }
-function has3Dmol() { return Boolean(window.$3Dmol); }
+function hasNgl() { return Boolean(window.NGL && window.NGL.Stage); }
 function fmt(value) { return String(value || "pdb").toLowerCase() === "ent" ? "pdb" : String(value || "pdb").toLowerCase(); }
-function trajectoryCount(data) { return (String(data || "").match(/^MODEL\\b/gm) || []).length; }
+function trajectoryCount(data) {
+  let count = 0;
+  const text = String(data || "");
+  const recordPattern = /^MODEL\\b/gm;
+  while (recordPattern.exec(text)) count += 1;
+  if (count > 0) return count;
+  const endPattern = /^END\\s*$/gm;
+  while (endPattern.exec(text)) count += 1;
+  return count;
+}
+function hasModelRecords(data) {
+  return /^MODEL\\b/m.test(String(data || ""));
+}
+function isEndDelimitedPdbTrajectory(data) {
+  const text = String(data || "");
+  if (hasModelRecords(text)) return false;
+  let endCount = 0;
+  let atomOneCount = 0;
+  const framePattern = /^(END\\s*$|ATOM\\s+1\\b)/gm;
+  let match;
+  while ((match = framePattern.exec(text))) {
+    if (match[1].startsWith("END")) endCount += 1;
+    else atomOneCount += 1;
+    if (endCount > 1 && atomOneCount > 1) return true;
+  }
+  return false;
+}
+function normalizeEndDelimitedPdbTrajectory(data) {
+  const lines = String(data || "").split(/\\r?\\n/);
+  const header = [];
+  const frames = [];
+  let current = [];
+  let frameStarted = false;
+  for (const line of lines) {
+    if (/^(ATOM|HETATM)\\b/.test(line)) frameStarted = true;
+    if (!frameStarted) {
+      if (line.trim()) header.push(line);
+      continue;
+    }
+    if (/^END\\s*$/.test(line)) {
+      if (current.length) frames.push(current);
+      current = [];
+      frameStarted = false;
+      continue;
+    }
+    if (line.trim()) current.push(line);
+  }
+  if (current.length) frames.push(current);
+  if (frames.length <= 1) return String(data || "");
+  const output = [];
+  frames.forEach((frame, index) => {
+    output.push("MODEL     " + String(index + 1).padStart(4, " "));
+    if (index === 0) output.push(...header);
+    output.push(...frame);
+    output.push("ENDMDL");
+  });
+  output.push("END");
+  return output.join("\\n");
+}
+function requestMoleculeDataFromParent(url) {
+  return new Promise((resolve, reject) => {
+    const requestId = "mol_" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    const timeout = window.setTimeout(() => {
+      window.removeEventListener("message", onMessage);
+      reject(new Error("Timed out while loading molecule data"));
+    }, 30000);
+    function onMessage(event) {
+      const message = event.data || {};
+      if (!message || message.type !== "pptmaker:molecule:data-response" || message.requestId !== requestId) return;
+      window.clearTimeout(timeout);
+      window.removeEventListener("message", onMessage);
+      if (message.error) reject(new Error(message.error));
+      else resolve(String(message.data || ""));
+    }
+    window.addEventListener("message", onMessage);
+    window.parent.postMessage({ type: "pptmaker:molecule:data-request", requestId, url }, "*");
+  });
+}
+async function resolveMoleculeData() {
+  if (!payload.dataUrl) return String(payload.data || "");
+  setStatus("Loading molecule data...");
+  try {
+    return await requestMoleculeDataFromParent(payload.dataUrl);
+  } catch (_parentErr) {
+    const response = await fetch(payload.dataUrl, { credentials: "same-origin" });
+    if (!response.ok) throw new Error("Could not fetch molecule file");
+    return await response.text();
+  }
+}
 function esc(value) { return String(value ?? "").replace(/[&<>"']/g, ch => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[ch])); }
 function applyBackground(color) {
   const transparent = color === "transparent";
@@ -122,86 +240,161 @@ function applyBackground(color) {
   document.documentElement.style.background = bg;
   document.body.style.background = bg;
   root.style.background = bg;
-  if (viewer && viewer.setBackgroundColor) {
-    viewer.setBackgroundColor(transparent ? "#020617" : bg, transparent ? 0 : 1);
-    viewer.render();
+  if (stage && stage.setParameters) {
+    stage.setParameters({ backgroundColor: transparent ? "white" : bg });
+    requestRender();
   }
 }
+function requestRender() {
+  if (stage?.viewer?.requestRender) stage.viewer.requestRender();
+  else if (stage?.viewer?.render) stage.viewer.render();
+}
 function resizeViewer() {
-  if (!viewer || resizeQueued) return;
+  if (!stage || resizeQueued) return;
   resizeQueued = true;
   requestAnimationFrame(() => {
     resizeQueued = false;
-    viewer.resize();
-    viewer.render();
+    if (stage.handleResize) stage.handleResize();
+    requestRender();
   });
+}
+function normalizeSelectionItems(value) {
+  const items = String(value || "").split(/[,;|]/).map(item => item.trim()).filter(Boolean);
+  return items.flatMap(item => {
+    const range = item.match(/^(-?\\d+)\\s*-\\s*(-?\\d+)$/);
+    if (range) {
+      const start = Number(range[1]);
+      const end = Number(range[2]);
+      const step = start <= end ? 1 : -1;
+      const values = [];
+      for (let next = start; step > 0 ? next <= end : next >= end; next += step) values.push(String(next));
+      return values;
+    }
+    return [item];
+  }).filter(Boolean);
 }
 function parseSelection(query) {
   const q = String(query || "").trim();
-  const l = q.toLowerCase();
-  if (!q || l === "all") return {};
-  if (l === "protein") return { protein: true };
-  if (l === "ligand") return { hetflag: true };
-  if (l === "water") return { resn: ["HOH", "WAT"] };
-  if (l === "backbone") return { atom: ["N", "CA", "C", "O"] };
-  let m = l.match(/^chain\\s+([a-z0-9])$/i);
-  if (m) return { chain: m[1].toUpperCase() };
-  m = l.match(/^resi(?:due)?\\s+(\\d+)$/i);
-  if (m) return { resi: Number(m[1]) };
-  m = l.match(/^resn\\s+([a-z0-9]{1,4})$/i);
-  if (m) return { resn: m[1].toUpperCase() };
-  return {};
+  if (!q || /^all$/i.test(q)) return "all";
+  const lower = q.toLowerCase();
+  if (lower === "protein") return "protein";
+  if (lower === "ligand") return "ligand";
+  if (lower === "water" || lower === "solvent") return "water";
+  if (lower === "backbone") return "backbone";
+  if (lower === "sidechain") return "sidechainAttached";
+  const selectors = [];
+  const parts = q.split(/\\s+(?:and|&)\\s+/i).map(part => part.trim()).filter(Boolean);
+  for (const part of parts.length ? parts : [q]) {
+    let m = part.match(/^(?:chain|ch)\\s*[:=]?\\s*(.+)$/i);
+    if (m) {
+      const chains = normalizeSelectionItems(m[1]).map(value => ":" + value.replace(/^:/, ""));
+      if (chains.length) selectors.push(chains.length === 1 ? chains[0] : "(" + chains.join(" or ") + ")");
+      continue;
+    }
+    m = part.match(/^(?:resi|residue|resid)\\s*[:=]?\\s*(.+)$/i);
+    if (m) {
+      const residues = normalizeSelectionItems(m[1]);
+      if (residues.length) selectors.push(residues.length === 1 ? residues[0] : "(" + residues.join(" or ") + ")");
+      continue;
+    }
+    m = part.match(/^(?:resn|resname|residue\\s+name)\\s*[:=]?\\s*(.+)$/i);
+    if (m) {
+      const names = normalizeSelectionItems(m[1]).map(value => value.toUpperCase());
+      if (names.length) selectors.push(names.length === 1 ? names[0] : "(" + names.join(" or ") + ")");
+      continue;
+    }
+    m = part.match(/^(?:atom|name)\\s*[:=]?\\s*(.+)$/i);
+    if (m) {
+      const atoms = normalizeSelectionItems(m[1]).map(value => "." + value.replace(/^\\./, "").toUpperCase());
+      if (atoms.length) selectors.push(atoms.length === 1 ? atoms[0] : "(" + atoms.join(" or ") + ")");
+      continue;
+    }
+    m = part.match(/^(?:elem|element)\\s*[:=]?\\s*(.+)$/i);
+    if (m) {
+      const elements = normalizeSelectionItems(m[1]).map(value => "_" + value.replace(/^_/, ""));
+      if (elements.length) selectors.push(elements.length === 1 ? elements[0] : "(" + elements.join(" or ") + ")");
+      continue;
+    }
+    m = part.match(/^(?:serial|index|atomindex)\\s*[:=]?\\s*(.+)$/i);
+    if (m) {
+      const indices = normalizeSelectionItems(m[1]);
+      if (indices.length) selectors.push(indices.length === 1 ? "@" + indices[0] : "(" + indices.map(value => "@" + value).join(" or ") + ")");
+      continue;
+    }
+    selectors.push(part);
+  }
+  return selectors.length ? selectors.join(" and ") : "all";
 }
-function baseStyle(kind, color, customHex) {
-  const config = {};
-  if (color === "custom") config.color = customHex || "#6366f1";
-  else if (color === "spectrum") config.color = "spectrum";
-  else if (color && color !== "default") config.colorscheme = color;
-  return { [kind]: config };
+function representationKind(kind) {
+  if (kind === "stick") return "licorice";
+  if (kind === "sphere") return "spacefill";
+  if (kind === "surface") return "surface";
+  if (kind === "line") return "line";
+  return "cartoon";
 }
-function applyDefault() {
-  const kind = payload.defaultStyle || "cartoon";
+function colorParams(color, customHex) {
+  if (color === "custom") return { color: customHex || "#6366f1" };
+  if (color === "chain") return { colorScheme: "chainid" };
+  if (color === "amino") return { colorScheme: "resname" };
+  if (color === "ssJmol") return { colorScheme: "sstruc" };
+  if (color === "spectrum") return { colorScheme: "residueindex" };
+  return { colorScheme: "element" };
+}
+function representationParams(kind, color, customHex, selection) {
+  const params = { sele: selection || "all", quality: "medium", ...colorParams(color, customHex) };
+  if (kind === "surface") {
+    params.opacity = 0.68;
+    params.useWorker = false;
+    if (color !== "custom") params.color = "#ffffff";
+  }
+  if (kind === "sphere") params.scale = 0.35;
+  if (kind === "stick") params.radius = 0.18;
+  return params;
+}
+function structureAtomCount() {
+  return Number(component?.structure?.atomCount || 0);
+}
+function structureResidueCount() {
+  return Number(component?.structure?.residueStore?.count || component?.structure?.residueCount || 0);
+}
+async function applyDefault() {
+  let kind = payload.defaultStyle || "cartoon";
   const color = payload.defaultColor || "spectrum";
-  if (kind === "surface") {
-    addLayer({}, "surface", { type: "VDW", opacity: 0.68, color: "#ffffff" }, "VDW Surface · all");
-  } else {
-    viewer.setStyle({}, baseStyle(kind, color));
-    layers = [{ id: ++repId, kind, sel: {}, opts: baseStyle(kind, color), label: kind[0].toUpperCase() + kind.slice(1) + " · " + color + " · all", surface: false }];
+  const atoms = structureAtomCount();
+  if ((kind === "surface" && atoms > 120000) || (kind === "cartoon" && atoms > 0 && atoms < 20)) {
+    kind = atoms > 120000 ? "line" : "stick";
+  }
+  component.addRepresentation(representationKind(kind), representationParams(kind, color, null, "all"));
+  if (kind === "line" || kind === "stick") {
+    component.addRepresentation("spacefill", { sele: "water", color: "#38bdf8", opacity: 0.72, scale: 0.18, quality: "medium" });
   }
 }
-function rebuildAtomStyles() {
-  viewer.setStyle({}, {});
-  layers.forEach(layer => {
-    if (layer.surface) return;
-    if (layer.kind === "hidden") viewer.setStyle(layer.sel, {});
-    else viewer.addStyle(layer.sel, layer.opts);
-  });
-}
-async function addLayer(sel, kind, opts, label) {
-  const layer = { id: ++repId, kind, sel, opts, label, surface: kind === "surface", handle: null };
-  if (kind === "surface") {
-    const type = window.$3Dmol.SurfaceType[opts.type || "VDW"] || window.$3Dmol.SurfaceType.VDW;
-    layer.handle = await viewer.addSurface(type, { opacity: opts.opacity ?? 0.68, color: opts.color || "#ffffff" }, sel, sel);
-  } else if (kind === "hidden") {
-    viewer.setStyle(sel, {});
-  } else {
-    viewer.addStyle(sel, opts);
-  }
-  layers.push(layer);
-  viewer.render();
+async function addLayer(sel, kind, opts, label, options) {
+  if (kind === "hidden") return;
+  component.addRepresentation(representationKind(kind), { ...opts, sele: sel || "all" });
+  if (!options || options.render !== false) requestRender();
 }
 async function applySavedLayers() {
   const saved = Array.isArray(payload.layers) ? payload.layers : [];
   for (const layer of saved) {
     const sel = parseSelection(layer.selectionQuery || "all");
-    if (layer.kind === "surface") {
-      await addLayer(sel, "surface", { type: "VDW", opacity: 0.68, color: layer.colorScheme === "custom" ? layer.customColor : "#ffffff" }, layer.label || "VDW Surface");
-    } else if (layer.kind === "hidden") {
-      await addLayer(sel, "hidden", {}, layer.label || "Hidden");
+    if (layer.kind === "hidden") {
+      await addLayer(sel, "hidden", {}, layer.label || "Hidden", { render: false });
     } else {
-      await addLayer(sel, layer.kind, baseStyle(layer.kind, layer.colorScheme, layer.customColor), layer.label || layer.kind);
+      await addLayer(sel, layer.kind, representationParams(layer.kind, layer.colorScheme, layer.customColor, sel), layer.label || layer.kind, { render: false });
     }
   }
+}
+async function applyRepresentations() {
+  if (!component) return;
+  component.removeAllRepresentations();
+  await applyDefault();
+  await applySavedLayers();
+  requestRender();
+}
+function updateStatus() {
+  if (!component) return;
+  setStatus((payload.name || "Molecule") + " · " + structureAtomCount() + " atoms · " + structureResidueCount() + " residues" + (frameCount > 1 ? " · " + frameCount + " frames" : ""));
 }
 function stop() {
   if (timer) window.clearInterval(timer);
@@ -212,11 +405,10 @@ function stop() {
 function setFrame(index) {
   if (!frameCount) return;
   currentFrame = Math.max(0, Math.min(Number(index) || 0, frameCount - 1));
-  if (model && model.setFrame) model.setFrame(currentFrame);
-  else if (viewer.setFrame) viewer.setFrame(currentFrame);
+  if (trajectory?.setFrame) trajectory.setFrame(currentFrame, requestRender);
   if (frameInput) frameInput.value = String(currentFrame);
   if (frameLabel) frameLabel.textContent = (currentFrame + 1) + " / " + frameCount;
-  viewer.render();
+  requestRender();
 }
 function play() {
   if (!frameCount) return;
@@ -237,50 +429,77 @@ function setupTrajectoryControls() {
   }
   if (frameLabel) frameLabel.textContent = "1 / " + frameCount;
 }
-function load() {
-  if (!has3Dmol()) {
-    setStatus("3Dmol.js failed to load");
+function getTrajectoryFromComponent(trajComponent) {
+  if (trajComponent?.trajectory) return trajComponent.trajectory;
+  if (trajComponent?.traj) return trajComponent.traj;
+  const list = component?.trajList || component?.trajectoryList || [];
+  const first = list[0];
+  return first?.trajectory || first?.traj || first || null;
+}
+async function load() {
+  if (!hasNgl()) {
+    setStatus("NGL viewer failed to load");
     return;
   }
   applyBackground(payload.backgroundColor);
   const transparentBg = payload.backgroundColor === "transparent";
-  const viewerBg = transparentBg ? "#020617" : payload.backgroundColor;
-  viewer = window.$3Dmol.createViewer(root, { backgroundColor: viewerBg, alpha: transparentBg ? 0 : 1, antialias: true, cartoonQuality: 20 });
   try {
-    if (transparentBg && viewer.setBackgroundColor) viewer.setBackgroundColor(viewerBg, 0);
-    const format = fmt(payload.format);
-    frameCount = payload.isTrajectory ? trajectoryCount(payload.data) : 0;
-    if (payload.isTrajectory && frameCount > 0) model = viewer.addModelsAsFrames(payload.data, format);
-    else model = viewer.addModel(payload.data, format);
-    applyDefault();
-    applySavedLayers().then(() => {
-      viewer.zoomTo();
-      viewer.render();
-      setTimeout(resizeViewer, 120);
-      setTimeout(resizeViewer, 650);
-      setTimeout(resizeViewer, 1400);
+    stage = new window.NGL.Stage(root, {
+      backgroundColor: transparentBg ? "white" : (payload.backgroundColor || "#020617"),
+      quality: "medium",
+      sampleLevel: 1,
+      impostor: true,
+      cameraType: payload.projection === "orthographic" ? "orthographic" : "perspective",
     });
-    viewer.zoomTo();
-    viewer.spin(payload.autoRotate ? "y" : false);
-    if (viewer.setProjection) viewer.setProjection(payload.projection === "orthographic" ? "orthographic" : "perspective");
-    viewer.render();
-    const atoms = model.selectedAtoms({}) || [];
-    const residues = new Set(atoms.map(atom => (atom.chain || "") + "-" + atom.resi)).size;
-    setStatus((payload.name || "Molecule") + " · " + atoms.length + " atoms · " + residues + " residues" + (frameCount > 1 ? " · " + frameCount + " frames" : ""));
+    if (stage.mouseControls?.remove) {
+      stage.mouseControls.remove("scroll-shift");
+      stage.mouseControls.remove("drag-middle");
+    }
+    let moleculeData = await resolveMoleculeData();
+    if (!moleculeData) throw new Error("Molecule file is empty");
+    const format = fmt(payload.format);
+    const endDelimitedTrajectory = format === "pdb" && isEndDelimitedPdbTrajectory(moleculeData);
+    if (endDelimitedTrajectory) moleculeData = normalizeEndDelimitedPdbTrajectory(moleculeData);
+    const shouldLoadTrajectory = payload.isTrajectory || endDelimitedTrajectory || hasModelRecords(moleculeData);
+    frameCount = shouldLoadTrajectory ? trajectoryCount(moleculeData) : 0;
+    const blob = new Blob([moleculeData], { type: "text/plain" });
+    component = await stage.loadFile(blob, { ext: format === "mmcif" ? "cif" : format, asTrajectory: shouldLoadTrajectory && frameCount > 1 });
+    if (shouldLoadTrajectory && frameCount > 1 && component?.addTrajectory) {
+      trajectory = getTrajectoryFromComponent(component.addTrajectory());
+      if (trajectory?.frameCount) frameCount = trajectory.frameCount;
+      if (trajectory?.signals?.frameChanged?.add) {
+        trajectory.signals.frameChanged.add(index => {
+          currentFrame = Number(index) || trajectory.currentFrame || currentFrame;
+          if (frameInput) frameInput.value = String(currentFrame);
+          if (frameLabel) frameLabel.textContent = (currentFrame + 1) + " / " + frameCount;
+        });
+      }
+    } else {
+      frameCount = 0;
+    }
+    await applyRepresentations();
+    component.autoView();
+    stage.setSpin(Boolean(payload.autoRotate));
+    stage.setParameters({ cameraType: payload.projection === "orthographic" ? "orthographic" : "perspective" });
+    requestRender();
+    updateStatus();
     setupTrajectoryControls();
     root.addEventListener("dblclick", () => {
-      if (!viewer) return;
-      viewer.zoomTo();
-      viewer.render();
+      if (!component) return;
+      component.autoView();
+      requestRender();
     });
     new ResizeObserver(resizeViewer).observe(root);
+    setTimeout(resizeViewer, 120);
+    setTimeout(resizeViewer, 650);
+    setTimeout(resizeViewer, 1400);
   } catch (err) {
     setStatus("Could not load molecule: " + err.message);
   }
 }
 if (presentRotateBtn) {
   presentRotateBtn.addEventListener("click", event => {
-    if (!viewer) return;
+    if (!stage) return;
     const next = event.currentTarget.dataset.on !== "true";
     event.currentTarget.dataset.on = String(next);
     event.currentTarget.textContent = next ? "Rotate On" : "Rotate";
@@ -289,20 +508,44 @@ if (presentRotateBtn) {
       rotateBtn.dataset.on = String(next);
       rotateBtn.textContent = next ? "Rotate On" : "Rotate";
     }
-    viewer.spin(next ? "y" : false);
-    viewer.render();
+    stage.setSpin(next);
+    requestRender();
   });
 }
 if (playBtn) playBtn.addEventListener("click", () => timer ? stop() : play());
 if (presentPlayBtn) presentPlayBtn.addEventListener("click", () => timer ? stop() : play());
 if (frameInput) frameInput.addEventListener("input", () => { stop(); setFrame(frameInput.value); });
 if (speedInput) speedInput.addEventListener("input", () => { if (timer) play(); });
-window.addEventListener("message", event => {
+window.addEventListener("message", async event => {
   const message = event.data || {};
   if (!message || message.type !== "pptmaker:molecule:update") return;
   if (Object.prototype.hasOwnProperty.call(message, "backgroundColor")) {
     payload.backgroundColor = message.backgroundColor || "#020617";
     applyBackground(payload.backgroundColor);
+  }
+  if (Object.prototype.hasOwnProperty.call(message, "name")) {
+    payload.name = String(message.name || "Molecule");
+    updateStatus();
+  }
+  if (Object.prototype.hasOwnProperty.call(message, "autoRotate") && stage) {
+    payload.autoRotate = Boolean(message.autoRotate);
+    stage.setSpin(payload.autoRotate);
+    requestRender();
+  }
+  if (Object.prototype.hasOwnProperty.call(message, "projection") && stage?.setParameters) {
+    payload.projection = message.projection === "orthographic" ? "orthographic" : "perspective";
+    stage.setParameters({ cameraType: payload.projection });
+    requestRender();
+  }
+  const representationChanged =
+    Object.prototype.hasOwnProperty.call(message, "defaultStyle") ||
+    Object.prototype.hasOwnProperty.call(message, "defaultColor") ||
+    Object.prototype.hasOwnProperty.call(message, "layers");
+  if (representationChanged) {
+    if (Object.prototype.hasOwnProperty.call(message, "defaultStyle")) payload.defaultStyle = message.defaultStyle || "cartoon";
+    if (Object.prototype.hasOwnProperty.call(message, "defaultColor")) payload.defaultColor = message.defaultColor || "spectrum";
+    if (Object.prototype.hasOwnProperty.call(message, "layers")) payload.layers = Array.isArray(message.layers) ? message.layers : [];
+    await applyRepresentations();
   }
 });
 window.addEventListener("resize", resizeViewer);
@@ -312,11 +555,14 @@ load();
 }
 
 function buildMoleculeEmbedSrcdoc(elementData = {}) {
+    const rawContent = String(elementData.content || "");
+    const externalContent = isMoleculeContentUrl(rawContent);
     const payload = {
-        data: String(elementData.content || createDefaultMoleculeContent()),
+        data: externalContent ? "" : String(rawContent || createDefaultMoleculeContent()),
+        dataUrl: externalContent ? rawContent : "",
         format: normalizeMoleculeFormat(elementData.moleculeFormat || "pdb"),
         name: String(elementData.moleculeName || "Molecule"),
-        isTrajectory: Boolean(elementData.moleculeIsTrajectory || isMoleculeTrajectoryData(elementData.content)),
+        isTrajectory: Boolean(elementData.moleculeIsTrajectory || (!externalContent && isMoleculeTrajectoryData(elementData.content))),
         autoRotate: Boolean(elementData.moleculeAutoRotate),
         projection: elementData.moleculeProjection === "orthographic" ? "orthographic" : "perspective",
         defaultStyle: ["cartoon", "stick", "sphere", "line", "surface"].includes(elementData.moleculeDefaultStyle)
@@ -338,7 +584,23 @@ function buildMoleculeEmbedSrcdoc(elementData = {}) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="${MOLECULE_EMBED_3DMOL_SRC}"><\/script>
+<script>
+(() => {
+  const ignorePatterns = [
+    "useLegacyLights has been deprecated",
+    "STAGE LOG",
+    "EDTSurface fillvoxels",
+    "EDTSurface fastdistancemap",
+    "EDTSurface.getVolume"
+  ];
+  const shouldIgnore = args => ignorePatterns.some(pattern => args.map(value => String(value)).join(" ").includes(pattern));
+  const originalLog = console.log.bind(console);
+  const originalWarn = console.warn.bind(console);
+  console.log = (...args) => { if (!shouldIgnore(args)) originalLog(...args); };
+  console.warn = (...args) => { if (!shouldIgnore(args)) originalWarn(...args); };
+})();
+<\/script>
+<script src="${MOLECULE_EMBED_NGL_SRC}"><\/script>
 <style>
 html,body{width:100%;height:100%;margin:0;overflow:hidden;background:${background};color:#e2e8f0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 #viewer{position:absolute;inset:0;background:${background}}
@@ -387,4 +649,39 @@ body.presentation-mode .presentation-controls button[hidden]{display:none}
 function applyMoleculeEmbedSandbox(iframe) {
     iframe.setAttribute("sandbox", "allow-scripts allow-forms allow-popups allow-downloads");
     iframe.setAttribute("referrerpolicy", "no-referrer");
+}
+
+function attachMoleculeDataBridge(iframe, elementData = {}) {
+    if (!iframe || !isMoleculeContentUrl(elementData.content)) return null;
+    const sourceUrl = String(elementData.content || "");
+    const onMessage = async event => {
+        const message = event.data || {};
+        if (!message || message.type !== "pptmaker:molecule:data-request") return;
+        if (event.source !== iframe.contentWindow) return;
+        if (message.url !== sourceUrl) return;
+        try {
+            const response = await fetch(sourceUrl, { credentials: "same-origin" });
+            if (!response.ok) throw new Error(`Molecule fetch failed (${response.status})`);
+            const data = await response.text();
+            iframe.contentWindow?.postMessage({
+                type: "pptmaker:molecule:data-response",
+                requestId: message.requestId,
+                data,
+            }, "*");
+        } catch (err) {
+            iframe.contentWindow?.postMessage({
+                type: "pptmaker:molecule:data-response",
+                requestId: message.requestId,
+                error: err?.message || "Could not load molecule data",
+            }, "*");
+        }
+    };
+    window.addEventListener("message", onMessage);
+    iframe.addEventListener("load", () => {
+        if (iframe._moleculeDataBridgeCleanup) iframe._moleculeDataBridgeCleanup();
+        window.addEventListener("message", onMessage);
+        iframe._moleculeDataBridgeCleanup = () => window.removeEventListener("message", onMessage);
+    }, { once: true });
+    iframe._moleculeDataBridgeCleanup = () => window.removeEventListener("message", onMessage);
+    return iframe._moleculeDataBridgeCleanup;
 }

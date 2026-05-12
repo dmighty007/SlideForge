@@ -308,13 +308,21 @@ function buildTextPanel(panel, data) {
     const textColor = document.getElementById("prop-tc");
     if (textColor) {
         bindInlineFormattingGuard(textColor);
-        textColor.addEventListener("input", beginFormattingInteraction);
         textColor.oninput = e => {
+            if (textColor.dataset.sidebarColorFormattingActive !== "true") {
+                beginFormattingInteraction();
+                textColor.dataset.sidebarColorFormattingActive = "true";
+            }
             applyTextFormatting("color", e.target.value, { inlineAction: "color" });
         };
-        textColor.onchange = () => {
-            endFormattingInteraction();
+        const endColorFormatting = () => {
+            if (textColor.dataset.sidebarColorFormattingActive === "true") {
+                delete textColor.dataset.sidebarColorFormattingActive;
+                endFormattingInteraction();
+            }
         };
+        textColor.onchange = endColorFormatting;
+        textColor.onblur = endColorFormatting;
         setTextControlActive(textColor, textColor.value.toLowerCase() !== _normalizeColorForInput(getThemeTextStyleDefaults().color, "#000000").toLowerCase());
     }
 
@@ -363,10 +371,18 @@ function buildTextPanel(panel, data) {
     const bindWholeTextStyleControl = (el, handler) => {
         if (!el) return;
         bindInlineFormattingGuard(el);
-        el.addEventListener("input", beginFormattingInteraction);
+        el.addEventListener("input", () => {
+            if (el.dataset.wholeTextStyleFormattingActive !== "true") {
+                beginFormattingInteraction();
+                el.dataset.wholeTextStyleFormattingActive = "true";
+            }
+        });
         const commit = () => {
             handler();
-            endFormattingInteraction();
+            if (el.dataset.wholeTextStyleFormattingActive === "true") {
+                delete el.dataset.wholeTextStyleFormattingActive;
+                endFormattingInteraction();
+            }
         };
         el.onchange = commit;
         el.onblur = commit;

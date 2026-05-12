@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 ALLOWED_IMAGE_EXTENSIONS = {".gif", ".jpeg", ".jpg", ".png", ".webp"}
 ALLOWED_VIDEO_EXTENSIONS = {".mov", ".mp4", ".m4v", ".webm"}
 ALLOWED_PDF_EXTENSIONS = {".pdf"}
+ALLOWED_MOLECULE_EXTENSIONS = {".pdb", ".ent", ".gro", ".mol2", ".xyz", ".sdf", ".cif", ".mmcif"}
 
 
 def _auth_required(request):
@@ -339,6 +340,20 @@ def _validate_pdf_upload(uploaded_file):
     return None
 
 
+def _validate_molecule_upload(uploaded_file):
+    head = _uploaded_file_head(uploaded_file, 4096)
+    if b"\x00" in head:
+        return "Uploaded molecule file must be plain text"
+    try:
+        head.decode("utf-8")
+    except UnicodeDecodeError:
+        try:
+            head.decode("latin-1")
+        except UnicodeDecodeError:
+            return "Uploaded molecule file must be readable text"
+    return None
+
+
 def _classify_asset_upload(uploaded_file):
     content_type = uploaded_file.content_type or ""
     ext = (Path(uploaded_file.name or "").suffix or "").lower()
@@ -349,6 +364,8 @@ def _classify_asset_upload(uploaded_file):
         return "video", None
     if content_type == "application/pdf" and ext in ALLOWED_PDF_EXTENSIONS:
         return "pdf", _validate_pdf_upload(uploaded_file)
+    if ext in ALLOWED_MOLECULE_EXTENSIONS:
+        return "molecule", _validate_molecule_upload(uploaded_file)
     return "other", "Unsupported asset type"
 
 
@@ -414,7 +431,15 @@ def asset_upload(request):
     if uploaded_file is None:
         return _json_error("Missing file upload")
 
-    max_upload_bytes = settings.PPTMAKER_MAX_ASSET_UPLOAD_BYTES
+    asset_type, validation_error = _classify_asset_upload(uploaded_file)
+    if validation_error:
+        return _json_error(validation_error)
+
+    max_upload_bytes = (
+        settings.PPTMAKER_MAX_MOLECULE_UPLOAD_BYTES
+        if asset_type == "molecule"
+        else settings.PPTMAKER_MAX_ASSET_UPLOAD_BYTES
+    )
     if uploaded_file.size > max_upload_bytes:
         return _json_error("File is too large", status=413)
 
@@ -429,10 +454,6 @@ def asset_upload(request):
         presentation = _owned_presentation(request, presentation_id)
         if presentation is None:
             return _json_error("Presentation not found", status=404)
-
-    asset_type, validation_error = _classify_asset_upload(uploaded_file)
-    if validation_error:
-        return _json_error(validation_error)
 
     asset, normalized_content_type = _save_asset_file(
         uploaded_file,

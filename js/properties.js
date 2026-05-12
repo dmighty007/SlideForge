@@ -1441,12 +1441,14 @@ function _bindFloatingTextToolbar(data, toolbar) {
             }
             applyFloatingTextFormatting("color", e.target.value, { inlineAction: "color" });
         };
-        colorInput.onchange = () => {
+        const endFloatingColorFormatting = () => {
             if (colorInput.dataset.floatingColorFormattingActive === "true") {
                 delete colorInput.dataset.floatingColorFormattingActive;
                 endFormattingInteraction();
             }
         };
+        colorInput.onchange = endFloatingColorFormatting;
+        colorInput.onblur = endFloatingColorFormatting;
         if (!isControlBeingEdited(colorInput)) {
             colorInput.value = _normalizeColorForInput(data.styles.color, "#000000");
         }
@@ -3195,15 +3197,31 @@ function buildPropertiesPanel() {
                         if (label) label.textContent = enabled ? "Orbit" : "Select";
                     }
                     const iframe = dom.querySelector(".molecule-embed-frame");
-                    const backgroundOnly = Object.keys(updates || {}).length === 1 && updates.styles && Object.keys(updates.styles || {}).length === 1 && Object.prototype.hasOwnProperty.call(updates.styles, "backgroundColor");
-                    if (iframe && backgroundOnly && iframe.contentWindow) {
+                    const rebuildKeys = new Set(["content", "moleculeFormat", "moleculeIsTrajectory"]);
+                    const needsRebuild = Object.keys(updates || {}).some(key => rebuildKeys.has(key));
+                    if (iframe && needsRebuild && typeof buildMoleculeEmbedSrcdoc === "function") {
+                        if (iframe._moleculeDataBridgeCleanup) iframe._moleculeDataBridgeCleanup();
+                        if (typeof attachMoleculeDataBridge === "function") attachMoleculeDataBridge(iframe, merged);
+                        iframe.srcdoc = buildMoleculeEmbedSrcdoc(merged);
+                    } else if (iframe && iframe.contentWindow) {
                         iframe.contentWindow.postMessage({
                             type: "pptmaker:molecule:update",
+                            name: merged.moleculeName || "Molecule",
                             backgroundColor: background,
+                            autoRotate: Boolean(merged.moleculeAutoRotate),
+                            projection: merged.moleculeProjection === "orthographic" ? "orthographic" : "perspective",
+                            defaultStyle: ["cartoon", "stick", "sphere", "line", "surface"].includes(merged.moleculeDefaultStyle)
+                                ? merged.moleculeDefaultStyle
+                                : "cartoon",
+                            defaultColor: ["default", "chain", "amino", "ssJmol", "spectrum", "custom"].includes(merged.moleculeDefaultColor)
+                                ? merged.moleculeDefaultColor
+                                : "spectrum",
+                            layers: Array.isArray(merged.moleculeRepresentationLayers)
+                                ? merged.moleculeRepresentationLayers
+                                    .map(layer => typeof normalizeMoleculeRepresentationLayer === "function" ? normalizeMoleculeRepresentationLayer(layer) : layer)
+                                    .slice(0, 12)
+                                : [],
                         }, "*");
-                    }
-                    if (iframe && !backgroundOnly && typeof buildMoleculeEmbedSrcdoc === "function") {
-                        iframe.srcdoc = buildMoleculeEmbedSrcdoc(merged);
                     }
                 };
                 const normalizedLayers = () =>
@@ -3724,7 +3742,11 @@ function applyStyle(prop, value) {
         if (data.type === "text") {
             if (contentHost) {
                 _setElementDomStyleProperty(contentHost, prop, value, priority);
-                if (["color", "fontSize", "fontFamily", "fontWeight", "fontStyle"].includes(prop) && contentHost.dataset.structuredEdit !== "true") {
+                if (
+                    ["color", "fontSize", "fontFamily", "fontWeight", "fontStyle"].includes(prop) &&
+                    contentHost.dataset.structuredEdit !== "true" &&
+                    !contentHost.isContentEditable
+                ) {
                     contentHost.innerHTML = renderTextContent(data);
                 }
             }
