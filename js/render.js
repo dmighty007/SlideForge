@@ -395,7 +395,7 @@ function _applyBulletFragmentAnimation(contentHost, elData) {
     });
 }
 
-function createSlideBackgroundNode(background, { forPreview = false } = {}) {
+function createSlideBackgroundNode(background, { forPreview = false, slideIndex = currentSlideIndex } = {}) {
     const normalized = normalizeSlideBackground(background);
     if (!normalized) return null;
     const wrapper = document.createElement("div");
@@ -412,11 +412,16 @@ function createSlideBackgroundNode(background, { forPreview = false } = {}) {
         video.style.setProperty("object-fit", normalized.fit || "cover", "important");
         video.muted = true;
         video.loop = true;
-        video.autoplay = !forPreview;
+        const initiallyActive =
+            !forPreview &&
+            document.visibilityState !== "hidden" &&
+            document.hasFocus() &&
+            Number(slideIndex) === getActiveSlideMediaIndex();
+        video.autoplay = initiallyActive;
         video.playsInline = true;
         video.preload = forPreview ? "metadata" : "auto";
         video.setAttribute("playsinline", "true");
-        if (!forPreview) {
+        if (initiallyActive) {
             const play = () => video.play().catch(() => {});
             video.addEventListener("loadeddata", play, { once: true });
             requestAnimationFrame(play);
@@ -433,6 +438,126 @@ function createSlideBackgroundNode(background, { forPreview = false } = {}) {
     }
     return wrapper;
 }
+
+function getActiveSlideMediaIndex() {
+    if (typeof Reveal !== "undefined" && typeof Reveal.getIndices === "function") {
+        const indices = Reveal.getIndices();
+        if (Number.isInteger(indices?.h)) return indices.h;
+    }
+    return currentSlideIndex;
+}
+
+function syncActiveSlideMedia() {
+    const container = document.getElementById("slides-container");
+    if (!container) return;
+    const activeIndex = getActiveSlideMediaIndex();
+    const pageActive = document.visibilityState !== "hidden" && document.hasFocus();
+    Array.from(container.children).forEach((section, index) => {
+        const isActive = pageActive && index === activeIndex;
+        section.toggleAttribute("data-media-active", isActive);
+
+        section.querySelectorAll("video").forEach(video => {
+            if (!isActive) {
+                if (!video.paused) video.pause();
+                return;
+            }
+            const shouldAutoPlay = video.autoplay || video.classList.contains("slide-background-video");
+            if (shouldAutoPlay) video.play().catch(() => {});
+        });
+
+        section.querySelectorAll("iframe").forEach(iframe => {
+            const src = String(iframe.getAttribute("src") || "");
+            const isMolecule = iframe.classList.contains("molecule-embed-frame");
+            if (isMolecule) {
+                iframe.contentWindow?.postMessage({ type: "pptmaker:molecule:lifecycle", active: isActive }, "*");
+                return;
+            }
+            if (/youtube(?:-nocookie)?\.com\/embed\//i.test(src)) {
+                iframe.contentWindow?.postMessage(
+                    JSON.stringify({ event: "command", func: isActive && iframe.dataset.autoplay === "true" ? "playVideo" : "pauseVideo", args: [] }),
+                    "*",
+                );
+            } else if (/player\.vimeo\.com\/video\//i.test(src)) {
+                iframe.contentWindow?.postMessage({ method: isActive && iframe.dataset.autoplay === "true" ? "play" : "pause" }, "*");
+            }
+        });
+    });
+}
+
+function setMediaIframePermissions(iframe, value) {
+    if (!iframe || /firefox/i.test(navigator.userAgent || "")) return;
+    iframe.setAttribute("allow", value);
+}
+
+function findMoleculeElementDataById(elementId) {
+    if (!elementId) return null;
+    for (const slide of state.slides || []) {
+        const element = (slide.elements || []).find(item => item?.id === elementId && item.type === "molecule");
+        if (element) return element;
+    }
+    return null;
+}
+
+function updateMoleculeViewStateInState(elementId, viewState, { autosave = false } = {}) {
+    const normalized = typeof normalizeMoleculeViewState === "function" ? normalizeMoleculeViewState(viewState) : null;
+    if (!elementId || !normalized) return false;
+    const element = findMoleculeElementDataById(elementId);
+    if (!element) return false;
+    const previous = JSON.stringify(element.moleculeViewState || null);
+    const next = JSON.stringify(normalized);
+    if (previous === next) return false;
+    element.moleculeViewState = normalized;
+    if (autosave && typeof schedulePresentationAutosave === "function") {
+        schedulePresentationAutosave(900);
+    }
+    return true;
+}
+
+function requestMoleculeIframeViewState(iframe, timeoutMs = 350) {
+    return new Promise(resolve => {
+        if (!iframe?.contentWindow) {
+            resolve(null);
+            return;
+        }
+        const requestId = `mol_view_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+        const timeout = window.setTimeout(() => {
+            window.removeEventListener("message", onMessage);
+            resolve(null);
+        }, timeoutMs);
+        function onMessage(event) {
+            const message = event.data || {};
+            if (event.source !== iframe.contentWindow) return;
+            if (!message || message.type !== "pptmaker:molecule:view-state-response" || message.requestId !== requestId) return;
+            window.clearTimeout(timeout);
+            window.removeEventListener("message", onMessage);
+            resolve(message.viewState || null);
+        }
+        window.addEventListener("message", onMessage);
+        iframe.contentWindow.postMessage({ type: "pptmaker:molecule:view-state-request", requestId }, "*");
+    });
+}
+
+async function syncMoleculeViewStatesFromDom() {
+    const frames = Array.from(document.querySelectorAll(".canvas-element[data-type='molecule'] .molecule-embed-frame"));
+    if (!frames.length) return false;
+    let changed = false;
+    await Promise.all(frames.map(async iframe => {
+        const elementId = iframe.closest(".canvas-element")?.id || "";
+        const viewState = await requestMoleculeIframeViewState(iframe);
+        if (updateMoleculeViewStateInState(elementId, viewState)) changed = true;
+    }));
+    return changed;
+}
+
+window.addEventListener("message", event => {
+    const message = event.data || {};
+    if (!message || message.type !== "pptmaker:molecule:view-state-changed") return;
+    updateMoleculeViewStateInState(message.elementId, message.viewState, { autosave: true });
+});
+
+document.addEventListener("visibilitychange", () => requestAnimationFrame(syncActiveSlideMedia));
+window.addEventListener("focus", () => requestAnimationFrame(syncActiveSlideMedia));
+window.addEventListener("blur", () => requestAnimationFrame(syncActiveSlideMedia));
 
 function reorderSlides(fromIndex, toIndex) {
     const slides = state.slides || [];
@@ -849,17 +974,18 @@ function renderSlidesFromState() {
     const slideWidth = Number(slideConfig.width) || 1024;
     const slideHeight = Number(slideConfig.height) || 768;
     container.innerHTML = "";
-    state.slides.forEach(slide => {
+    state.slides.forEach((slide, slideIndex) => {
         const section = document.createElement("section");
         section.id = slide.id;
         section.classList.add("presentation-slide");
+        section.dataset.slideIndex = String(slideIndex);
         section.style.width = `${slideWidth}px`;
         section.style.height = `${slideHeight}px`;
         section.style.color = theme.defaultTextColor;
         section.style.fontFamily = theme.bodyFont;
-        const bgNode = createSlideBackgroundNode(slide.background);
+        const bgNode = createSlideBackgroundNode(slide.background, { slideIndex });
         if (bgNode) section.appendChild(bgNode);
-        slide.elements.forEach(elData => section.appendChild(createElementNode(elData)));
+        slide.elements.forEach(elData => section.appendChild(createElementNode(elData, { slideIndex })));
         container.appendChild(section);
     });
     if (Reveal.isReady()) {
@@ -871,6 +997,7 @@ function renderSlidesFromState() {
     if (document.body.classList.contains("play-mode-active") && typeof _resizePresentationChalkboard === "function") {
         requestAnimationFrame(() => _resizePresentationChalkboard());
     }
+    requestAnimationFrame(syncActiveSlideMedia);
     const nextPreviewSignature = getSlidePreviewStructureSignature();
     if (_slidePreviewStructureSignature === nextPreviewSignature) {
         renderSlidePreviews(currentSlideIndex);
@@ -1525,7 +1652,7 @@ function _createStaticNode(elData) {
 
 // ─── Interactive Element Node ────────────────────────────────────────────────
 
-function createElementNode(elData) {
+function createElementNode(elData, options = {}) {
     const el = document.createElement("div");
     const animation = normalizeElementAnimation(elData);
     el.id = elData.id;
@@ -1577,7 +1704,7 @@ function createElementNode(elData) {
         el.appendChild(badge);
     }
 
-    _applyTypeContent(el, elData);
+    _applyTypeContent(el, elData, options);
     if (elData.type === "connector") {
         el.style.transform = `translate(${elData.x}px, ${elData.y}px)`;
         el.setAttribute("data-x", elData.x);
@@ -1606,7 +1733,7 @@ function createElementNode(elData) {
     return el;
 }
 
-function _applyTypeContent(el, elData) {
+function _applyTypeContent(el, elData, options = {}) {
     if (elData.type === "text") {
         _installStructuredEditorShortcuts();
         const contentHost = document.createElement("div");
@@ -1778,34 +1905,39 @@ function _applyTypeContent(el, elData) {
         }
     } else if (elData.type === "video") {
         const videoInfo = _parseVideoUrl(elData.content);
+        const mediaInitiallyActive =
+            document.visibilityState !== "hidden" &&
+            document.hasFocus() &&
+            Number(options.slideIndex) === getActiveSlideMediaIndex();
         let videoNode;
         if (videoInfo.type === "youtube") {
             videoNode = document.createElement("iframe");
             const params = new URLSearchParams({
-                autoplay: elData.autoplay ? 1 : 0,
+                autoplay: elData.autoplay && mediaInitiallyActive ? 1 : 0,
                 mute: elData.muted ? 1 : 0,
                 loop: elData.loop ? 1 : 0,
                 controls: 1,
                 rel: 0,
                 modestbranding: 1,
                 playsinline: 1,
+                enablejsapi: 1,
             });
             if (elData.loop) params.set("playlist", videoInfo.id);
             videoNode.src = `https://www.youtube-nocookie.com/embed/${videoInfo.id}?${params.toString()}`;
-            videoNode.setAttribute("allow", "autoplay; encrypted-media; picture-in-picture");
+            setMediaIframePermissions(videoNode, "autoplay; encrypted-media; picture-in-picture");
             videoNode.setAttribute("allowfullscreen", "true");
             videoNode.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
             videoNode.setAttribute("title", "YouTube video player");
         } else if (videoInfo.type === "vimeo") {
             videoNode = document.createElement("iframe");
-            videoNode.src = `https://player.vimeo.com/video/${videoInfo.id}?autoplay=${elData.autoplay ? 1 : 0}&muted=${elData.muted ? 1 : 0}&loop=${elData.loop ? 1 : 0}`;
-            videoNode.setAttribute("allow", "autoplay; fullscreen; picture-in-picture");
+            videoNode.src = `https://player.vimeo.com/video/${videoInfo.id}?autoplay=${elData.autoplay && mediaInitiallyActive ? 1 : 0}&muted=${elData.muted ? 1 : 0}&loop=${elData.loop ? 1 : 0}&api=1`;
+            setMediaIframePermissions(videoNode, "autoplay; fullscreen; picture-in-picture");
             videoNode.setAttribute("allowfullscreen", "true");
         } else {
             videoNode = document.createElement("video");
             videoNode.controls = true;
             videoNode.muted = elData.muted !== false;
-            videoNode.autoplay = elData.autoplay || false;
+            videoNode.autoplay = Boolean(elData.autoplay && mediaInitiallyActive);
             videoNode.loop = elData.loop || false;
             videoNode.setAttribute("playsinline", "true");
             videoNode.setAttribute("preload", "metadata");
@@ -1833,6 +1965,10 @@ function _applyTypeContent(el, elData) {
             videoNode.innerHTML += "Your browser does not support the video tag or this format.";
         }
         videoNode.className = "w-full h-full rounded-[inherit] pointer-events-none play-mode-events-auto";
+        videoNode.dataset.autoplay = elData.autoplay ? "true" : "false";
+        if (videoNode.tagName === "IFRAME") {
+            videoNode.addEventListener("load", () => requestAnimationFrame(syncActiveSlideMedia));
+        }
         videoNode.style.border = "0";
         el.appendChild(videoNode);
 
@@ -1875,16 +2011,22 @@ function _applyTypeContent(el, elData) {
             : (elData.styles?.backgroundColor || "#020617");
 
         const iframe = document.createElement("iframe");
+        const moleculeActive =
+            document.visibilityState !== "hidden" &&
+            document.hasFocus() &&
+            Number(options.slideIndex) === getActiveSlideMediaIndex();
         iframe.srcdoc = typeof buildMoleculeEmbedSrcdoc === "function"
             ? buildMoleculeEmbedSrcdoc({
                   ...elData,
                   moleculePresentationMode: document.body.classList.contains("play-mode-active"),
+                  moleculeActive,
               })
             : "";
         if (typeof applyMoleculeEmbedSandbox === "function") applyMoleculeEmbedSandbox(iframe);
         iframe.className = "w-full h-full molecule-embed-frame";
         iframe.style.border = "0";
         iframe.setAttribute("title", elData.moleculeIsTrajectory ? "Molecular trajectory viewer" : "Molecular structure viewer");
+        iframe.addEventListener("load", () => requestAnimationFrame(syncActiveSlideMedia));
         if (typeof attachMoleculeDataBridge === "function") attachMoleculeDataBridge(iframe, elData);
         wrapper.appendChild(iframe);
         el.appendChild(wrapper);

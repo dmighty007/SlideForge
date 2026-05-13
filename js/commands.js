@@ -3249,6 +3249,14 @@ function _updatePresentationCursorMode() {
     wrapper.classList.toggle("presentation-cursor-chalk", _presentationToolsState.chalkEnabled && !_presentationToolsState.laserEnabled);
 }
 
+function _updatePresentationLaserPosition(event) {
+    if (!_presentationToolsState.laserEnabled || !document.body.classList.contains("play-mode-active")) return;
+    const { laser } = _presentationToolsElements();
+    if (!laser) return;
+    laser.style.left = `${event.clientX}px`;
+    laser.style.top = `${event.clientY}px`;
+}
+
 function setPresentationLaserActive(enabled) {
     _presentationToolsState.laserEnabled = !!enabled;
     const { laser } = _presentationToolsElements();
@@ -3382,6 +3390,7 @@ function initPresentationTools() {
     });
 
     chalkboard.addEventListener("pointerdown", event => {
+        _updatePresentationLaserPosition(event);
         if (!_presentationToolsState.chalkEnabled) return;
         const point = _getPresentationStagePoint(event);
         if (!point) return;
@@ -3392,14 +3401,7 @@ function initPresentationTools() {
         event.preventDefault();
     });
     chalkboard.addEventListener("pointermove", event => {
-        if (_presentationToolsState.laserEnabled) {
-            const { laser } = _presentationToolsElements();
-            const rect = wrapper.getBoundingClientRect();
-            if (laser) {
-                laser.style.left = `${event.clientX - rect.left}px`;
-                laser.style.top = `${event.clientY - rect.top}px`;
-            }
-        }
+        _updatePresentationLaserPosition(event);
         if (!_presentationToolsState.chalkEnabled || !_presentationToolsState.isDrawing) return;
         const point = _getPresentationStagePoint(event);
         if (!point || !_presentationToolsState.lastDrawPoint) return;
@@ -3417,14 +3419,9 @@ function initPresentationTools() {
     });
 
     wrapper.addEventListener("pointermove", event => {
-        if (!_presentationToolsState.laserEnabled) return;
-        const { laser } = _presentationToolsElements();
-        const rect = wrapper.getBoundingClientRect();
-        if (laser) {
-            laser.style.left = `${event.clientX - rect.left}px`;
-            laser.style.top = `${event.clientY - rect.top}px`;
-        }
+        _updatePresentationLaserPosition(event);
     });
+    document.addEventListener("pointermove", _updatePresentationLaserPosition, true);
     wrapper.addEventListener("contextmenu", event => {
         if (!document.body.classList.contains("play-mode-active")) return;
         event.preventDefault();

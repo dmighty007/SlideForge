@@ -708,18 +708,47 @@ body {
 }
 
 .presentation-laser {
-    z-index: 6;
-    position: absolute;
+    z-index: 10050;
+    position: fixed;
     inset: auto;
     width: 24px;
     height: 24px;
     margin: 0;
     border-radius: 999px;
-    background: radial-gradient(circle, rgba(255, 90, 90, 0.95) 0%, rgba(255, 44, 44, 0.82) 38%, rgba(255, 44, 44, 0.18) 72%, rgba(255, 44, 44, 0) 100%);
-    box-shadow: 0 0 18px rgba(255, 64, 64, 0.48);
+    background:
+        radial-gradient(circle, #fff 0 6%, #ff1744 7% 20%, rgba(255, 23, 68, 0.72) 21% 38%, rgba(255, 23, 68, 0.26) 39% 58%, transparent 70%),
+        radial-gradient(circle, rgba(0, 0, 0, 0.42) 0 46%, transparent 68%);
+    border: 1px solid rgba(255, 255, 255, 0.82);
+    box-shadow:
+        0 0 0 1px rgba(86, 0, 0, 0.62),
+        0 0 8px rgba(255, 0, 48, 0.95),
+        0 0 18px rgba(255, 0, 48, 0.62),
+        0 0 30px rgba(255, 0, 48, 0.28);
     opacity: 0;
     pointer-events: none;
-    translate: -50% -50%;
+    transform: translate(-50%, -50%);
+    will-change: left, top, opacity;
+}
+
+.presentation-laser::before,
+.presentation-laser::after {
+    content: "";
+    position: absolute;
+    inset: 50% auto auto 50%;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+}
+
+.presentation-laser::before {
+    width: 30px;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.96) 35%, #ff1744 50%, rgba(255,255,255,0.96) 65%, transparent);
+}
+
+.presentation-laser::after {
+    width: 2px;
+    height: 30px;
+    background: linear-gradient(180deg, transparent, rgba(255,255,255,0.96) 35%, #ff1744 50%, rgba(255,255,255,0.96) 65%, transparent);
 }
 
 .presentation-laser.is-active {
@@ -1095,6 +1124,7 @@ ${typeof normalizeMoleculeBackgroundColor === 'function' ? normalizeMoleculeBack
 ${typeof isMoleculeContentUrl === 'function' ? isMoleculeContentUrl.toString() : ''}
 ${typeof isMoleculeTrajectoryData === 'function' ? isMoleculeTrajectoryData.toString() : ''}
 ${typeof normalizeMoleculeRepresentationLayer === 'function' ? normalizeMoleculeRepresentationLayer.toString() : ''}
+${typeof normalizeMoleculeViewState === 'function' ? normalizeMoleculeViewState.toString() : ''}
 ${typeof _escapeMoleculeHtml === 'function' ? _escapeMoleculeHtml.toString() : ''}
 ${typeof _serializeMoleculePayload === 'function' ? _serializeMoleculePayload.toString() : ''}
 ${typeof _moleculeSrcdocScript === 'function' ? _moleculeSrcdocScript.toString() : ''}
@@ -1317,17 +1347,22 @@ function initViewer(data) {
         return true;
     }
     
-    slides.forEach(slide => {
+    slides.forEach((slide, slideIndex) => {
         const section = document.createElement('section');
         section.id = slide.id;
         section.className = 'presentation-slide';
         section.style.width = page.width + 'px';
         section.style.height = page.height + 'px';
-        const bgNode = createViewerSlideBackgroundNode(slide.background);
+        const mediaOptions = {
+            slideIndex,
+            activeSlideIndex,
+            onMediaLoad: () => requestAnimationFrame(syncViewerActiveMedia),
+        };
+        const bgNode = createViewerSlideBackgroundNode(slide.background, mediaOptions);
         if (bgNode) section.appendChild(bgNode);
         
         (slide.elements || []).forEach(elData => {
-            const node = createViewerElement(elData);
+            const node = createViewerElement(elData, mediaOptions);
             section.appendChild(node);
         });
         
@@ -1398,10 +1433,9 @@ function initViewer(data) {
     }
 
     function updateLaserPosition(event) {
-        if (!laserEnabled || !laserPointer || !stage) return;
-        const rect = stage.getBoundingClientRect();
-        laserPointer.style.left = (event.clientX - rect.left) + 'px';
-        laserPointer.style.top = (event.clientY - rect.top) + 'px';
+        if (!laserEnabled || !laserPointer) return;
+        laserPointer.style.left = event.clientX + 'px';
+        laserPointer.style.top = event.clientY + 'px';
     }
 
     function drawSegment(from, to) {
@@ -1435,8 +1469,39 @@ function initViewer(data) {
             prepareSlideAnimations(activeSlideIndex);
         }
         if (status) status.textContent = (activeSlideIndex + 1) + ' / ' + Math.max(1, slides.length);
+        syncViewerActiveMedia();
         syncHash();
     }
+
+    function syncViewerActiveMedia() {
+        const pageActive = document.visibilityState !== 'hidden' && document.hasFocus();
+        Array.from(container.children).forEach((slideDom, slideIndex) => {
+            const isActive = pageActive && slideIndex === activeSlideIndex;
+            slideDom.querySelectorAll('video').forEach(video => {
+                if (!isActive) {
+                    if (!video.paused) video.pause();
+                    return;
+                }
+                if (video.autoplay || video.classList.contains('slide-background-video')) {
+                    video.play().catch(() => {});
+                }
+            });
+            slideDom.querySelectorAll('iframe').forEach(iframe => {
+                const src = String(iframe.getAttribute('src') || '');
+                if (iframe.dataset.molecule === 'true') {
+                    iframe.contentWindow?.postMessage({ type: 'pptmaker:molecule:lifecycle', active: isActive }, '*');
+                } else if (/youtube(?:-nocookie)?\\.com\\/embed\\//i.test(src)) {
+                    iframe.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: isActive && iframe.dataset.autoplay === 'true' ? 'playVideo' : 'pauseVideo', args: [] }), '*');
+                } else if (/player\\.vimeo\\.com\\/video\\//i.test(src)) {
+                    iframe.contentWindow?.postMessage({ method: isActive && iframe.dataset.autoplay === 'true' ? 'play' : 'pause' }, '*');
+                }
+            });
+        });
+    }
+
+    document.addEventListener('visibilitychange', () => requestAnimationFrame(syncViewerActiveMedia));
+    window.addEventListener('focus', () => requestAnimationFrame(syncViewerActiveMedia));
+    window.addEventListener('blur', () => requestAnimationFrame(syncViewerActiveMedia));
 
     function goToSlide(index, fragmentIndex) {
         activeSlideIndex = Math.max(0, Math.min(index, slides.length - 1));
@@ -1507,6 +1572,7 @@ function initViewer(data) {
     contextClear && contextClear.addEventListener('click', () => { clearChalkBtn && clearChalkBtn.click(); });
     contextLaser && contextLaser.addEventListener('click', () => { laserBtn && laserBtn.click(); });
     chalkboard && chalkboard.addEventListener('pointerdown', event => {
+        if (laserEnabled) updateLaserPosition(event);
         if (!chalkEnabled) return;
         const point = getStagePoint(event);
         if (!point) return;
@@ -1537,6 +1603,7 @@ function initViewer(data) {
     stage && stage.addEventListener('pointermove', event => {
         if (laserEnabled) updateLaserPosition(event);
     });
+    document.addEventListener('pointermove', updateLaserPosition, true);
     stage && stage.addEventListener('contextmenu', event => {
         event.preventDefault();
         openContextMenu(event.clientX, event.clientY);
@@ -1609,7 +1676,11 @@ function initViewer(data) {
     syncControlState();
 }
 
-function createViewerElement(elData) {
+function createViewerElement(elData, mediaOptions = {}) {
+    function setMediaIframePermissions(iframe, value) {
+        if (!iframe || /firefox/i.test(navigator.userAgent || '')) return;
+        iframe.setAttribute('allow', value);
+    }
     function ensureViewerDocumentShell(content) {
         const raw = String(content || '');
         if (/<!doctype|<html[\\s>]/i.test(raw)) return raw;
@@ -1792,36 +1863,42 @@ function createViewerElement(elData) {
         }
     } else if (elData.type === 'video') {
         const videoInfo = _parseVideoUrl(elData.content);
+        const initiallyActive =
+            document.visibilityState !== 'hidden' &&
+            document.hasFocus() &&
+            Number(mediaOptions.slideIndex) === Number(mediaOptions.activeSlideIndex);
         let videoNode;
         if (videoInfo.type === 'youtube') {
             videoNode = document.createElement('iframe');
             const params = new URLSearchParams({
-                autoplay: elData.autoplay ? 1 : 0,
+                autoplay: elData.autoplay && initiallyActive ? 1 : 0,
                 mute: elData.muted ? 1 : 0,
                 loop: elData.loop ? 1 : 0,
                 controls: 1,
                 rel: 0,
                 modestbranding: 1,
-                playsinline: 1
+                playsinline: 1,
+                enablejsapi: 1
             });
             if (elData.loop) params.set('playlist', videoInfo.id);
             videoNode.src = 'https://www.youtube-nocookie.com/embed/' + videoInfo.id + '?' + params.toString();
-            videoNode.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture');
+            setMediaIframePermissions(videoNode, 'autoplay; encrypted-media; picture-in-picture');
             videoNode.setAttribute('allowfullscreen', 'true');
             videoNode.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
             videoNode.setAttribute('title', 'YouTube video player');
         } else if (videoInfo.type === 'vimeo') {
             videoNode = document.createElement('iframe');
             videoNode.src = 'https://player.vimeo.com/video/' + videoInfo.id + 
-                           '?autoplay=' + (elData.autoplay ? 1 : 0) + 
+                           '?autoplay=' + (elData.autoplay && initiallyActive ? 1 : 0) + 
                            '&muted=' + (elData.muted ? 1 : 0) + 
-                           '&loop=' + (elData.loop ? 1 : 0);
-            videoNode.setAttribute('allow', 'autoplay; fullscreen');
+                           '&loop=' + (elData.loop ? 1 : 0) +
+                           '&api=1';
+            setMediaIframePermissions(videoNode, 'autoplay; fullscreen');
             videoNode.setAttribute('allowfullscreen', 'true');
         } else {
             videoNode = document.createElement('video');
             videoNode.controls = true;
-            videoNode.autoplay = !!elData.autoplay;
+            videoNode.autoplay = !!elData.autoplay && initiallyActive;
             videoNode.muted = elData.muted !== false;
             videoNode.loop = !!elData.loop;
             videoNode.setAttribute('playsinline', 'true');
@@ -1843,6 +1920,10 @@ function createViewerElement(elData) {
             videoNode.appendChild(document.createTextNode('Your browser does not support the video tag or this format.'));
         }
         videoNode.className = 'media-fill rounded-inherit';
+        videoNode.dataset.autoplay = elData.autoplay ? 'true' : 'false';
+        if (videoNode.tagName === 'IFRAME' && typeof mediaOptions.onMediaLoad === 'function') {
+            videoNode.addEventListener('load', mediaOptions.onMediaLoad);
+        }
         el.appendChild(videoNode);
     } else if (elData.type === 'shape') {
         applyShapeStyles(el, elData.shapeType);
@@ -1858,7 +1939,14 @@ function createViewerElement(elData) {
     } else if (elData.type === 'molecule') {
         const iframe = document.createElement('iframe');
         iframe.srcdoc = typeof buildMoleculeEmbedSrcdoc === 'function'
-            ? buildMoleculeEmbedSrcdoc({ ...elData, moleculePresentationMode: true })
+            ? buildMoleculeEmbedSrcdoc({
+                ...elData,
+                moleculePresentationMode: true,
+                moleculeActive:
+                    document.visibilityState !== 'hidden' &&
+                    document.hasFocus() &&
+                    Number(mediaOptions.slideIndex) === Number(mediaOptions.activeSlideIndex)
+            })
             : '';
         if (typeof applyMoleculeEmbedSandbox === 'function') applyMoleculeEmbedSandbox(iframe);
         else {
@@ -1866,7 +1954,9 @@ function createViewerElement(elData) {
             iframe.setAttribute('referrerpolicy', 'no-referrer');
         }
         iframe.className = 'media-fill rounded-inherit';
+        iframe.dataset.molecule = 'true';
         iframe.setAttribute('title', elData.moleculeIsTrajectory ? 'Molecular trajectory viewer' : 'Molecular structure viewer');
+        if (typeof mediaOptions.onMediaLoad === 'function') iframe.addEventListener('load', mediaOptions.onMediaLoad);
         if (typeof attachMoleculeDataBridge === 'function') attachMoleculeDataBridge(iframe, elData);
         el.appendChild(iframe);
     } else if (elData.type === 'pdf') {
@@ -1904,7 +1994,7 @@ function createViewerElement(elData) {
     return el;
 }
 
-function createViewerSlideBackgroundNode(background) {
+function createViewerSlideBackgroundNode(background, mediaOptions = {}) {
     if (!background || !background.content) return null;
     const wrapper = document.createElement('div');
     wrapper.className = 'slide-background-media';
@@ -1922,12 +2012,18 @@ function createViewerSlideBackgroundNode(background) {
         video.style.setProperty('object-fit', background.fit || 'cover', 'important');
         video.muted = true;
         video.loop = true;
-        video.autoplay = true;
+        const initiallyActive =
+            document.visibilityState !== 'hidden' &&
+            document.hasFocus() &&
+            Number(mediaOptions.slideIndex) === Number(mediaOptions.activeSlideIndex);
+        video.autoplay = initiallyActive;
         video.playsInline = true;
         video.setAttribute('playsinline', 'true');
-        const play = () => video.play().catch(() => {});
-        video.addEventListener('loadeddata', play, { once: true });
-        requestAnimationFrame(play);
+        if (initiallyActive) {
+            const play = () => video.play().catch(() => {});
+            video.addEventListener('loadeddata', play, { once: true });
+            requestAnimationFrame(play);
+        }
         wrapper.appendChild(video);
     } else {
         const image = document.createElement('img');

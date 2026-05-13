@@ -796,6 +796,10 @@ function normalizeStateIds() {
                               typeof normalizeMoleculeRepresentationLayer === "function" && Array.isArray(safeEl.moleculeRepresentationLayers)
                                   ? safeEl.moleculeRepresentationLayers.map(normalizeMoleculeRepresentationLayer).slice(0, 12)
                                   : [],
+                          moleculeViewState:
+                              typeof normalizeMoleculeViewState === "function"
+                                  ? normalizeMoleculeViewState(safeEl.moleculeViewState)
+                                  : null,
                       }
                     : {}),
                 ...(fallbackType === "image"
@@ -1224,6 +1228,9 @@ function setCurrentPresentationTitle(title) {
 }
 
 async function createPresentationRecord() {
+    if (typeof syncMoleculeViewStatesFromDom === "function") {
+        await syncMoleculeViewStatesFromDom();
+    }
     const payload = {
         title: _inferPresentationTitle(),
         presentationTheme: state.presentationTheme,
@@ -1310,6 +1317,9 @@ async function initPresentationPersistence(force = false) {
 async function autosavePresentationNow() {
     if (!_presentationPersistenceEnabled || !_presentationPersistenceReady || !currentPresentationId || isPresentationHydrating()) {
         return false;
+    }
+    if (typeof syncMoleculeViewStatesFromDom === "function") {
+        await syncMoleculeViewStatesFromDom();
     }
     const fingerprint = getPersistableFingerprint();
     if (fingerprint === _lastPersistedFingerprint) {

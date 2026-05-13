@@ -2277,6 +2277,7 @@ function buildPropertiesPanel() {
                 </div>
                 <div class="mt-3 pt-3 border-t border-gray-700/70 space-y-2">
                     <div class="text-[11px] text-gray-400 font-semibold uppercase tracking-wide">Representation Layer</div>
+                    <input type="hidden" id="prop-molecule-layer-edit-id" value="">
                     <input type="text" id="prop-molecule-layer-selection" class="w-full text-xs" value="all" placeholder="all, protein, ligand, chain A, resi 42">
                     <div class="grid grid-cols-2 gap-2">
                         <select id="prop-molecule-layer-style" class="w-full text-xs">
@@ -2296,10 +2297,25 @@ function buildPropertiesPanel() {
                             <option value="custom">Custom</option>
                         </select>
                     </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <label class="flex flex-col gap-1 text-[11px] text-gray-400">
+                            Size
+                            <input type="number" id="prop-molecule-layer-radius" class="w-full text-xs" min="0.01" max="5" step="0.01" value="0.18">
+                        </label>
+                        <label class="flex flex-col gap-1 text-[11px] text-gray-400">
+                            Opacity
+                            <input type="number" id="prop-molecule-layer-opacity" class="w-full text-xs" min="0.02" max="1" step="0.01" value="0.68">
+                        </label>
+                    </div>
                     <input type="color" id="prop-molecule-layer-custom" class="w-full h-8 rounded bg-transparent" value="#6366f1">
-                    <button id="prop-molecule-add-layer" class="w-full py-2 rounded bg-accent/20 border border-accent/40 text-xs text-accent font-semibold">
-                        Add Layer
-                    </button>
+                    <div class="grid grid-cols-[1fr_auto] gap-2">
+                        <button id="prop-molecule-add-layer" class="py-2 rounded bg-accent/20 border border-accent/40 text-xs text-accent font-semibold">
+                            Add Layer
+                        </button>
+                        <button id="prop-molecule-cancel-layer-edit" class="hidden px-3 py-2 rounded bg-gray-900 border border-gray-700 text-xs text-gray-300">
+                            Cancel
+                        </button>
+                    </div>
                 </div>
                 <div class="mt-3 space-y-1">
                     <div class="flex items-center justify-between">
@@ -2307,13 +2323,17 @@ function buildPropertiesPanel() {
                         <button id="prop-molecule-clear-layers" class="text-[11px] text-gray-400 hover:text-red-400" ${moleculeLayers.length ? "" : "disabled"}>Clear</button>
                     </div>
                     <div id="prop-molecule-layer-list" class="space-y-1">
-                        ${moleculeLayers.length ? moleculeLayers.map(layer => `
+                        ${moleculeLayers.length ? moleculeLayers.map(layer => {
+                            const layerLabel = typeof escapeHtml === "function" ? escapeHtml(layer.label || "Layer") : String(layer.label || "Layer");
+                            const layerTitle = String(layer.label || "Layer").replace(/"/g, "&quot;");
+                            return `
                             <div class="flex items-center gap-2 rounded border border-gray-700 bg-gray-900 px-2 py-1.5">
                                 <span class="w-2 h-2 rounded-full bg-accent shrink-0"></span>
-                                <span class="min-w-0 flex-1 truncate text-[11px] text-gray-300" title="${String(layer.label || "").replace(/"/g, "&quot;")}">${layer.label || "Layer"}</span>
+                                <span class="min-w-0 flex-1 truncate text-[11px] text-gray-300" title="${layerTitle}">${layerLabel}</span>
+                                <button class="prop-molecule-edit-layer text-[12px] text-gray-300 hover:text-accent" data-layer-id="${layer.id}">Edit</button>
                                 <button class="prop-molecule-remove-layer text-[12px] text-red-400 hover:text-red-300" data-layer-id="${layer.id}">×</button>
                             </div>
-                        `).join("") : `<div class="text-[11px] text-gray-500 italic">No saved layers</div>`}
+                        `; }).join("") : `<div class="text-[11px] text-gray-500 italic">No saved layers</div>`}
                     </div>
                 </div>
                 <p class="text-[11px] text-gray-500 leading-relaxed mt-3">
@@ -3334,6 +3354,13 @@ function buildPropertiesPanel() {
 
                 const layerColorField = document.getElementById("prop-molecule-layer-color");
                 const layerCustomField = document.getElementById("prop-molecule-layer-custom");
+                const layerStyleField = document.getElementById("prop-molecule-layer-style");
+                const layerSelectionField = document.getElementById("prop-molecule-layer-selection");
+                const layerRadiusField = document.getElementById("prop-molecule-layer-radius");
+                const layerOpacityField = document.getElementById("prop-molecule-layer-opacity");
+                const layerEditIdField = document.getElementById("prop-molecule-layer-edit-id");
+                const cancelLayerEditBtn = document.getElementById("prop-molecule-cancel-layer-edit");
+                const layerSizeLabel = layerRadiusField?.closest("label")?.firstChild;
                 if (layerColorField && layerCustomField) {
                     const syncCustomVisibility = () => {
                         layerCustomField.classList.toggle("hidden", layerColorField.value !== "custom");
@@ -3341,20 +3368,89 @@ function buildPropertiesPanel() {
                     layerColorField.onchange = syncCustomVisibility;
                     syncCustomVisibility();
                 }
+                const layerDefaults = {
+                    cartoon: { radius: 1, opacity: 1, sizeLabel: "Radius" },
+                    stick: { radius: 0.18, opacity: 1, sizeLabel: "Stick Width" },
+                    sphere: { radius: 0.35, opacity: 1, sizeLabel: "Sphere Radius" },
+                    line: { radius: 2, opacity: 1, sizeLabel: "Line Width" },
+                    surface: { radius: 0, opacity: 0.68, sizeLabel: "Size" },
+                    hidden: { radius: 0, opacity: 1, sizeLabel: "Size" },
+                };
+                const syncLayerParameterControls = ({ resetValues = false } = {}) => {
+                    const kind = layerStyleField?.value || "cartoon";
+                    const defaults = layerDefaults[kind] || layerDefaults.cartoon;
+                    if (layerSizeLabel) layerSizeLabel.textContent = defaults.sizeLabel;
+                    if (layerRadiusField) {
+                        layerRadiusField.disabled = kind === "surface" || kind === "hidden";
+                        layerRadiusField.classList.toggle("opacity-50", layerRadiusField.disabled);
+                        if (resetValues) layerRadiusField.value = String(defaults.radius);
+                    }
+                    if (layerOpacityField) {
+                        layerOpacityField.disabled = kind !== "surface";
+                        layerOpacityField.classList.toggle("opacity-50", layerOpacityField.disabled);
+                        if (resetValues) layerOpacityField.value = String(defaults.opacity);
+                    }
+                };
+                const resetLayerForm = () => {
+                    if (layerEditIdField) layerEditIdField.value = "";
+                    if (layerSelectionField) layerSelectionField.value = "all";
+                    if (layerStyleField) layerStyleField.value = "cartoon";
+                    if (layerColorField) layerColorField.value = "spectrum";
+                    if (layerCustomField) layerCustomField.value = "#6366f1";
+                    if (addLayerBtn) addLayerBtn.textContent = "Add Layer";
+                    if (cancelLayerEditBtn) cancelLayerEditBtn.classList.add("hidden");
+                    if (layerColorField && layerCustomField) layerCustomField.classList.add("hidden");
+                    syncLayerParameterControls({ resetValues: true });
+                };
+                const populateLayerForm = layer => {
+                    const normalized = typeof normalizeMoleculeRepresentationLayer === "function" ? normalizeMoleculeRepresentationLayer(layer) : layer;
+                    if (layerEditIdField) layerEditIdField.value = normalized.id || "";
+                    if (layerSelectionField) layerSelectionField.value = normalized.selectionQuery || "all";
+                    if (layerStyleField) layerStyleField.value = normalized.kind || "cartoon";
+                    if (layerColorField) layerColorField.value = normalized.colorScheme || "spectrum";
+                    if (layerCustomField) {
+                        layerCustomField.value = normalized.customColor || "#6366f1";
+                        layerCustomField.classList.toggle("hidden", (normalized.colorScheme || "spectrum") !== "custom");
+                    }
+                    syncLayerParameterControls({ resetValues: true });
+                    if (layerRadiusField && normalized.radius != null) layerRadiusField.value = String(normalized.radius);
+                    if (layerOpacityField && normalized.opacity != null) layerOpacityField.value = String(normalized.opacity);
+                    if (addLayerBtn) addLayerBtn.textContent = "Update Layer";
+                    if (cancelLayerEditBtn) cancelLayerEditBtn.classList.remove("hidden");
+                };
+                if (layerStyleField) {
+                    layerStyleField.onchange = () => syncLayerParameterControls({ resetValues: true });
+                    syncLayerParameterControls({ resetValues: true });
+                }
+                if (cancelLayerEditBtn) cancelLayerEditBtn.onclick = resetLayerForm;
 
                 const addLayerBtn = document.getElementById("prop-molecule-add-layer");
                 if (addLayerBtn) {
                     addLayerBtn.onclick = () => {
                         onCommit(() => {
-                            const selectionQuery = document.getElementById("prop-molecule-layer-selection")?.value?.trim() || "all";
-                            const kind = document.getElementById("prop-molecule-layer-style")?.value || "cartoon";
-                            const colorScheme = document.getElementById("prop-molecule-layer-color")?.value || "spectrum";
-                            const customColor = document.getElementById("prop-molecule-layer-custom")?.value || "#6366f1";
-                            const rawLayer = { selectionQuery, kind, colorScheme, customColor };
+                            const selectionQuery = layerSelectionField?.value?.trim() || "all";
+                            const kind = layerStyleField?.value || "cartoon";
+                            const colorScheme = layerColorField?.value || "spectrum";
+                            const customColor = layerCustomField?.value || "#6366f1";
+                            const editingId = layerEditIdField?.value || "";
+                            const radius = Number(layerRadiusField?.value);
+                            const opacity = Number(layerOpacityField?.value);
+                            const rawLayer = {
+                                ...(editingId ? { id: editingId } : {}),
+                                selectionQuery,
+                                kind,
+                                colorScheme,
+                                customColor,
+                                ...(Number.isFinite(radius) && !["surface", "hidden"].includes(kind) ? { radius } : {}),
+                                ...(Number.isFinite(opacity) && kind === "surface" ? { opacity } : {}),
+                            };
                             const layer = typeof normalizeMoleculeRepresentationLayer === "function"
                                 ? normalizeMoleculeRepresentationLayer(rawLayer)
                                 : { ...rawLayer, id: generateId("mol_layer"), label: `${kind} · ${selectionQuery}` };
-                            const nextLayers = [...normalizedLayers(), layer].slice(0, 12);
+                            const existingLayers = normalizedLayers();
+                            const nextLayers = editingId
+                                ? existingLayers.map(item => String(item.id) === String(editingId) ? layer : item)
+                                : [...existingLayers, layer].slice(0, 12);
                             data.moleculeRepresentationLayers = nextLayers;
                             updateElementState(data.id, { moleculeRepresentationLayers: nextLayers });
                             refreshMoleculeDom({ moleculeRepresentationLayers: nextLayers });
@@ -3362,6 +3458,14 @@ function buildPropertiesPanel() {
                         });
                     };
                 }
+
+                document.querySelectorAll(".prop-molecule-edit-layer").forEach(btn => {
+                    btn.onclick = () => {
+                        const layerId = btn.dataset.layerId;
+                        const layer = normalizedLayers().find(item => String(item.id) === String(layerId));
+                        if (layer) populateLayerForm(layer);
+                    };
+                });
 
                 document.querySelectorAll(".prop-molecule-remove-layer").forEach(btn => {
                     btn.onclick = () => {

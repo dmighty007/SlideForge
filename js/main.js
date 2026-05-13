@@ -67,6 +67,9 @@ window.onload = async () => {
         setCurrentSlideIndex(event.indexh);
         updateSlideCounter();
         clearSelection();
+        if (typeof syncActiveSlideMedia === "function") {
+            requestAnimationFrame(syncActiveSlideMedia);
+        }
 
         // Ensure the new slide is centered, especially if zoomed in
         if (typeof centerSlide === "function") centerSlide();

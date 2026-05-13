@@ -82,6 +82,7 @@ function createMoleculeElementData({ data, name = "Molecule", format = "pdb", is
         moleculeDefaultStyle: "cartoon",
         moleculeDefaultColor: "spectrum",
         moleculeRepresentationLayers: [],
+        moleculeViewState: null,
     };
 }
 
@@ -92,15 +93,29 @@ function normalizeMoleculeRepresentationLayer(layer = {}) {
         : "spectrum";
     const selectionQuery = String(layer.selectionQuery || "all").trim() || "all";
     const customColor = /^#[0-9a-f]{6}$/i.test(String(layer.customColor || "")) ? layer.customColor : "#6366f1";
-    const label = String(layer.label || `${kind[0].toUpperCase()}${kind.slice(1)} · ${colorScheme} · ${selectionQuery}`);
+    const radius = Number.isFinite(Number(layer.radius)) ? Math.max(0.01, Math.min(5, Number(layer.radius))) : null;
+    const opacity = Number.isFinite(Number(layer.opacity)) ? Math.max(0.02, Math.min(1, Number(layer.opacity))) : null;
+    const labelParts = [`${kind[0].toUpperCase()}${kind.slice(1)}`, colorScheme, selectionQuery];
+    if (radius != null && ["stick", "sphere", "line", "cartoon"].includes(kind)) labelParts.push(`r ${radius}`);
+    if (opacity != null && kind === "surface") labelParts.push(`${Math.round(opacity * 100)}%`);
+    const label = String(layer.label || labelParts.join(" · "));
     return {
         id: layer.id || (typeof generateId === "function" ? generateId("mol_layer") : `mol_layer_${Date.now()}_${Math.random().toString(36).slice(2)}`),
         kind,
         colorScheme,
         selectionQuery,
         customColor,
+        radius,
+        opacity,
         label,
     };
+}
+
+function normalizeMoleculeViewState(value) {
+    if (!value || typeof value !== "object") return null;
+    const orientation = Array.isArray(value.orientation) ? value.orientation.map(Number) : [];
+    if (orientation.length !== 16 || !orientation.every(Number.isFinite)) return null;
+    return { orientation };
 }
 
 function _escapeMoleculeHtml(value) {
@@ -140,6 +155,10 @@ let timer = null;
 let frameCount = 0;
 let currentFrame = 0;
 let resizeQueued = false;
+let lifecycleActive = payload.active !== false;
+let spinRequested = Boolean(payload.autoRotate);
+let resumeTrajectoryOnActive = false;
+let viewStateBroadcastTimer = null;
 
 function setStatus(text) { status.textContent = text; }
 function hasNgl() { return Boolean(window.NGL && window.NGL.Stage); }
@@ -249,6 +268,55 @@ function requestRender() {
   if (stage?.viewer?.requestRender) stage.viewer.requestRender();
   else if (stage?.viewer?.render) stage.viewer.render();
 }
+function normalizeViewMatrix(value) {
+  const raw = Array.isArray(value)
+    ? value
+    : Array.isArray(value?.elements)
+      ? value.elements
+      : (typeof value?.toArray === "function" ? value.toArray() : []);
+  const matrix = raw.map(Number);
+  return matrix.length === 16 && matrix.every(Number.isFinite) ? matrix : null;
+}
+function getViewState() {
+  const orientation = normalizeViewMatrix(stage?.viewerControls?.getOrientation?.());
+  return orientation ? { orientation } : null;
+}
+function applyViewState(viewState) {
+  const orientation = normalizeViewMatrix(viewState?.orientation);
+  const controls = stage?.viewerControls;
+  if (!orientation || !controls) return false;
+  try {
+    if (typeof controls.orient === "function") {
+      let matrix = orientation;
+      const Matrix4 = window.NGL?.Matrix4 || window.THREE?.Matrix4;
+      if (Matrix4) {
+        matrix = new Matrix4();
+        if (typeof matrix.fromArray === "function") matrix.fromArray(orientation);
+        else matrix.elements = orientation.slice();
+      }
+      controls.orient(matrix);
+    } else if (typeof controls.setOrientation === "function") {
+      controls.setOrientation(orientation);
+    } else {
+      return false;
+    }
+    requestRender();
+    return true;
+  } catch (_err) {
+    return false;
+  }
+}
+function scheduleViewStateBroadcast() {
+  if (viewStateBroadcastTimer) window.clearTimeout(viewStateBroadcastTimer);
+  viewStateBroadcastTimer = window.setTimeout(() => {
+    viewStateBroadcastTimer = null;
+    window.parent.postMessage({
+      type: "pptmaker:molecule:view-state-changed",
+      elementId: payload.elementId || "",
+      viewState: getViewState(),
+    }, "*");
+  }, 180);
+}
 function resizeViewer() {
   if (!stage || resizeQueued) return;
   resizeQueued = true;
@@ -340,15 +408,19 @@ function colorParams(color, customHex) {
   if (color === "spectrum") return { colorScheme: "residueindex" };
   return { colorScheme: "element" };
 }
-function representationParams(kind, color, customHex, selection) {
+function representationParams(kind, color, customHex, selection, layerOptions = {}) {
   const params = { sele: selection || "all", quality: "medium", ...colorParams(color, customHex) };
+  const radius = Number.isFinite(Number(layerOptions.radius)) ? Number(layerOptions.radius) : null;
+  const opacity = Number.isFinite(Number(layerOptions.opacity)) ? Number(layerOptions.opacity) : null;
   if (kind === "surface") {
-    params.opacity = 0.68;
+    params.opacity = opacity == null ? 0.68 : Math.max(0.02, Math.min(1, opacity));
     params.useWorker = false;
     if (color !== "custom") params.color = "#ffffff";
   }
-  if (kind === "sphere") params.scale = 0.35;
-  if (kind === "stick") params.radius = 0.18;
+  if (kind === "sphere") params.radiusScale = radius == null ? 0.35 : Math.max(0.01, Math.min(5, radius));
+  if (kind === "stick") params.radius = radius == null ? 0.18 : Math.max(0.01, Math.min(5, radius));
+  if (kind === "line") params.linewidth = radius == null ? 2 : Math.max(1, Math.min(20, radius));
+  if (kind === "cartoon" && radius != null) params.radius = Math.max(0.01, Math.min(5, radius));
   return params;
 }
 function structureAtomCount() {
@@ -366,7 +438,7 @@ async function applyDefault() {
   }
   component.addRepresentation(representationKind(kind), representationParams(kind, color, null, "all"));
   if (kind === "line" || kind === "stick") {
-    component.addRepresentation("spacefill", { sele: "water", color: "#38bdf8", opacity: 0.72, scale: 0.18, quality: "medium" });
+    component.addRepresentation("spacefill", { sele: "water", color: "#38bdf8", opacity: 0.72, radiusScale: 0.18, quality: "medium" });
   }
 }
 async function addLayer(sel, kind, opts, label, options) {
@@ -381,7 +453,7 @@ async function applySavedLayers() {
     if (layer.kind === "hidden") {
       await addLayer(sel, "hidden", {}, layer.label || "Hidden", { render: false });
     } else {
-      await addLayer(sel, layer.kind, representationParams(layer.kind, layer.colorScheme, layer.customColor, sel), layer.label || layer.kind, { render: false });
+      await addLayer(sel, layer.kind, representationParams(layer.kind, layer.colorScheme, layer.customColor, sel, layer), layer.label || layer.kind, { render: false });
     }
   }
 }
@@ -396,7 +468,13 @@ function updateStatus() {
   if (!component) return;
   setStatus((payload.name || "Molecule") + " · " + structureAtomCount() + " atoms · " + structureResidueCount() + " residues" + (frameCount > 1 ? " · " + frameCount + " frames" : ""));
 }
-function stop() {
+function applySpin() {
+  if (!stage) return;
+  stage.setSpin(Boolean(lifecycleActive && spinRequested));
+  requestRender();
+}
+function stop(options = {}) {
+  if (timer && options.remember) resumeTrajectoryOnActive = true;
   if (timer) window.clearInterval(timer);
   timer = null;
   if (playBtn) playBtn.textContent = "Play";
@@ -411,12 +489,30 @@ function setFrame(index) {
   requestRender();
 }
 function play() {
-  if (!frameCount) return;
+  if (!frameCount || !lifecycleActive) return;
+  resumeTrajectoryOnActive = false;
   stop();
   const delay = Math.max(30, Number(speedInput.value) || 120);
   timer = window.setInterval(() => setFrame((currentFrame + 1) % frameCount), delay);
   playBtn.textContent = "Pause";
   if (presentPlayBtn) presentPlayBtn.textContent = "Pause";
+}
+function setLifecycleActive(nextActive) {
+  const next = Boolean(nextActive);
+  if (next === lifecycleActive) return;
+  lifecycleActive = next;
+  if (!lifecycleActive) {
+    stop({ remember: true });
+    if (stage) stage.setSpin(false);
+    return;
+  }
+  applySpin();
+  if (resumeTrajectoryOnActive) {
+    resumeTrajectoryOnActive = false;
+    play();
+  } else {
+    requestRender();
+  }
 }
 function setupTrajectoryControls() {
   const hasFrames = frameCount > 1;
@@ -478,8 +574,11 @@ async function load() {
       frameCount = 0;
     }
     await applyRepresentations();
-    component.autoView();
-    stage.setSpin(Boolean(payload.autoRotate));
+    component.autoView(0);
+    if (applyViewState(payload.viewState)) {
+      setTimeout(() => applyViewState(payload.viewState), 80);
+    }
+    applySpin();
     stage.setParameters({ cameraType: payload.projection === "orthographic" ? "orthographic" : "perspective" });
     requestRender();
     updateStatus();
@@ -488,6 +587,10 @@ async function load() {
       if (!component) return;
       component.autoView();
       requestRender();
+      scheduleViewStateBroadcast();
+    });
+    ["pointerup", "wheel", "touchend"].forEach(type => {
+      root.addEventListener(type, scheduleViewStateBroadcast, { passive: true });
     });
     new ResizeObserver(resizeViewer).observe(root);
     setTimeout(resizeViewer, 120);
@@ -529,8 +632,8 @@ window.addEventListener("message", async event => {
   }
   if (Object.prototype.hasOwnProperty.call(message, "autoRotate") && stage) {
     payload.autoRotate = Boolean(message.autoRotate);
-    stage.setSpin(payload.autoRotate);
-    requestRender();
+    spinRequested = payload.autoRotate;
+    applySpin();
   }
   if (Object.prototype.hasOwnProperty.call(message, "projection") && stage?.setParameters) {
     payload.projection = message.projection === "orthographic" ? "orthographic" : "perspective";
@@ -547,6 +650,23 @@ window.addEventListener("message", async event => {
     if (Object.prototype.hasOwnProperty.call(message, "layers")) payload.layers = Array.isArray(message.layers) ? message.layers : [];
     await applyRepresentations();
   }
+  if (Object.prototype.hasOwnProperty.call(message, "active")) {
+    setLifecycleActive(message.active);
+  }
+});
+window.addEventListener("message", event => {
+  const message = event.data || {};
+  if (!message || message.type !== "pptmaker:molecule:lifecycle") return;
+  setLifecycleActive(message.active);
+});
+window.addEventListener("message", event => {
+  const message = event.data || {};
+  if (!message || message.type !== "pptmaker:molecule:view-state-request") return;
+  window.parent.postMessage({
+    type: "pptmaker:molecule:view-state-response",
+    requestId: message.requestId,
+    viewState: getViewState(),
+  }, "*");
 });
 window.addEventListener("resize", resizeViewer);
 load();
@@ -560,6 +680,7 @@ function buildMoleculeEmbedSrcdoc(elementData = {}) {
     const payload = {
         data: externalContent ? "" : String(rawContent || createDefaultMoleculeContent()),
         dataUrl: externalContent ? rawContent : "",
+        elementId: String(elementData.id || ""),
         format: normalizeMoleculeFormat(elementData.moleculeFormat || "pdb"),
         name: String(elementData.moleculeName || "Molecule"),
         isTrajectory: Boolean(elementData.moleculeIsTrajectory || (!externalContent && isMoleculeTrajectoryData(elementData.content))),
@@ -575,6 +696,8 @@ function buildMoleculeEmbedSrcdoc(elementData = {}) {
             ? elementData.moleculeRepresentationLayers.map(normalizeMoleculeRepresentationLayer).slice(0, 12)
             : [],
         presentationMode: Boolean(elementData.moleculePresentationMode),
+        active: elementData.moleculeActive !== false,
+        viewState: normalizeMoleculeViewState(elementData.moleculeViewState),
         backgroundColor: normalizeMoleculeBackgroundColor(elementData.styles?.backgroundColor || "#020617"),
     };
     const title = _escapeMoleculeHtml(payload.name);
