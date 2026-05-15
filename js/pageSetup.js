@@ -39,10 +39,25 @@ function _scaleLengthValue(value, ratio) {
     return `${Math.round(Number(match[1]) * ratio)}px`;
 }
 
+function _scaleNumericArray(values, ratio) {
+    if (!Array.isArray(values)) return values;
+    return values.map(value => Math.round((Number(value) || 0) * ratio));
+}
+
+function _scaleElementStylesForPageSetup(styles, scale) {
+    if (!styles || typeof styles !== "object") return styles;
+    const next = { ...styles };
+    ["fontSize", "padding", "borderRadius", "borderWidth", "letterSpacing"].forEach(key => {
+        if (next[key] !== undefined) next[key] = _scaleLengthValue(next[key], scale);
+    });
+    return next;
+}
+
 function scaleSlideElementsForPageSetup(slide, fromConfig, toConfig) {
     if (!slide || !Array.isArray(slide.elements)) return slide;
     const scaleX = toConfig.width / fromConfig.width;
     const scaleY = toConfig.height / fromConfig.height;
+    const scaleText = Math.min(scaleX, scaleY);
     const nextSlide = JSON.parse(JSON.stringify(slide));
     nextSlide.elements = nextSlide.elements.map(element => {
         const next = { ...element };
@@ -51,6 +66,15 @@ function scaleSlideElementsForPageSetup(slide, fromConfig, toConfig) {
         next.width = _scaleLengthValue(next.width, scaleX);
         if (!(typeof next.height === "string" && next.height.trim() === "auto")) {
             next.height = _scaleLengthValue(next.height, scaleY);
+        }
+        next.styles = _scaleElementStylesForPageSetup(next.styles, scaleText);
+        if (next.tableData && typeof next.tableData === "object") {
+            next.tableData = {
+                ...next.tableData,
+                cellPadding: Math.round((Number(next.tableData.cellPadding) || 0) * scaleText),
+                rowHeights: _scaleNumericArray(next.tableData.rowHeights, scaleY),
+                colWidths: _scaleNumericArray(next.tableData.colWidths, scaleX),
+            };
         }
         if (next.type === "connector" && Array.isArray(next.points)) {
             next.points = next.points.map(point => ({
@@ -61,6 +85,25 @@ function scaleSlideElementsForPageSetup(slide, fromConfig, toConfig) {
         return next;
     });
     return nextSlide;
+}
+
+function canRebuildPresetSlideForPageSetup(slide) {
+    if (!slide || !slide.layoutId || slide.layoutId === "blank-titled") return false;
+    if (typeof SLIDE_PRESETS === "undefined" || !SLIDE_PRESETS?.[slide.layoutId]) return false;
+    const elements = Array.isArray(slide.elements) ? slide.elements : [];
+    if (!elements.length) return true;
+    return elements.every(element => element?.themeManaged !== false);
+}
+
+function rebuildPresetSlideForPageSetup(slide) {
+    if (!canRebuildPresetSlideForPageSetup(slide) || typeof buildPresetSlideState !== "function") return null;
+    const theme = typeof getPresentationTheme === "function" ? getPresentationTheme() : null;
+    return buildPresetSlideState(slide.layoutId, theme, {
+        slideId: slide.id,
+        notes: slide.notes || "",
+        background: slide.background || "",
+        masterId: slide.masterId || null,
+    });
 }
 
 function syncPresentationPageSetup() {
@@ -88,13 +131,20 @@ function changePresentationPageSetup(nextId) {
 
     if (typeof saveStateToUndo === "function") saveStateToUndo();
     const nextConfig = PRESENTATION_PAGE_SETUPS[normalized];
-    state.slides = (state.slides || []).map(slide => scaleSlideElementsForPageSetup(slide, currentConfig, nextConfig));
     state.pageSetup = normalized;
+    state.slides = (state.slides || []).map(slide => {
+        const rebuilt = rebuildPresetSlideForPageSetup(slide);
+        return rebuilt || scaleSlideElementsForPageSetup(slide, currentConfig, nextConfig);
+    });
     syncPresentationPageSetup();
     if (typeof renderSlidesFromState === "function") renderSlidesFromState();
     if (typeof resetZoom === "function") requestAnimationFrame(() => resetZoom());
     if (typeof updateSlideCounter === "function") updateSlideCounter();
     return true;
+}
+
+function applyPresentationPageSetup(nextId) {
+    return changePresentationPageSetup(nextId);
 }
 
 window.PRESENTATION_PAGE_SETUPS = PRESENTATION_PAGE_SETUPS;
@@ -104,5 +154,8 @@ window.getPresentationPageSetupId = getPresentationPageSetupId;
 window.getPresentationPageSetupConfig = getPresentationPageSetupConfig;
 window.ensurePresentationPageSetup = ensurePresentationPageSetup;
 window.scaleSlideElementsForPageSetup = scaleSlideElementsForPageSetup;
+window.canRebuildPresetSlideForPageSetup = canRebuildPresetSlideForPageSetup;
+window.rebuildPresetSlideForPageSetup = rebuildPresetSlideForPageSetup;
 window.syncPresentationPageSetup = syncPresentationPageSetup;
 window.changePresentationPageSetup = changePresentationPageSetup;
+window.applyPresentationPageSetup = applyPresentationPageSetup;

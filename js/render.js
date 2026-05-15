@@ -473,12 +473,23 @@ function syncActiveSlideMedia() {
                 return;
             }
             if (/youtube(?:-nocookie)?\.com\/embed\//i.test(src)) {
-                iframe.contentWindow?.postMessage(
-                    JSON.stringify({ event: "command", func: isActive && iframe.dataset.autoplay === "true" ? "playVideo" : "pauseVideo", args: [] }),
-                    "*",
-                );
+                const wasActive = iframe.dataset.mediaWasActive === "true";
+                const shouldAutoplay = iframe.dataset.autoplay === "true";
+                const command = isActive && shouldAutoplay ? "playVideo" : !isActive && wasActive ? "pauseVideo" : "";
+                iframe.dataset.mediaWasActive = isActive ? "true" : "false";
+                if (command && iframe.dataset.mediaLoaded === "true") {
+                    try {
+                        iframe.contentWindow?.postMessage(JSON.stringify({ event: "command", func: command, args: [] }), "https://www.youtube-nocookie.com");
+                    } catch (_) {}
+                }
             } else if (/player\.vimeo\.com\/video\//i.test(src)) {
-                iframe.contentWindow?.postMessage({ method: isActive && iframe.dataset.autoplay === "true" ? "play" : "pause" }, "*");
+                const wasActive = iframe.dataset.mediaWasActive === "true";
+                const shouldAutoplay = iframe.dataset.autoplay === "true";
+                const method = isActive && shouldAutoplay ? "play" : !isActive && wasActive ? "pause" : "";
+                iframe.dataset.mediaWasActive = isActive ? "true" : "false";
+                if (method && iframe.dataset.mediaLoaded === "true") {
+                    iframe.contentWindow?.postMessage({ method }, "*");
+                }
             }
         });
     });
@@ -985,6 +996,9 @@ function renderSlidesFromState() {
         section.style.fontFamily = theme.bodyFont;
         const bgNode = createSlideBackgroundNode(slide.background, { slideIndex });
         if (bgNode) section.appendChild(bgNode);
+        if (typeof buildMasterSlideElements === "function") {
+            buildMasterSlideElements(slide, slideIndex, theme).forEach(elData => section.appendChild(_createStaticNode(elData, { master: true })));
+        }
         slide.elements.forEach(elData => section.appendChild(createElementNode(elData, { slideIndex })));
         container.appendChild(section);
     });
@@ -1035,6 +1049,9 @@ function renderSlidePreviews(targetIndex = null, options = {}) {
         
         const previewBgNode = createSlideBackgroundNode(slide.background, { forPreview: true });
         if (previewBgNode) previewSlide.appendChild(previewBgNode);
+        if (typeof buildMasterSlideElements === "function") {
+            buildMasterSlideElements(slide, targetIndex, theme).forEach(elData => previewSlide.appendChild(_createStaticNode(elData, { master: true })));
+        }
         slide.elements.forEach(elData => previewSlide.appendChild(_createStaticNode(elData)));
         
         const scale = thumbnail.clientWidth / slideWidth;
@@ -1123,6 +1140,9 @@ function renderSlidePreviews(targetIndex = null, options = {}) {
         previewSlide.style.cssText = `width:${slideWidth}px;height:${slideHeight}px;position:relative;transform-origin:top left;background:${previewBg};color:${theme.defaultTextColor};font-family:${theme.bodyFont};`;
         const previewBgNode = createSlideBackgroundNode(slide.background, { forPreview: true });
         if (previewBgNode) previewSlide.appendChild(previewBgNode);
+        if (typeof buildMasterSlideElements === "function") {
+            buildMasterSlideElements(slide, index, theme).forEach(elData => previewSlide.appendChild(_createStaticNode(elData, { master: true })));
+        }
         slide.elements.forEach(elData => previewSlide.appendChild(_createStaticNode(elData)));
         thumbnail.appendChild(previewSlide);
         card.appendChild(thumbnail);
@@ -1602,10 +1622,15 @@ function _createImageContentNode(elData, { interactive = false } = {}) {
     return img;
 }
 
-function _createStaticNode(elData) {
+function _createStaticNode(elData, options = {}) {
     const el = document.createElement("div");
-    el.className = "canvas-element";
+    el.className = `canvas-element${options.master ? " master-slide-element" : ""}`;
     el.setAttribute("data-type", elData.type);
+    if (options.master) {
+        el.setAttribute("data-master-element", "true");
+        el.style.pointerEvents = "none";
+        el.setAttribute("aria-hidden", "true");
+    }
     el.style.position = "absolute";
     el.style.transform = `translate(${elData.x}px, ${elData.y}px)`;
     if (elData.width) el.style.width = elData.width;
@@ -1922,6 +1947,7 @@ function _applyTypeContent(el, elData, options = {}) {
                 playsinline: 1,
                 enablejsapi: 1,
             });
+            if (window.location.origin && window.location.origin !== "null") params.set("origin", window.location.origin);
             if (elData.loop) params.set("playlist", videoInfo.id);
             videoNode.src = `https://www.youtube-nocookie.com/embed/${videoInfo.id}?${params.toString()}`;
             setMediaIframePermissions(videoNode, "autoplay; encrypted-media; picture-in-picture");
@@ -1967,7 +1993,10 @@ function _applyTypeContent(el, elData, options = {}) {
         videoNode.className = "w-full h-full rounded-[inherit] pointer-events-none play-mode-events-auto";
         videoNode.dataset.autoplay = elData.autoplay ? "true" : "false";
         if (videoNode.tagName === "IFRAME") {
-            videoNode.addEventListener("load", () => requestAnimationFrame(syncActiveSlideMedia));
+            videoNode.addEventListener("load", () => {
+                videoNode.dataset.mediaLoaded = "true";
+                requestAnimationFrame(syncActiveSlideMedia);
+            });
         }
         videoNode.style.border = "0";
         el.appendChild(videoNode);

@@ -14,11 +14,13 @@ function buildDefaultPresentationState() {
     return {
         presentationTheme: "editorial",
         pageSetup: DEFAULT_PRESENTATION_PAGE_SETUP,
+        masterSlides: createDefaultMasterSlidesState(),
         colorPalette: ["#172033", "#2563EB", "#7C3AED", "#DB2777", "#DC2626", "#D97706", "#059669", "#FFFFFF"],
         slides: [
             {
                 id: generateId("slide"),
                 layoutId: "blank-titled",
+                masterId: "content",
                 notes: "",
                 elements: [
                     {
@@ -46,6 +48,76 @@ function buildDefaultPresentationState() {
         selectedIds: [],
         clipboard: null,
     };
+}
+
+const MASTER_SLIDE_DEFINITIONS = {
+    none: { id: "none", name: "None", description: "No shared master elements" },
+    content: { id: "content", name: "Content", description: "Footer, slide number, and subtle accent rule" },
+    title: { id: "title", name: "Title", description: "Presentation title treatment with minimal footer" },
+    section: { id: "section", name: "Section", description: "Section divider treatment with strong side accent" },
+};
+
+function createDefaultMasterSlidesState() {
+    return {
+        content: {
+            id: "content",
+            name: "Content",
+            enabled: true,
+            footerText: "Presentation",
+            logoText: "SlideForge",
+            showSlideNumber: true,
+            showFooter: true,
+            showTopRule: true,
+        },
+        title: {
+            id: "title",
+            name: "Title",
+            enabled: true,
+            footerText: "",
+            logoText: "SlideForge",
+            showSlideNumber: false,
+            showFooter: false,
+            showTopRule: true,
+        },
+        section: {
+            id: "section",
+            name: "Section",
+            enabled: true,
+            footerText: "Section",
+            logoText: "SlideForge",
+            showSlideNumber: true,
+            showFooter: true,
+            showTopRule: false,
+        },
+    };
+}
+
+function normalizeMasterSlidesState(rawMasters = {}) {
+    const defaults = createDefaultMasterSlidesState();
+    const normalized = {};
+    Object.entries(defaults).forEach(([id, fallback]) => {
+        const raw = rawMasters && typeof rawMasters === "object" ? rawMasters[id] || {} : {};
+        normalized[id] = {
+            ...fallback,
+            ...(raw && typeof raw === "object" ? raw : {}),
+            id,
+            name: typeof raw.name === "string" && raw.name.trim() ? _truncateStateString(raw.name, 80) : fallback.name,
+            footerText:
+                typeof raw.footerText === "string" ? _truncateStateString(raw.footerText, 180) : fallback.footerText,
+            logoText: typeof raw.logoText === "string" ? _truncateStateString(raw.logoText, 80) : fallback.logoText,
+            enabled: raw.enabled !== false,
+            showSlideNumber: raw.showSlideNumber !== false,
+            showFooter: raw.showFooter !== false,
+            showTopRule: raw.showTopRule !== false,
+        };
+    });
+    return normalized;
+}
+
+function resolveSlideMasterId(slide = {}) {
+    const requested = typeof slide.masterId === "string" ? slide.masterId : "";
+    if (requested === "none") return "none";
+    return MASTER_SLIDE_DEFINITIONS[requested] ? requested : "content";
 }
 
 let state = buildDefaultPresentationState();
@@ -693,6 +765,7 @@ function normalizeStateIds() {
         state.presentationTheme = "editorial";
     }
     ensurePresentationPageSetup(state);
+    state.masterSlides = normalizeMasterSlidesState(state.masterSlides);
 
     const usedSlideIds = new Set();
     const usedElementIds = new Set();
@@ -927,6 +1000,7 @@ function normalizeStateIds() {
             ...safeSlide,
             id: nextSlideId,
             layoutId: typeof safeSlide.layoutId === "string" && safeSlide.layoutId ? safeSlide.layoutId : "blank-titled",
+            masterId: resolveSlideMasterId(safeSlide),
             notes: typeof safeSlide.notes === "string" ? _truncateStateString(safeSlide.notes, 20000) : "",
             background: normalizeSlideBackground(safeSlide.background),
             elements: normalizedElements,
@@ -934,7 +1008,7 @@ function normalizeStateIds() {
     });
 
     if (!state.slides.length) {
-        state.slides = [{ id: generateId("slide"), layoutId: "blank-titled", notes: "", background: null, elements: [] }];
+        state.slides = [{ id: generateId("slide"), layoutId: "blank-titled", masterId: "content", notes: "", background: null, elements: [] }];
     }
 
     if (currentSlideIndex > state.slides.length - 1) {
@@ -1028,6 +1102,7 @@ function getPersistableState() {
     return {
         presentationTheme: state.presentationTheme,
         pageSetup: getPresentationPageSetupId(state),
+        masterSlides: JSON.parse(JSON.stringify(state.masterSlides || normalizeMasterSlidesState())),
         slides: JSON.parse(JSON.stringify(state.slides || [])),
         selectedIds: [],
         clipboard: null,

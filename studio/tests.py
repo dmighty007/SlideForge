@@ -362,6 +362,227 @@ class PPTXExporterRegressionTests(TestCase):
         self.assertEqual(table.cell(0, 0).text, "Metric")
         self.assertEqual(table.cell(1, 1).text, "98%")
 
+    def test_native_pptx_applies_theme_background_and_rgba_panel_colors(self):
+        state = {
+            "presentationTheme": "horizon",
+            "slides": [
+                {
+                    "elements": [
+                        {
+                            "id": "panel-text",
+                            "type": "text",
+                            "x": 24,
+                            "y": 32,
+                            "width": "420px",
+                            "height": "120px",
+                            "content": [{"text": "Point one", "level": 0}],
+                            "styles": {
+                                "fontSize": "22px",
+                                "color": "#eef4ff",
+                                "backgroundColor": "rgba(255,255,255,0.07)",
+                                "border": "1px solid rgba(125,211,252,0.40)",
+                            },
+                        }
+                    ]
+                }
+            ],
+        }
+
+        prs = PptxPresentation(PPTXExporter(state).export())
+        slide = prs.slides[0]
+        text_shape = next(shape for shape in slide.shapes if getattr(shape, "has_text_frame", False) and "Point one" in shape.text)
+
+        self.assertEqual(str(slide.background.fill.fore_color.rgb), "0B2442")
+        self.assertEqual(str(text_shape.fill.fore_color.rgb), "1C334F")
+        self.assertIn('buChar char="•"', text_shape.element.xml)
+
+    def test_native_pptx_keeps_transparent_shapes_unfilled(self):
+        state = {
+            "presentationTheme": "editorial",
+            "slides": [
+                {
+                    "elements": [
+                        {
+                            "id": "clear-box",
+                            "type": "shape",
+                            "shapeType": "rectangle",
+                            "x": 20,
+                            "y": 20,
+                            "width": "200px",
+                            "height": "100px",
+                            "styles": {"backgroundColor": "transparent", "border": "2px solid #3B82F6"},
+                        }
+                    ]
+                }
+            ],
+        }
+
+        prs = PptxPresentation(PPTXExporter(state).export())
+        shape = prs.slides[0].shapes[0]
+
+        self.assertIn("<a:noFill/>", shape.element.xml)
+        self.assertIn('val="3B82F6"', shape.element.xml)
+
+    def test_native_pptx_exports_theme_aware_master_slide_elements(self):
+        state = {
+            "presentationTheme": "horizon",
+            "masterSlides": {
+                "content": {
+                    "footerText": "Shared footer",
+                    "logoText": "Lab Deck",
+                    "showSlideNumber": True,
+                }
+            },
+            "slides": [
+                {
+                    "masterId": "content",
+                    "elements": [
+                        {
+                            "id": "body",
+                            "type": "text",
+                            "x": 80,
+                            "y": 120,
+                            "width": "500px",
+                            "height": "80px",
+                            "content": "Body text",
+                            "styles": {"fontSize": "24px", "color": "#eef4ff"},
+                        }
+                    ],
+                }
+            ],
+        }
+
+        prs = PptxPresentation(PPTXExporter(state).export())
+        slide_text = "\n".join(shape.text for shape in prs.slides[0].shapes if getattr(shape, "has_text_frame", False))
+
+        self.assertIn("Shared footer", slide_text)
+        self.assertIn("Lab Deck", slide_text)
+        self.assertIn("01", slide_text)
+
+    def test_native_pptx_preserves_inline_text_font_styles(self):
+        state = {
+            "slides": [
+                {
+                    "elements": [
+                        {
+                            "id": "styled-text",
+                            "type": "text",
+                            "x": 20,
+                            "y": 20,
+                            "width": "640px",
+                            "height": "120px",
+                            "content": (
+                                'Normal <span style="font-size: 34px; font-family: Georgia, serif; '
+                                'color: #ff0000; font-weight: 700; font-style: italic;">Styled</span>'
+                            ),
+                            "styles": {
+                                "fontSize": "18px",
+                                "fontFamily": "Arial, sans-serif",
+                                "color": "#111111",
+                            },
+                        }
+                    ]
+                }
+            ]
+        }
+
+        prs = PptxPresentation(PPTXExporter(state).export())
+        text_shape = next(shape for shape in prs.slides[0].shapes if getattr(shape, "has_text_frame", False) and "Styled" in shape.text)
+        runs = [run for paragraph in text_shape.text_frame.paragraphs for run in paragraph.runs]
+        styled_run = next(run for run in runs if run.text == "Styled")
+
+        self.assertEqual(styled_run.font.size.pt, 34)
+        self.assertEqual(styled_run.font.name, "Georgia")
+        self.assertEqual(str(styled_run.font.color.rgb), "FF0000")
+        self.assertTrue(styled_run.font.bold)
+        self.assertTrue(styled_run.font.italic)
+
+    def test_native_pptx_preserves_block_text_font_styles(self):
+        state = {
+            "slides": [
+                {
+                    "elements": [
+                        {
+                            "id": "styled-block-text",
+                            "type": "text",
+                            "x": 20,
+                            "y": 20,
+                            "width": "640px",
+                            "height": "120px",
+                            "content": (
+                                '<p style="font-size: 30px; font-family: Georgia, serif; '
+                                'color: #336699; font-style: italic;">Block styled</p>'
+                            ),
+                            "styles": {
+                                "fontSize": "18px",
+                                "fontFamily": "Arial, sans-serif",
+                                "color": "#111111",
+                            },
+                        }
+                    ]
+                }
+            ]
+        }
+
+        prs = PptxPresentation(PPTXExporter(state).export())
+        text_shape = next(shape for shape in prs.slides[0].shapes if getattr(shape, "has_text_frame", False) and "Block styled" in shape.text)
+        run = next(run for paragraph in text_shape.text_frame.paragraphs for run in paragraph.runs if run.text == "Block styled")
+
+        self.assertEqual(run.font.size.pt, 30)
+        self.assertEqual(run.font.name, "Georgia")
+        self.assertEqual(str(run.font.color.rgb), "336699")
+        self.assertTrue(run.font.italic)
+
+    def test_native_pptx_preserves_table_cell_font_styles(self):
+        state = {
+            "slides": [
+                {
+                    "elements": [
+                        {
+                            "id": "styled-table",
+                            "type": "table",
+                            "x": 20,
+                            "y": 20,
+                            "width": "420px",
+                            "height": "120px",
+                            "tableData": {
+                                "rows": 1,
+                                "cols": 1,
+                                "headerRow": False,
+                                "fontSize": "12px",
+                                "fontFamily": "Arial, sans-serif",
+                                "textColor": "#111111",
+                                "cells": [
+                                    [
+                                        {
+                                            "text": "Cell",
+                                            "styles": {
+                                                "fontSize": "28px",
+                                                "fontFamily": "Georgia, serif",
+                                                "fontWeight": "700",
+                                                "fontStyle": "italic",
+                                                "color": "#00aa00",
+                                            },
+                                        }
+                                    ]
+                                ],
+                            },
+                        }
+                    ]
+                }
+            ]
+        }
+
+        prs = PptxPresentation(PPTXExporter(state).export())
+        table = next(shape.table for shape in prs.slides[0].shapes if shape.has_table)
+        run = table.cell(0, 0).text_frame.paragraphs[0].runs[0]
+
+        self.assertEqual(run.font.size.pt, 28)
+        self.assertEqual(run.font.name, "Georgia")
+        self.assertEqual(str(run.font.color.rgb), "00AA00")
+        self.assertTrue(run.font.bold)
+        self.assertTrue(run.font.italic)
+
 
 class FrontendExportRegressionTests(TestCase):
     def setUp(self):

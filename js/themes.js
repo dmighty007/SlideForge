@@ -71,7 +71,7 @@ const PRESENTATION_THEMES = {
         surfaceColor: "rgba(248, 250, 252, 0.88)",
         surfaceBorder: "rgba(209, 213, 219, 0.80)",
         cssVars: {
-            "--slide-bg": "linear-gradient(180deg, #F8FAFC 0%, #F5F6F8 100%)",
+            "--slide-bg": "linear-gradient(135deg, rgba(59,130,246,0.07) 0 18%, transparent 18% 100%), linear-gradient(180deg, #FFFFFF 0%, #F6F8FB 56%, #EEF2F7 100%)",
             "--slide-fg": "#2E2E2E",
             "--slide-muted": "#6B7280",
             "--slide-accent": "#3B82F6",
@@ -95,7 +95,7 @@ const PRESENTATION_THEMES = {
         surfaceBorder: "rgba(29, 78, 216, 0.12)",
         cssVars: {
             "--slide-bg":
-                "radial-gradient(circle at 82% 16%, rgba(37,99,235,0.08), transparent 20%), repeating-linear-gradient(90deg, rgba(37,99,235,0.05) 0 1px, transparent 1px 56px), repeating-linear-gradient(0deg, rgba(37,99,235,0.05) 0 1px, transparent 1px 56px), linear-gradient(180deg, #fbfdff 0%, #f2f7fc 100%)",
+                "linear-gradient(135deg, rgba(37,99,235,0.10) 0 1px, transparent 1px 100%), repeating-linear-gradient(90deg, rgba(37,99,235,0.055) 0 1px, transparent 1px 64px), repeating-linear-gradient(0deg, rgba(37,99,235,0.050) 0 1px, transparent 1px 64px), linear-gradient(180deg, #fcfeff 0%, #f1f7fd 100%)",
             "--slide-fg": "#10233b",
             "--slide-muted": "#5f7287",
             "--slide-accent": "#2563eb",
@@ -119,7 +119,7 @@ const PRESENTATION_THEMES = {
         surfaceBorder: "rgba(47, 38, 29, 0.10)",
         cssVars: {
             "--slide-bg":
-                "radial-gradient(circle at 82% 18%, rgba(122, 143, 71, 0.12), transparent 22%), radial-gradient(circle at 16% 86%, rgba(180, 138, 74, 0.10), transparent 24%), linear-gradient(180deg, #f8f2e7 0%, #efe5d3 100%)",
+                "repeating-linear-gradient(0deg, rgba(47,38,29,0.035) 0 1px, transparent 1px 34px), linear-gradient(115deg, rgba(122,143,71,0.13) 0 26%, transparent 26% 100%), linear-gradient(180deg, #fbf6ea 0%, #efe4d0 100%)",
             "--slide-fg": "#2f261d",
             "--slide-muted": "#6f6559",
             "--slide-accent": "#7a8f47",
@@ -143,7 +143,7 @@ const PRESENTATION_THEMES = {
         surfaceBorder: "rgba(23, 23, 23, 0.10)",
         cssVars: {
             "--slide-bg":
-                "radial-gradient(circle at 86% 12%, rgba(17, 24, 39, 0.06), transparent 20%), linear-gradient(180deg, #ffffff 0%, #f3f4f6 100%)",
+                "linear-gradient(90deg, rgba(23,23,23,0.055) 0 1px, transparent 1px 100%), linear-gradient(180deg, #FFFFFF 0%, #F8F8F7 48%, #ECEFF3 100%)",
             "--slide-fg": "#171717",
             "--slide-muted": "#6b7280",
             "--slide-accent": "#1f2937",
@@ -167,7 +167,7 @@ const PRESENTATION_THEMES = {
         surfaceBorder: "rgba(226, 232, 240, 0.14)",
         cssVars: {
             "--slide-bg":
-                "radial-gradient(circle at 84% 14%, rgba(34, 211, 238, 0.14), transparent 22%), radial-gradient(circle at 18% 78%, rgba(59, 130, 246, 0.10), transparent 24%), linear-gradient(155deg, #0b1020 0%, #141b2d 54%, #1f2937 100%)",
+                "linear-gradient(135deg, transparent 0 58%, rgba(34,211,238,0.10) 58% 59%, transparent 59% 100%), repeating-linear-gradient(90deg, rgba(255,255,255,0.035) 0 1px, transparent 1px 72px), linear-gradient(155deg, #090E1A 0%, #111827 52%, #202938 100%)",
             "--slide-fg": "#f5f7fb",
             "--slide-muted": "#94a3b8",
             "--slide-accent": "#22d3ee",
@@ -191,7 +191,7 @@ const PRESENTATION_THEMES = {
         surfaceBorder: "rgba(238, 244, 255, 0.14)",
         cssVars: {
             "--slide-bg":
-                "radial-gradient(circle at 18% 16%, rgba(125, 211, 252, 0.10), transparent 22%), radial-gradient(circle at 82% 82%, rgba(79, 124, 255, 0.16), transparent 24%), linear-gradient(150deg, #07111f 0%, #0c2140 52%, #163563 100%)",
+                "linear-gradient(120deg, rgba(125,211,252,0.13) 0 1px, transparent 1px 34%), linear-gradient(180deg, #06111F 0%, #0B2442 54%, #153A66 100%)",
             "--slide-fg": "#eef4ff",
             "--slide-muted": "#afbdd6",
             "--slide-accent": "#7dd3fc",
@@ -215,7 +215,7 @@ const PRESENTATION_THEMES = {
         surfaceBorder: "rgba(248, 243, 231, 0.15)",
         cssVars: {
             "--slide-bg":
-                "radial-gradient(circle at 16% 18%, rgba(245, 215, 110, 0.08), transparent 20%), radial-gradient(circle at 82% 22%, rgba(142, 209, 199, 0.08), transparent 22%), repeating-linear-gradient(0deg, rgba(255,255,255,0.028) 0 1px, transparent 1px 44px), linear-gradient(180deg, #1A352C 0%, #122821 100%)",
+                "repeating-linear-gradient(-2deg, rgba(255,255,255,0.035) 0 1px, transparent 1px 36px), linear-gradient(115deg, rgba(245,215,110,0.08) 0 24%, transparent 24% 100%), linear-gradient(180deg, #19362D 0%, #10261F 100%)",
             "--slide-fg": "#F8F3E7",
             "--slide-muted": "#D4CBB7",
             "--slide-accent": "#F5D76E",
@@ -239,7 +239,7 @@ const PRESENTATION_THEMES = {
         surfaceBorder: "rgba(195, 236, 231, 0.14)",
         cssVars: {
             "--slide-bg":
-                "radial-gradient(circle at 14% 18%, rgba(99, 230, 216, 0.10), transparent 22%), radial-gradient(circle at 86% 78%, rgba(31, 182, 166, 0.11), transparent 24%), repeating-linear-gradient(90deg, rgba(99,230,216,0.05) 0 1px, transparent 1px 72px), repeating-linear-gradient(0deg, rgba(99,230,216,0.04) 0 1px, transparent 1px 72px), linear-gradient(160deg, #071917 0%, #0B2321 52%, #123431 100%)",
+                "linear-gradient(90deg, rgba(99,230,216,0.11) 0 1px, transparent 1px 20%), repeating-linear-gradient(90deg, rgba(99,230,216,0.045) 0 1px, transparent 1px 76px), repeating-linear-gradient(0deg, rgba(99,230,216,0.040) 0 1px, transparent 1px 76px), linear-gradient(160deg, #061716 0%, #0A2320 54%, #123632 100%)",
             "--slide-fg": "#ECF7F5",
             "--slide-muted": "#9AB8B3",
             "--slide-accent": "#63E6D8",
@@ -263,7 +263,7 @@ const PRESENTATION_THEMES = {
         surfaceBorder: "rgba(245, 247, 255, 0.14)",
         cssVars: {
             "--slide-bg":
-                "radial-gradient(circle at 18% 16%, rgba(243, 183, 106, 0.11), transparent 22%), radial-gradient(circle at 78% 18%, rgba(110, 134, 255, 0.13), transparent 24%), radial-gradient(circle at 82% 84%, rgba(201, 118, 255, 0.10), transparent 22%), linear-gradient(160deg, #111522 0%, #1A2035 48%, #262443 100%)",
+                "linear-gradient(135deg, rgba(243,183,106,0.13) 0 18%, transparent 18% 100%), linear-gradient(28deg, transparent 0 66%, rgba(110,134,255,0.14) 66% 100%), linear-gradient(160deg, #101421 0%, #1A2034 48%, #262542 100%)",
             "--slide-fg": "#F5F7FF",
             "--slide-muted": "#BDC4DE",
             "--slide-accent": "#F3B76A",
@@ -287,7 +287,7 @@ const PRESENTATION_THEMES = {
         surfaceBorder: "rgba(79, 125, 90, 0.16)",
         cssVars: {
             "--slide-bg":
-                "radial-gradient(circle at 86% 14%, rgba(155,184,156,0.18), transparent 24%), radial-gradient(circle at 12% 82%, rgba(219,206,172,0.18), transparent 26%), linear-gradient(180deg, #fbfbf3 0%, #edf3e8 100%)",
+                "repeating-linear-gradient(0deg, rgba(79,125,90,0.032) 0 1px, transparent 1px 42px), linear-gradient(130deg, rgba(155,184,156,0.22) 0 24%, transparent 24% 100%), linear-gradient(180deg, #FCFCF4 0%, #EDF4E8 100%)",
             "--slide-fg": "#25342d",
             "--slide-muted": "#68786e",
             "--slide-accent": "#4f7d5a",
@@ -311,7 +311,7 @@ const PRESENTATION_THEMES = {
         surfaceBorder: "rgba(71, 124, 164, 0.14)",
         cssVars: {
             "--slide-bg":
-                "radial-gradient(circle at 18% 20%, rgba(184,217,232,0.22), transparent 24%), radial-gradient(circle at 82% 78%, rgba(235,211,217,0.22), transparent 24%), linear-gradient(180deg, #fcfdff 0%, #edf6f8 100%)",
+                "linear-gradient(145deg, rgba(184,217,232,0.24) 0 28%, transparent 28% 100%), linear-gradient(35deg, transparent 0 72%, rgba(192,131,147,0.16) 72% 100%), linear-gradient(180deg, #FFFFFF 0%, #EEF7F9 100%)",
             "--slide-fg": "#233047",
             "--slide-muted": "#6c7890",
             "--slide-accent": "#477ca4",
@@ -335,7 +335,7 @@ const PRESENTATION_THEMES = {
         surfaceBorder: "rgba(183, 110, 121, 0.16)",
         cssVars: {
             "--slide-bg":
-                "radial-gradient(circle at 12% 16%, rgba(232,189,195,0.24), transparent 22%), radial-gradient(circle at 86% 82%, rgba(211,183,139,0.20), transparent 24%), linear-gradient(180deg, #fff9f8 0%, #f7e7e4 100%)",
+                "linear-gradient(120deg, rgba(183,110,121,0.12) 0 22%, transparent 22% 100%), linear-gradient(35deg, transparent 0 70%, rgba(170,134,80,0.14) 70% 100%), linear-gradient(180deg, #FFFDFC 0%, #F7E7E4 100%)",
             "--slide-fg": "#3a2b32",
             "--slide-muted": "#7f6b72",
             "--slide-accent": "#b76e79",
@@ -359,7 +359,7 @@ const PRESENTATION_THEMES = {
         surfaceBorder: "rgba(213, 157, 32, 0.18)",
         cssVars: {
             "--slide-bg":
-                "radial-gradient(circle at 82% 18%, rgba(246,213,111,0.26), transparent 24%), radial-gradient(circle at 18% 82%, rgba(130,186,150,0.18), transparent 26%), linear-gradient(180deg, #fffbeb 0%, #f6efd0 100%)",
+                "linear-gradient(135deg, rgba(246,213,111,0.28) 0 24%, transparent 24% 100%), repeating-linear-gradient(90deg, rgba(213,157,32,0.035) 0 1px, transparent 1px 58px), linear-gradient(180deg, #FFFCF0 0%, #F5EBC5 100%)",
             "--slide-fg": "#332b15",
             "--slide-muted": "#756c4c",
             "--slide-accent": "#d59d20",
@@ -383,7 +383,7 @@ const PRESENTATION_THEMES = {
         surfaceBorder: "rgba(22, 139, 139, 0.15)",
         cssVars: {
             "--slide-bg":
-                "radial-gradient(circle at 14% 18%, rgba(121,200,197,0.22), transparent 24%), radial-gradient(circle at 88% 70%, rgba(123,176,222,0.18), transparent 22%), linear-gradient(180deg, #f5fbfb 0%, #e5f5f4 100%)",
+                "linear-gradient(140deg, rgba(121,200,197,0.24) 0 25%, transparent 25% 100%), repeating-linear-gradient(0deg, rgba(22,139,139,0.035) 0 1px, transparent 1px 46px), linear-gradient(180deg, #F7FCFC 0%, #E4F4F3 100%)",
             "--slide-fg": "#17323a",
             "--slide-muted": "#5f7880",
             "--slide-accent": "#168b8b",
@@ -407,7 +407,7 @@ const PRESENTATION_THEMES = {
         surfaceBorder: "rgba(125, 107, 179, 0.15)",
         cssVars: {
             "--slide-bg":
-                "radial-gradient(circle at 20% 18%, rgba(201,190,232,0.24), transparent 24%), radial-gradient(circle at 82% 82%, rgba(255,218,185,0.22), transparent 24%), linear-gradient(180deg, #fbfaff 0%, #efeaf8 100%)",
+                "linear-gradient(145deg, rgba(201,190,232,0.26) 0 26%, transparent 26% 100%), linear-gradient(35deg, transparent 0 72%, rgba(207,138,114,0.16) 72% 100%), linear-gradient(180deg, #FCFBFF 0%, #EFEAF8 100%)",
             "--slide-fg": "#302c45",
             "--slide-muted": "#756f8d",
             "--slide-accent": "#7d6bb3",
@@ -431,7 +431,7 @@ const PRESENTATION_THEMES = {
         surfaceBorder: "rgba(154, 230, 180, 0.16)",
         cssVars: {
             "--slide-bg":
-                "radial-gradient(circle at 18% 20%, rgba(154,230,180,0.12), transparent 24%), radial-gradient(circle at 82% 82%, rgba(95,175,121,0.12), transparent 24%), linear-gradient(155deg, #08140f 0%, #10231a 52%, #183625 100%)",
+                "linear-gradient(135deg, rgba(154,230,180,0.12) 0 24%, transparent 24% 100%), repeating-linear-gradient(90deg, rgba(239,247,237,0.030) 0 1px, transparent 1px 62px), linear-gradient(155deg, #07130E 0%, #10231A 52%, #183826 100%)",
             "--slide-fg": "#eff7ed",
             "--slide-muted": "#b7c9b7",
             "--slide-accent": "#9ae6b4",
@@ -455,7 +455,7 @@ const PRESENTATION_THEMES = {
         surfaceBorder: "rgba(239, 71, 111, 0.18)",
         cssVars: {
             "--slide-bg":
-                "radial-gradient(circle at 20% 18%, rgba(255,207,90,0.26), transparent 22%), radial-gradient(circle at 82% 76%, rgba(6,214,160,0.20), transparent 24%), linear-gradient(180deg, #fff8ea 0%, #ffe7df 100%)",
+                "repeating-linear-gradient(-8deg, rgba(239,71,111,0.08) 0 2px, transparent 2px 28px), linear-gradient(135deg, rgba(255,207,90,0.34) 0 28%, transparent 28% 100%), linear-gradient(180deg, #FFF9EA 0%, #FFE7DF 100%)",
             "--slide-fg": "#28212a",
             "--slide-muted": "#745f76",
             "--slide-accent": "#ef476f",
@@ -473,6 +473,74 @@ function normalizeFont(fontFamily, weight, size, theme) {
     const isKnown = FONT_FAMILIES.includes(fontFamily);
     if (!isKnown) return fontFamily;
     return numericWeight >= 700 || numericSize >= 42 ? theme.headingFont : theme.bodyFont;
+}
+
+function _parseThemeColor(value) {
+    const raw = String(value || "").trim();
+    let match = raw.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+    if (match) {
+        let hex = match[1];
+        if (hex.length === 3) hex = hex.split("").map(ch => ch + ch).join("");
+        return {
+            r: parseInt(hex.slice(0, 2), 16),
+            g: parseInt(hex.slice(2, 4), 16),
+            b: parseInt(hex.slice(4, 6), 16),
+            a: 1,
+        };
+    }
+    match = raw.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)$/i);
+    if (!match) return null;
+    return {
+        r: Math.round(Number(match[1])),
+        g: Math.round(Number(match[2])),
+        b: Math.round(Number(match[3])),
+        a: match[4] === undefined ? 1 : Math.max(0, Math.min(1, Number(match[4]))),
+    };
+}
+
+function _sameThemeRgb(a, b) {
+    return !!a && !!b && a.r === b.r && a.g === b.g && a.b === b.b;
+}
+
+function _themeColorWithAlpha(color, alpha = 1) {
+    const parsed = _parseThemeColor(color);
+    if (!parsed) return color;
+    if (alpha >= 0.995) return `rgb(${parsed.r}, ${parsed.g}, ${parsed.b})`;
+    return `rgba(${parsed.r}, ${parsed.g}, ${parsed.b}, ${Number(alpha.toFixed(3))})`;
+}
+
+function classifyThemeColor(color, theme) {
+    const parsed = _parseThemeColor(color);
+    const normalized = String(color || "").trim().toLowerCase();
+    const candidates = [
+        ["text", theme.defaultTextColor],
+        ["text", theme.cssVars?.["--slide-fg"]],
+        ["muted", theme.defaultMutedColor],
+        ["muted", theme.cssVars?.["--slide-muted"]],
+        ["accent", theme.accentStrong],
+        ["accent", theme.cssVars?.["--slide-accent"]],
+        ["accent2", theme.cssVars?.["--slide-accent-2"]],
+        ["shape", theme.defaultShapeColor],
+        ["surface", theme.surfaceColor],
+        ["border", theme.surfaceBorder],
+    ];
+    for (const [role, candidate] of candidates) {
+        if (!candidate) continue;
+        if (normalized === String(candidate).trim().toLowerCase()) return { role, alpha: parsed?.a ?? 1 };
+        if (_sameThemeRgb(parsed, _parseThemeColor(candidate))) return { role, alpha: parsed?.a ?? 1 };
+    }
+    return { role: classifyColor(color, theme), alpha: parsed?.a ?? 1 };
+}
+
+function resolveThemeColorRole(role, nextTheme, alpha = 1, target = "text") {
+    if (role === "text") return nextTheme.defaultTextColor;
+    if (role === "muted") return nextTheme.defaultMutedColor;
+    if (role === "surface") return nextTheme.surfaceColor;
+    if (role === "border") return nextTheme.surfaceBorder;
+    if (role === "accent2") return _themeColorWithAlpha(nextTheme.cssVars?.["--slide-accent-2"] || nextTheme.defaultShapeColor, alpha);
+    if (role === "shape") return _themeColorWithAlpha(target === "shape" ? nextTheme.defaultShapeColor : nextTheme.accentStrong, alpha);
+    if (role === "accent") return _themeColorWithAlpha(target === "shape" ? nextTheme.defaultShapeColor : nextTheme.accentStrong, alpha);
+    return null;
 }
 
 function classifyColor(color, theme) {
@@ -559,6 +627,21 @@ function applyPresentationTheme(themeId, { persist = true } = {}) {
     }
 }
 
+function changePresentationTheme(themeId) {
+    const previousThemeId = state.presentationTheme || "editorial";
+    const nextThemeId = PRESENTATION_THEMES[themeId] ? themeId : "editorial";
+    if (previousThemeId === nextThemeId) {
+        applyPresentationTheme(nextThemeId);
+        return false;
+    }
+    if (typeof saveStateToUndo === "function") saveStateToUndo();
+    retintPresentationTheme(previousThemeId, nextThemeId);
+    applyPresentationTheme(nextThemeId);
+    if (typeof renderSlidesFromState === "function") renderSlidesFromState();
+    if (typeof buildPropertiesPanel === "function") buildPropertiesPanel();
+    return true;
+}
+
 function retintPresentationTheme(previousThemeId, nextThemeId) {
     const previousTheme = getPresentationTheme(previousThemeId);
     const nextTheme = getPresentationTheme(nextThemeId);
@@ -571,23 +654,31 @@ function retintPresentationTheme(previousThemeId, nextThemeId) {
             if (el.type === "text") {
                 el.styles.fontFamily = normalizeFont(el.styles.fontFamily, el.styles.fontWeight, el.styles.fontSize, nextTheme);
 
-                const colorKind = classifyColor(el.styles.color, previousTheme);
-                if (colorKind === "text") el.styles.color = nextTheme.defaultTextColor;
-                if (colorKind === "muted") el.styles.color = nextTheme.defaultMutedColor;
-                if (colorKind === "accent") el.styles.color = nextTheme.accentStrong;
+                const colorKind = classifyThemeColor(el.styles.color, previousTheme);
+                const nextColor = resolveThemeColorRole(colorKind.role, nextTheme, colorKind.alpha, "text");
+                if (nextColor) el.styles.color = nextColor;
             }
 
             if (el.type === "shape") {
-                const bgKind = classifyColor(el.styles.backgroundColor, previousTheme);
-                if (bgKind === "accent") el.styles.backgroundColor = nextTheme.defaultShapeColor;
-                if (bgKind === "muted") el.styles.backgroundColor = nextTheme.surfaceColor;
+                const bgKind = classifyThemeColor(el.styles.backgroundColor, previousTheme);
+                const nextBg = resolveThemeColorRole(bgKind.role, nextTheme, bgKind.alpha, "shape");
+                if (nextBg) el.styles.backgroundColor = nextBg;
             }
 
             if (el.type === "connector") {
-                const strokeKind = classifyColor(el.styles.color, previousTheme);
-                if (strokeKind === "accent") el.styles.color = nextTheme.accentStrong;
-                if (strokeKind === "muted") el.styles.color = nextTheme.defaultMutedColor;
-                if (strokeKind === "text") el.styles.color = nextTheme.defaultTextColor;
+                const strokeKind = classifyThemeColor(el.styles.color, previousTheme);
+                const nextStroke = resolveThemeColorRole(strokeKind.role, nextTheme, strokeKind.alpha, "text");
+                if (nextStroke) el.styles.color = nextStroke;
+            }
+
+            if (el.type === "table" && el.tableData) {
+                ["headerFill", "bodyFill", "altFill", "textColor", "headerTextColor", "borderColor"].forEach(key => {
+                    const current = el.tableData[key];
+                    const colorKind = classifyThemeColor(current, previousTheme);
+                    const target = key.includes("Fill") || key === "borderColor" ? "shape" : "text";
+                    const nextColor = resolveThemeColorRole(colorKind.role, nextTheme, colorKind.alpha, target);
+                    if (nextColor) el.tableData[key] = nextColor;
+                });
             }
 
             if (el.styles.border) {
@@ -598,3 +689,5 @@ function retintPresentationTheme(previousThemeId, nextThemeId) {
 
     state.presentationTheme = nextThemeId;
 }
+
+window.changePresentationTheme = changePresentationTheme;

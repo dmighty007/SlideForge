@@ -1023,15 +1023,9 @@ function _buildSlideWorkspacePanel(panel) {
             <div class="flex flex-col gap-1">
                 <label class="text-xs font-bold text-slate-600 uppercase tracking-wide">Theme</label>
                 <select id="prop-global-theme" class="prop-select">
-                    <option value="editorial" ${state.presentationTheme === "editorial" ? "selected" : ""}>Editorial</option>
-                    <option value="blueprint" ${state.presentationTheme === "blueprint" ? "selected" : ""}>Blueprint</option>
-                    <option value="chalkboard" ${state.presentationTheme === "chalkboard" ? "selected" : ""}>Chalkboard</option>
-                    <option value="circuit" ${state.presentationTheme === "circuit" ? "selected" : ""}>Circuit</option>
-                    <option value="afterglow" ${state.presentationTheme === "afterglow" ? "selected" : ""}>Afterglow</option>
-                    <option value="fieldnotes" ${state.presentationTheme === "fieldnotes" ? "selected" : ""}>Field Notes</option>
-                    <option value="monograph" ${state.presentationTheme === "monograph" ? "selected" : ""}>Monograph</option>
-                    <option value="graphite" ${state.presentationTheme === "graphite" ? "selected" : ""}>Graphite</option>
-                    <option value="horizon" ${state.presentationTheme === "horizon" ? "selected" : ""}>Horizon</option>
+                    ${Object.entries(typeof PRESENTATION_THEMES !== "undefined" ? PRESENTATION_THEMES : {})
+                        .map(([themeId, theme]) => `<option value="${escapeHtml(themeId)}" ${state.presentationTheme === themeId ? "selected" : ""}>${escapeHtml(theme.label || themeId)}</option>`)
+                        .join("")}
                 </select>
             </div>
             <div class="flex flex-col gap-1">
@@ -1061,6 +1055,34 @@ function _buildSlideWorkspacePanel(panel) {
         </div>
     `;
     panel.appendChild(layoutGrp);
+
+    const masterId = typeof resolveSlideMasterId === "function" ? resolveSlideMasterId(slide) : slide.masterId || "content";
+    const masterConfig = state.masterSlides?.[masterId] || {};
+    const masterOptions = Object.entries(
+        typeof getMasterSlideOptions === "function"
+            ? getMasterSlideOptions()
+            : typeof MASTER_SLIDE_DEFINITIONS !== "undefined"
+              ? MASTER_SLIDE_DEFINITIONS
+              : {},
+    )
+        .map(([id, master]) => `<option value="${escapeHtml(id)}" ${masterId === id ? "selected" : ""}>${escapeHtml(master.name || id)}</option>`)
+        .join("");
+    const masterGrp = createGroup("Master Slide");
+    masterGrp.innerHTML += `
+        <div class="space-y-2">
+            <select id="prop-slide-master" class="w-full text-xs">${masterOptions}</select>
+            <div class="grid grid-cols-2 gap-2">
+                <input id="prop-master-logo" class="w-full text-xs" type="text" value="${escapeHtml(masterConfig.logoText || "")}" placeholder="Logo / label" ${masterId === "none" ? "disabled" : ""}>
+                <input id="prop-master-footer" class="w-full text-xs" type="text" value="${escapeHtml(masterConfig.footerText || "")}" placeholder="Footer text" ${masterId === "none" ? "disabled" : ""}>
+            </div>
+            <label class="flex items-center gap-2 text-xs text-slate-600">
+                <input id="prop-master-slide-number" type="checkbox" class="prop-native-checkbox" ${masterConfig.showSlideNumber !== false ? "checked" : ""} ${masterId === "none" ? "disabled" : ""}>
+                Show slide number
+            </label>
+            <div class="text-xs text-slate-600">Master elements are theme-aware and shared by slides using the same master.</div>
+        </div>
+    `;
+    panel.appendChild(masterGrp);
 
     const bgGrp = createGroup("Slide Background");
     bgGrp.innerHTML += `
@@ -1124,6 +1146,10 @@ function _buildSlideWorkspacePanel(panel) {
         const layoutSelect = document.getElementById("prop-slide-layout");
         const applyBtn = document.getElementById("prop-apply-layout");
         const insertBtn = document.getElementById("prop-insert-layout-slide");
+        const masterSelect = document.getElementById("prop-slide-master");
+        const masterLogoInput = document.getElementById("prop-master-logo");
+        const masterFooterInput = document.getElementById("prop-master-footer");
+        const masterSlideNumberInput = document.getElementById("prop-master-slide-number");
         const bgUrlInput = document.getElementById("prop-slide-bg-url");
         const bgFitInput = document.getElementById("prop-slide-bg-fit");
         const bgApplyBtn = document.getElementById("prop-slide-bg-apply");
@@ -1140,7 +1166,10 @@ function _buildSlideWorkspacePanel(panel) {
         const notesInput = document.getElementById("prop-slide-notes");
 
         if (globalTheme) {
-            globalTheme.onchange = e => applyPresentationTheme(e.target.value);
+            globalTheme.onchange = e => {
+                if (typeof changePresentationTheme === "function") changePresentationTheme(e.target.value);
+                else applyPresentationTheme(e.target.value);
+            };
         }
         if (globalSize) {
             globalSize.onchange = e => applyPresentationPageSetup(e.target.value);
@@ -1158,6 +1187,21 @@ function _buildSlideWorkspacePanel(panel) {
                 insertPresetSlide?.(layoutId);
             };
         }
+        if (masterSelect) {
+            masterSelect.onchange = e => setCurrentSlideMaster?.(e.target.value);
+        }
+        const updateCurrentMaster = () => {
+            const nextMasterId = masterSelect?.value || masterId;
+            if (nextMasterId === "none") return;
+            updateMasterSlide?.(nextMasterId, {
+                logoText: masterLogoInput?.value || "",
+                footerText: masterFooterInput?.value || "",
+                showSlideNumber: masterSlideNumberInput?.checked !== false,
+            });
+        };
+        if (masterLogoInput) masterLogoInput.onchange = updateCurrentMaster;
+        if (masterFooterInput) masterFooterInput.onchange = updateCurrentMaster;
+        if (masterSlideNumberInput) masterSlideNumberInput.onchange = updateCurrentMaster;
         if (bgApplyBtn) {
             bgApplyBtn.onclick = () => {
                 setCurrentSlideBackgroundFromUrl?.(bgUrlInput?.value || "");

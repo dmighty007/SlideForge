@@ -1233,9 +1233,9 @@ function _scienceHeader(theme, title, subtitle = "", label = "") {
                   }),
               ]
             : []),
-        _text(78, label ? 42 : 28, 790, title, {
+        _text(78, label ? 42 : 28, 850, title, {
             color: p.fg,
-            fontSize: "38px",
+            fontSize: "34px",
             fontFamily: p.hf,
             fontWeight: "800",
             lineHeight: "1.08",
@@ -1256,6 +1256,104 @@ function _scienceHeader(theme, title, subtitle = "", label = "") {
 function _sciencePanel(theme, x, y, w, h) {
     const p = _sciencePalette(theme);
     return _box(x, y, w, h, p.panel, `1px solid ${p.a}26`, "14px");
+}
+
+function _scienceLabel(x, y, w, text, color, theme) {
+    const p = _sciencePalette(theme);
+    return _text(x, y, w, String(text || "").toUpperCase(), {
+        color,
+        fontSize: "11px",
+        fontFamily: p.bf,
+        fontWeight: "800",
+        letterSpacing: "0.12em",
+    });
+}
+
+function _scienceFigureFrame(theme, x, y, w, h, label = "Drop figure, chart, or molecule view here") {
+    const p = _sciencePalette(theme);
+    return [
+        _box(x, y, w, h, _alpha(p.a, 0.055), `1px dashed ${_alpha(p.a, 0.56)}`, "16px"),
+        _bar(x + 22, y + h - 52, w - 44, 2, p.line, undefined, "999px"),
+        _text(x + 28, y + h / 2 - 14, w - 56, label, {
+            color: p.mu,
+            fontSize: "17px",
+            fontFamily: p.bf,
+            fontWeight: "700",
+            textAlign: "center",
+        }),
+    ];
+}
+
+function _scienceMetric(theme, x, y, w, h, label, value, note, accent) {
+    const p = _sciencePalette(theme);
+    const color = accent || p.a;
+    return [
+        _sciencePanel(theme, x, y, w, h),
+        _scienceLabel(x + 20, y + 18, w - 40, label, p.mu, theme),
+        _text(x + 20, y + 44, w - 40, value, {
+            color,
+            fontSize: "34px",
+            fontFamily: p.hf,
+            fontWeight: "850",
+            lineHeight: "1",
+        }),
+        _text(x + 20, y + 88, w - 40, note, {
+            color: p.fg,
+            fontSize: "13px",
+            fontFamily: p.bf,
+            lineHeight: "1.35",
+        }),
+    ];
+}
+
+function _scienceCallout(theme, x, y, w, h, title, body, accent) {
+    const p = _sciencePalette(theme);
+    const color = accent || p.a;
+    return [
+        _sciencePanel(theme, x, y, w, h),
+        _bar(x, y, 5, h, color, undefined, "14px 0 0 14px"),
+        _text(x + 24, y + 22, w - 48, title, {
+            color,
+            fontSize: "23px",
+            fontFamily: p.hf,
+            fontWeight: "850",
+            lineHeight: "1.1",
+        }),
+        _text(x + 24, y + 72, w - 48, body, {
+            color: p.fg,
+            fontSize: "16px",
+            fontFamily: p.bf,
+            lineHeight: "1.45",
+        }),
+    ];
+}
+
+function _scienceStep(theme, x, y, w, number, title, body, accent) {
+    const p = _sciencePalette(theme);
+    const color = accent || p.a;
+    return [
+        _bar(x, y + 18, 34, 34, color, undefined, "999px"),
+        _text(x, y + 24, 34, number, {
+            color: "#ffffff",
+            fontSize: "13px",
+            fontFamily: p.bf,
+            fontWeight: "850",
+            textAlign: "center",
+        }),
+        _text(x + 48, y, w - 48, title, {
+            color: p.fg,
+            fontSize: "21px",
+            fontFamily: p.hf,
+            fontWeight: "850",
+            lineHeight: "1.12",
+        }),
+        _text(x + 48, y + 42, w - 48, body, {
+            color: p.mu,
+            fontSize: "14px",
+            fontFamily: p.bf,
+            lineHeight: "1.38",
+        }),
+    ];
 }
 
 function _scienceBullets(x, y, w, items, styles = {}, options = {}) {
@@ -1347,193 +1445,139 @@ function _installSciencePresetBuilders() {
             },
         },
         "content-slide": {
-            name: "Key Claim",
+            name: "Assertion + Evidence",
             icon: "fa-solid fa-align-left",
             color: "text-blue-400",
             build(theme) {
                 const p = _sciencePalette(theme);
                 return [
-                    ..._scienceHeader(theme, "Key claim from simulation and learning", "State one result clearly, then support it with evidence.", "Finding"),
-                    _sciencePanel(theme, 58, 150, 590, 390),
-                    ..._scienceBullets(
-                        88,
-                        184,
-                        530,
-                        [
-                            { text: "MD samples conformational states that are not visible in static structures" },
-                            { text: "Features: contacts, dihedrals, RMSD/RMSF, solvent exposure" },
-                            { text: "ML model separates metastable states and predicts key transitions" },
-                            { text: "Validation uses held-out trajectories and physical interpretability" },
-                        ],
-                        { color: p.fg, fontSize: "22px", fontFamily: p.bf },
-                        { gap: 58 },
-                    ),
-                    _sciencePanel(theme, 686, 150, 280, 390),
-                    _text(714, 186, 220, "Take-home", {
-                        color: p.a,
-                        fontSize: "24px",
-                        fontFamily: p.hf,
-                        fontWeight: "800",
-                    }),
-                    _text(714, 238, 220, "A compact sentence explaining why the combined MD + ML result matters.", {
-                        color: p.fg,
-                        fontSize: "18px",
+                    ..._scienceHeader(theme, "Learned states reveal a hidden transition", "Use one complete sentence as the slide headline, then make the evidence obvious.", "Finding"),
+                    ..._scienceFigureFrame(theme, 58, 162, 574, 340, "Primary visual evidence: structure pair, free-energy map, or latent projection"),
+                    _text(82, 522, 526, "Figure caption: identify the system, trajectory length, model, and the single observation the audience should retain.", {
+                        color: p.mu,
+                        fontSize: "14px",
                         fontFamily: p.bf,
-                        lineHeight: "1.45",
+                        lineHeight: "1.35",
+                    }),
+                    ..._scienceCallout(
+                        theme,
+                        670,
+                        162,
+                        286,
+                        142,
+                        "Take-home",
+                        "The workflow separates states that looked mixed in the raw trajectory.",
+                        p.a,
+                    ),
+                    ..._scienceMetric(theme, 670, 330, 136, 140, "Coverage", "5", "Metastable states", p.a),
+                    ..._scienceMetric(theme, 820, 330, 136, 140, "Model", "0.91", "Held-out AUC", p.a2),
+                    _text(674, 510, 272, "Speaker note: replace these placeholders with one visual, one result metric, and one interpretation.", {
+                        color: p.mu,
+                        fontSize: "14px",
+                        fontFamily: p.bf,
+                        lineHeight: "1.4",
                     }),
                 ];
             },
         },
         "two-column": {
-            name: "MD vs ML",
+            name: "Compare Evidence",
             icon: "fa-solid fa-table-columns",
             color: "text-emerald-400",
             build(theme) {
                 const p = _sciencePalette(theme);
                 return [
-                    ..._scienceHeader(theme, "Two complementary views", "Use this layout to compare physical simulation and learned models.", "Compare"),
-                    _sciencePanel(theme, 58, 158, 420, 420),
-                    _sciencePanel(theme, 546, 158, 420, 420),
-                    _text(88, 190, 340, "Molecular dynamics", {
-                        color: p.a,
-                        fontSize: "26px",
+                    ..._scienceHeader(theme, "MD and ML agree on the dominant state change", "Place comparable evidence in mirrored panels so the contrast is immediate.", "Compare"),
+                    _sciencePanel(theme, 58, 160, 422, 420),
+                    _sciencePanel(theme, 544, 160, 422, 420),
+                    _scienceLabel(88, 190, 320, "Physical simulation", p.a, theme),
+                    _text(88, 220, 330, "Trajectory ensemble", {
+                        color: p.fg,
+                        fontSize: "29px",
                         fontFamily: p.hf,
-                        fontWeight: "800",
+                        fontWeight: "850",
                     }),
-                    ..._scienceBullets(
-                        88,
-                        246,
-                        340,
-                        [
-                            { text: "Force field and solvent model" },
-                            { text: "Equilibration and production runs" },
-                            { text: "Trajectory descriptors and uncertainty" },
-                        ],
-                        { color: p.fg, fontSize: "20px", fontFamily: p.bf },
-                        { gap: 56 },
-                    ),
-                    _text(576, 190, 340, "Machine learning", {
-                        color: p.a2,
-                        fontSize: "26px",
+                    ..._scienceFigureFrame(theme, 88, 280, 340, 150, "RMSD, contact map, or representative structures"),
+                    _text(88, 452, 340, "Evidence: stable basin shift after ligand binding; uncertainty estimated over replicates.", {
+                        color: p.mu,
+                        fontSize: "15px",
+                        fontFamily: p.bf,
+                        lineHeight: "1.35",
+                    }),
+                    _scienceLabel(574, 190, 320, "Learned representation", p.a2, theme),
+                    _text(574, 220, 330, "Latent state model", {
+                        color: p.fg,
+                        fontSize: "29px",
                         fontFamily: p.hf,
-                        fontWeight: "800",
+                        fontWeight: "850",
                     }),
-                    ..._scienceBullets(
-                        576,
-                        246,
-                        340,
-                        [
-                            { text: "Dimensionality reduction or embeddings" },
-                            { text: "Classifier, regressor, or GNN model" },
-                            { text: "Cross-validation and feature attribution" },
-                        ],
-                        { color: p.fg, fontSize: "20px", fontFamily: p.bf },
-                        { gap: 56 },
-                    ),
+                    ..._scienceFigureFrame(theme, 574, 280, 340, 150, "UMAP, classifier output, or feature attribution"),
+                    _text(574, 452, 340, "Interpretation: embeddings separate the same transition and identify residues driving the split.", {
+                        color: p.mu,
+                        fontSize: "15px",
+                        fontFamily: p.bf,
+                        lineHeight: "1.35",
+                    }),
+                    _bar(500, 208, 4, 324, p.line, undefined, "999px"),
                 ];
             },
         },
         "figure-caption": {
-            name: "Simulation Figure",
+            name: "Hero Figure",
             icon: "fa-solid fa-chart-line",
             color: "text-purple-400",
             build(theme) {
                 const p = _sciencePalette(theme);
                 return [
-                    ..._scienceHeader(theme, "Trajectory result", "Replace the placeholder with RMSD, free-energy, PCA, contact, or clustering plots.", "Figure"),
-                    _box(58, 158, 610, 408, p.panel, `1px dashed ${p.a}`, "14px"),
-                    _text(58, 340, 610, "Insert figure or chart here", {
-                        color: p.mu,
-                        fontSize: "19px",
-                        fontFamily: p.bf,
-                        textAlign: "center",
-                    }),
-                    _text(70, 584, 586, "Figure 1. Short caption describing the simulation system, model, and key observation.", {
+                    ..._scienceHeader(theme, "The transition concentrates in two residue networks", "A figure-first slide: one large visual, one interpretation panel, no decorative clutter.", "Figure"),
+                    ..._scienceFigureFrame(theme, 54, 148, 640, 420, "Insert main chart or molecular view"),
+                    _text(72, 586, 604, "Figure 1. State the system, trajectory/model, and the visual cue that supports the headline.", {
                         color: p.mu,
                         fontSize: "14px",
                         fontFamily: p.bf,
-                        textAlign: "center",
+                        lineHeight: "1.35",
                     }),
-                    _sciencePanel(theme, 700, 158, 266, 408),
-                    _text(728, 190, 210, "Interpretation", {
-                        color: p.a,
-                        fontSize: "24px",
-                        fontFamily: p.hf,
-                        fontWeight: "800",
-                    }),
-                    _text(728, 246, 210, "What changed in the ensemble? Which residue, feature, or latent dimension explains it?", {
-                        color: p.fg,
-                        fontSize: "18px",
-                        fontFamily: p.bf,
-                        lineHeight: "1.45",
-                    }),
+                    ..._scienceCallout(theme, 720, 148, 246, 176, "What changed?", "Open and closed ensembles differ in contacts around the active-site loop.", p.a),
+                    ..._scienceCallout(theme, 720, 350, 246, 176, "Why trust it?", "The same separation appears in held-out trajectories and feature attribution.", p.a2),
                 ];
             },
         },
         "methodology": {
-            name: "MD Pipeline",
+            name: "Workflow",
             icon: "fa-solid fa-diagram-project",
             color: "text-cyan-400",
             build(theme) {
                 const p = _sciencePalette(theme);
                 return [
-                    ..._scienceHeader(theme, "Workflow", "A simple end-to-end pipeline for MD-informed machine learning.", "Methods"),
-                    _sciencePanel(theme, 78, 172, 868, 316),
-                    ..._scienceBullets(
-                        112,
-                        214,
-                        800,
-                        [
-                            { text: "01 Prepare: structure, protonation, ligands, solvent box" },
-                            { text: "02 Simulate: minimization, equilibration, production MD" },
-                            { text: "03 Featurize: contacts, distances, dihedrals, energies" },
-                            { text: "04 Learn: embedding, clustering, prediction, validation" },
-                        ],
-                        { color: p.fg, fontSize: "23px", fontFamily: p.bf },
-                        { gap: 58 },
-                    ),
-                    _text(84, 528, 856, "Add system size, trajectory length, sampling strategy, and software versions where needed.", {
+                    ..._scienceHeader(theme, "Workflow converts trajectories into interpretable states", "Show methods as a pipeline with quality checks, not as a paragraph.", "Methods"),
+                    _sciencePanel(theme, 66, 164, 892, 350),
+                    _bar(142, 310, 740, 4, p.line, undefined, "999px"),
+                    ..._scienceStep(theme, 100, 210, 190, "1", "Prepare", "Structure, protonation, ligands, solvent box", p.a),
+                    ..._scienceStep(theme, 316, 210, 190, "2", "Simulate", "Equilibration, production MD, quality control", p.a2),
+                    ..._scienceStep(theme, 532, 210, 190, "3", "Featurize", "Contacts, distances, dihedrals, energies", p.a),
+                    ..._scienceStep(theme, 748, 210, 170, "4", "Learn", "Embedding, clustering, prediction, validation", p.a2),
+                    _text(86, 548, 852, "Report the exact software versions, sampling length, data split, and validation criterion in speaker notes or a methods backup.", {
                         color: p.mu,
-                        fontSize: "17px",
+                        fontSize: "16px",
                         fontFamily: p.bf,
+                        lineHeight: "1.35",
                     }),
                 ];
             },
         },
         "results-data": {
-            name: "Results Summary",
+            name: "Quant Summary",
             icon: "fa-solid fa-chart-bar",
             color: "text-orange-400",
             build(theme) {
                 const p = _sciencePalette(theme);
                 return [
-                    ..._scienceHeader(theme, "Quantitative summary", "Use simple metrics that are easy to edit and defend.", "Results"),
-                    ...[
-                        ["Trajectory", "3 x 500 ns"],
-                        ["States", "5 clusters"],
-                        ["Model AUC", "0.91"],
-                    ].flatMap((m, i) => [
-                        _sciencePanel(theme, 64 + i * 304, 160, 260, 118),
-                        _text(86 + i * 304, 182, 210, m[0], {
-                            color: p.mu,
-                            fontSize: "14px",
-                            fontFamily: p.bf,
-                            fontWeight: "700",
-                        }),
-                        _text(86 + i * 304, 218, 210, m[1], {
-                            color: p.a,
-                            fontSize: "34px",
-                            fontFamily: p.hf,
-                            fontWeight: "800",
-                        }),
-                    ]),
-                    _box(64, 334, 860, 230, p.panel, `1px dashed ${p.a}`, "14px"),
-                    _text(64, 430, 860, "Insert chart: RMSD, free energy, confusion matrix, or feature importance", {
-                        color: p.mu,
-                        fontSize: "18px",
-                        fontFamily: p.bf,
-                        textAlign: "center",
-                    }),
+                    ..._scienceHeader(theme, "Three checks support the reported state assignment", "Use the top row for defensible metrics and the lower area for the chart that explains them.", "Results"),
+                    ..._scienceMetric(theme, 58, 154, 280, 126, "Sampling", "1.5 us", "3 replicates; no drift after equilibration", p.a),
+                    ..._scienceMetric(theme, 372, 154, 280, 126, "States", "5", "Clusters stable under bootstrap resampling", p.a2),
+                    ..._scienceMetric(theme, 686, 154, 280, 126, "Predictive fit", "0.91", "Held-out AUC; calibrated probabilities", p.a),
+                    ..._scienceFigureFrame(theme, 58, 326, 596, 246, "Main quantitative plot"),
+                    ..._scienceCallout(theme, 690, 326, 276, 246, "Readout", "Write the sentence the chart should prove. Add uncertainty and baseline so the result is defensible.", p.a2),
                 ];
             },
         },
@@ -1544,27 +1588,44 @@ function _installSciencePresetBuilders() {
             build(theme) {
                 const p = _sciencePalette(theme);
                 return [
-                    ..._scienceHeader(theme, "Conclusions", "Keep the final slide direct and editable.", "Wrap-up"),
-                    _sciencePanel(theme, 70, 158, 860, 390),
-                    ..._scienceBullets(
-                        104,
-                        196,
-                        792,
-                        [
-                            { text: "MD reveals the dominant conformational changes in the system" },
-                            { text: "ML compresses trajectories into interpretable state descriptors" },
-                            { text: "The combined workflow improves hypothesis generation or screening" },
-                            { text: "Next: extend sampling, test new features, and validate experimentally" },
-                        ],
-                        { color: p.fg, fontSize: "23px", fontFamily: p.bf },
-                        { gap: 58 },
-                    ),
-                    _text(74, 610, 470, "Acknowledgements - compute resources - funding", {
+                    ..._scienceHeader(theme, "The workflow turns simulation data into testable hypotheses", "End with three remembered points and one next action.", "Wrap-up"),
+                    ...[
+                        ["1", "Mechanism", "MD identifies the physical transition and the residues involved."],
+                        ["2", "Model", "ML compresses trajectories into interpretable state descriptors."],
+                        ["3", "Next", "Validate the predicted contacts with perturbation or experiment."],
+                    ].flatMap((item, i) => {
+                        const x = 72 + i * 300;
+                        return [
+                            _sciencePanel(theme, x, 176, 250, 284),
+                            _bar(x + 24, 208, 44, 44, i === 1 ? p.a2 : p.a, undefined, "999px"),
+                            _text(x + 24, 218, 44, item[0], {
+                                color: "#ffffff",
+                                fontSize: "18px",
+                                fontFamily: p.hf,
+                                fontWeight: "850",
+                                textAlign: "center",
+                            }),
+                            _text(x + 24, 282, 202, item[1], {
+                                color: i === 1 ? p.a2 : p.a,
+                                fontSize: "24px",
+                                fontFamily: p.hf,
+                                fontWeight: "850",
+                            }),
+                            _text(x + 24, 334, 202, item[2], {
+                                color: p.fg,
+                                fontSize: "16px",
+                                fontFamily: p.bf,
+                                lineHeight: "1.42",
+                            }),
+                        ];
+                    }),
+                    _bar(72, 548, 880, 1, p.line, undefined, undefined),
+                    _text(74, 584, 470, "Acknowledgements - compute resources - funding", {
                         color: p.mu,
                         fontSize: "14px",
                         fontFamily: p.bf,
                     }),
-                    _text(640, 610, 290, "email@institute.edu", {
+                    _text(640, 584, 290, "email@institute.edu", {
                         color: p.a,
                         fontSize: "14px",
                         fontFamily: p.bf,
@@ -1981,18 +2042,30 @@ _installSciencePresetBuilders();
 
 /* ─── Insert Preset as New Slide ────────────────────────────────────────── */
 
-function buildPresetSlideState(presetId, theme, { slideId = generateId('slide'), notes = '', background = '' } = {}) {
+function buildPresetSlideState(presetId, theme, { slideId = generateId('slide'), notes = '', background = '', masterId = null } = {}) {
     const preset = SLIDE_PRESETS[presetId];
     if (!preset) return null;
     const resolvedTheme = theme || (typeof getPresentationTheme === 'function' ? getPresentationTheme() : null);
-    const elements = preset.build(resolvedTheme).map(el => ({
+    let elements = preset.build(resolvedTheme).map(el => ({
         ...el,
         id: generateId('el'),
         themeManaged: true,
     }));
+    if (
+        typeof scaleSlideElementsForPageSetup === "function" &&
+        typeof getPresentationPageSetupConfig === "function" &&
+        typeof PRESENTATION_PAGE_SETUPS !== "undefined"
+    ) {
+        const baseConfig = PRESENTATION_PAGE_SETUPS["standard-4-3"] || { width: 1024, height: 768 };
+        const targetConfig = getPresentationPageSetupConfig();
+        if (targetConfig && (targetConfig.width !== baseConfig.width || targetConfig.height !== baseConfig.height)) {
+            elements = scaleSlideElementsForPageSetup({ elements }, baseConfig, targetConfig).elements;
+        }
+    }
     return {
         id: slideId,
         layoutId: presetId,
+        masterId: masterId || (typeof inferMasterIdForLayout === "function" ? inferMasterIdForLayout(presetId) : "content"),
         background: normalizeSlideBackground(background),
         notes,
         elements,

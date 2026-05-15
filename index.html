@@ -66,7 +66,21 @@
             },
         };
     </script>
+    <script>
+        window.__slideforgeConsoleWarn = console.warn;
+        console.warn = function (...args) {
+            const message = String(args[0] || "");
+            if (message.includes("cdn.tailwindcss.com should not be used in production")) return;
+            return window.__slideforgeConsoleWarn.apply(console, args);
+        };
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        if (window.__slideforgeConsoleWarn) {
+            console.warn = window.__slideforgeConsoleWarn;
+            delete window.__slideforgeConsoleWarn;
+        }
+    </script>
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -979,6 +993,7 @@
     <script src="js/state.js"></script>
     <script src="js/textContent.js"></script>
     <script src="js/themes.js"></script>
+    <script src="js/masterSlides.js"></script>
     <script src="js/htmlEmbed.js"></script>
     <script src="js/moleculeEmbed.js"></script>
     <script src="js/textLayout.js"></script>

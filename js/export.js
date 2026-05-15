@@ -212,10 +212,14 @@ function getCookie(name) {
 async function exportPPTX() {
     try {
         setProjectSaveHint?.("Generating PowerPoint...", "success");
+        if (typeof syncMoleculeViewStatesFromDom === "function") {
+            await syncMoleculeViewStatesFromDom();
+        }
         
         // Use the same filename as the project title
         const titleInput = document.getElementById("project-title-input");
         const filename = (titleInput && titleInput.value.trim() ? titleInput.value.trim() : "presentation") + ".pptx";
+        const exportState = typeof getPersistableState === "function" ? getPersistableState() : state;
 
         const response = await fetch("/api/presentations/export/pptx/", {
             method: "POST",
@@ -224,7 +228,7 @@ async function exportPPTX() {
                 "X-CSRFToken": getCookie("csrftoken"),
             },
             body: JSON.stringify({
-                state: state,
+                state: exportState,
                 filename: filename
             })
         });
@@ -1491,9 +1495,23 @@ function initViewer(data) {
                 if (iframe.dataset.molecule === 'true') {
                     iframe.contentWindow?.postMessage({ type: 'pptmaker:molecule:lifecycle', active: isActive }, '*');
                 } else if (/youtube(?:-nocookie)?\\.com\\/embed\\//i.test(src)) {
-                    iframe.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: isActive && iframe.dataset.autoplay === 'true' ? 'playVideo' : 'pauseVideo', args: [] }), '*');
+                    const wasActive = iframe.dataset.mediaWasActive === 'true';
+                    const shouldAutoplay = iframe.dataset.autoplay === 'true';
+                    const command = isActive && shouldAutoplay ? 'playVideo' : !isActive && wasActive ? 'pauseVideo' : '';
+                    iframe.dataset.mediaWasActive = isActive ? 'true' : 'false';
+                    if (command && iframe.dataset.mediaLoaded === 'true') {
+                        try {
+                            iframe.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: command, args: [] }), 'https://www.youtube-nocookie.com');
+                        } catch (_) {}
+                    }
                 } else if (/player\\.vimeo\\.com\\/video\\//i.test(src)) {
-                    iframe.contentWindow?.postMessage({ method: isActive && iframe.dataset.autoplay === 'true' ? 'play' : 'pause' }, '*');
+                    const wasActive = iframe.dataset.mediaWasActive === 'true';
+                    const shouldAutoplay = iframe.dataset.autoplay === 'true';
+                    const method = isActive && shouldAutoplay ? 'play' : !isActive && wasActive ? 'pause' : '';
+                    iframe.dataset.mediaWasActive = isActive ? 'true' : 'false';
+                    if (method && iframe.dataset.mediaLoaded === 'true') {
+                        iframe.contentWindow?.postMessage({ method }, '*');
+                    }
                 }
             });
         });
@@ -1880,6 +1898,7 @@ function createViewerElement(elData, mediaOptions = {}) {
                 playsinline: 1,
                 enablejsapi: 1
             });
+            if (window.location.origin && window.location.origin !== 'null') params.set('origin', window.location.origin);
             if (elData.loop) params.set('playlist', videoInfo.id);
             videoNode.src = 'https://www.youtube-nocookie.com/embed/' + videoInfo.id + '?' + params.toString();
             setMediaIframePermissions(videoNode, 'autoplay; encrypted-media; picture-in-picture');
@@ -1921,8 +1940,11 @@ function createViewerElement(elData, mediaOptions = {}) {
         }
         videoNode.className = 'media-fill rounded-inherit';
         videoNode.dataset.autoplay = elData.autoplay ? 'true' : 'false';
-        if (videoNode.tagName === 'IFRAME' && typeof mediaOptions.onMediaLoad === 'function') {
-            videoNode.addEventListener('load', mediaOptions.onMediaLoad);
+        if (videoNode.tagName === 'IFRAME') {
+            videoNode.addEventListener('load', () => {
+                videoNode.dataset.mediaLoaded = 'true';
+                if (typeof mediaOptions.onMediaLoad === 'function') mediaOptions.onMediaLoad();
+            });
         }
         el.appendChild(videoNode);
     } else if (elData.type === 'shape') {

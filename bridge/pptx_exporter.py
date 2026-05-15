@@ -11,6 +11,7 @@ from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_CONNECTOR, MSO_SHAPE
 from pptx.enum.text import MSO_AUTO_SIZE, PP_ALIGN
+from pptx.oxml.xmlchemy import OxmlElement
 
 class DesignSystem:
     # Default design constants inspired by the reference script
@@ -26,43 +27,129 @@ class HtmlTextRunParser(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.runs: list[dict[str, Any]] = []
-        self._style_stack: list[dict[str, bool]] = [{"bold": False, "italic": False, "underline": False}]
+        self._style_stack: list[dict[str, Any]] = [{"bold": False, "italic": False, "underline": False}]
+        self._tag_stack: list[tuple[str, bool]] = []
 
     @property
-    def current_style(self) -> dict[str, bool]:
+    def current_style(self) -> dict[str, Any]:
         return self._style_stack[-1]
 
     def _push(self, **updates):
         self._style_stack.append({**self.current_style, **updates})
 
-    def _pop(self):
-        if len(self._style_stack) > 1:
+    def _mark_tag(self, tag: str, pushed: bool):
+        self._tag_stack.append((tag, pushed))
+
+    def _pop_tag(self, tag: str) -> bool:
+        if not self._tag_stack:
+            return False
+        if self._tag_stack[-1][0] == tag:
+            _, pushed = self._tag_stack.pop()
+        else:
+            pushed = False
+            for idx in range(len(self._tag_stack) - 1, -1, -1):
+                if self._tag_stack[idx][0] == tag:
+                    _, pushed = self._tag_stack.pop(idx)
+                    break
+        if pushed and len(self._style_stack) > 1:
             self._style_stack.pop()
+        return pushed
 
     def _newline(self):
         if self.runs and self.runs[-1].get("text") == "\n":
             return
         self.runs.append({"text": "\n", **self.current_style})
 
+    def _parse_inline_style(self, style_text: str) -> dict[str, Any]:
+        updates: dict[str, Any] = {}
+        for declaration in str(style_text or "").split(";"):
+            if ":" not in declaration:
+                continue
+            prop, value = declaration.split(":", 1)
+            prop = prop.strip().lower()
+            value = value.strip()
+            if not value:
+                continue
+            if prop == "font-size":
+                updates["fontSize"] = value
+            elif prop == "font-family":
+                updates["fontFamily"] = value
+            elif prop == "color":
+                updates["color"] = value
+            elif prop == "font-weight":
+                updates["fontWeight"] = value
+                if value.lower() == "bold" or re.search(r"\d+", value) and int(re.search(r"\d+", value).group(0)) >= 600:
+                    updates["bold"] = True
+            elif prop == "font-style":
+                updates["fontStyle"] = value
+                if value.lower() == "italic":
+                    updates["italic"] = True
+            elif prop == "text-decoration" and "underline" in value.lower():
+                updates["underline"] = True
+            elif prop == "vertical-align":
+                if value.lower() in {"super", "sup", "sub"}:
+                    updates["verticalAlign"] = value.lower()
+        return updates
+
+    def _attrs_to_updates(self, attrs) -> dict[str, Any]:
+        attrs_map = {str(key).lower(): value for key, value in attrs}
+        updates = self._parse_inline_style(attrs_map.get("style", ""))
+        if attrs_map.get("face"):
+            updates["fontFamily"] = attrs_map["face"]
+        if attrs_map.get("color"):
+            updates["color"] = attrs_map["color"]
+        if attrs_map.get("size"):
+            # Legacy <font size="1..7"> values are approximate browser defaults.
+            size_map = {"1": "10px", "2": "13px", "3": "16px", "4": "18px", "5": "24px", "6": "32px", "7": "48px"}
+            updates["fontSize"] = size_map.get(str(attrs_map["size"]).strip(), attrs_map["size"])
+        return updates
+
     def handle_starttag(self, tag, attrs):
         tag = tag.lower()
+        attr_updates = self._attrs_to_updates(attrs)
         if tag in {"strong", "b"}:
-            self._push(bold=True)
+            self._push(**attr_updates, bold=True)
+            self._mark_tag(tag, True)
         elif tag in {"em", "i"}:
-            self._push(italic=True)
+            self._push(**attr_updates, italic=True)
+            self._mark_tag(tag, True)
         elif tag == "u":
-            self._push(underline=True)
+            self._push(**attr_updates, underline=True)
+            self._mark_tag(tag, True)
+        elif tag == "sup":
+            self._push(**attr_updates, verticalAlign="super")
+            self._mark_tag(tag, True)
+        elif tag == "sub":
+            self._push(**attr_updates, verticalAlign="sub")
+            self._mark_tag(tag, True)
         elif tag == "br":
             self._newline()
-        elif tag in self.BLOCK_TAGS and self.runs:
-            self._newline()
+        elif tag in {"span", "font"}:
+            self._push(**attr_updates)
+            self._mark_tag(tag, True)
+        elif tag in self.BLOCK_TAGS:
+            if self.runs:
+                self._newline()
+            if attr_updates:
+                self._push(**attr_updates)
+                self._mark_tag(tag, True)
+            else:
+                self._mark_tag(tag, False)
+        elif attr_updates:
+            self._push(**attr_updates)
+            self._mark_tag(tag, True)
+        else:
+            self._mark_tag(tag, False)
 
     def handle_endtag(self, tag):
         tag = tag.lower()
-        if tag in {"strong", "b", "em", "i", "u"}:
-            self._pop()
+        if tag in {"strong", "b", "em", "i", "u", "span", "font", "sup", "sub"}:
+            self._pop_tag(tag)
         elif tag in self.BLOCK_TAGS:
+            self._pop_tag(tag)
             self._newline()
+        else:
+            self._pop_tag(tag)
 
     def handle_data(self, data):
         if data:
@@ -105,6 +192,37 @@ class PPTXExporter:
             self.prs.slide_width = Inches(10.666)
             self.prs.slide_height = Inches(8.0)
             self.base_w, self.base_h = 1024, 768
+        self.theme = self._theme_defaults(str(state.get("presentationTheme") or "editorial"))
+        self.slide_bg_rgb = self.theme["background"]
+
+    def _theme_defaults(self, theme_id: str) -> dict[str, RGBColor]:
+        themes = {
+            "editorial": ("#EEF2F7", "#2E2E2E", "#6B7280", "#3B82F6", "#A7C7E7"),
+            "blueprint": ("#F1F7FD", "#10233B", "#5F7287", "#2563EB", "#0F766E"),
+            "fieldnotes": ("#EFE4D0", "#2F261D", "#6F6559", "#7A8F47", "#B48A4A"),
+            "monograph": ("#ECEFF3", "#171717", "#6B7280", "#1F2937", "#9CA3AF"),
+            "graphite": ("#111827", "#F5F7FB", "#94A3B8", "#22D3EE", "#38BDF8"),
+            "horizon": ("#0B2442", "#EEF4FF", "#AFBDD6", "#7DD3FC", "#4F7CFF"),
+            "chalkboard": ("#10261F", "#F8F3E7", "#D4CBB7", "#F5D76E", "#8ED1C7"),
+            "circuit": ("#0A2320", "#ECF7F5", "#9AB8B3", "#63E6D8", "#1FB6A6"),
+            "afterglow": ("#1A2034", "#F5F7FF", "#BDC4DE", "#F3B76A", "#6E86FF"),
+            "sage": ("#EDF4E8", "#25342D", "#68786E", "#4F7D5A", "#B7A66C"),
+            "porcelain": ("#EEF7F9", "#233047", "#6C7890", "#477CA4", "#C08393"),
+            "rosewater": ("#F7E7E4", "#3A2B32", "#7F6B72", "#B76E79", "#AA8650"),
+            "buttercup": ("#F5EBC5", "#332B15", "#756C4C", "#D59D20", "#5F9F76"),
+            "tidepool": ("#E4F4F3", "#17323A", "#5F7880", "#168B8B", "#4B8FC5"),
+            "lavender": ("#EFEAF8", "#302C45", "#756F8D", "#7D6BB3", "#CF8A72"),
+            "midnightGarden": ("#10231A", "#EFF7ED", "#B7C9B7", "#9AE6B4", "#5FAF79"),
+            "retroPop": ("#FFE7DF", "#28212A", "#745F76", "#EF476F", "#06D6A0"),
+        }
+        bg, text, muted, accent, accent2 = themes.get(theme_id, themes["editorial"])
+        return {
+            "background": self._parse_color(bg, DesignSystem.BG_COLOR),
+            "text": self._parse_color(text, DesignSystem.TEXT_COLOR),
+            "muted": self._parse_color(muted, RGBColor(100, 116, 139)),
+            "accent": self._parse_color(accent, DesignSystem.ACCENT_COLOR),
+            "accent2": self._parse_color(accent2, DesignSystem.ACCENT_COLOR),
+        }
 
     def _resolve_project_root(self, project_root: Optional[Path | str] = None) -> Path:
         if project_root:
@@ -202,23 +320,56 @@ class PPTXExporter:
         # Scale pixels relative to the logical canvas height
         return Inches((px / self.base_h) * (self.prs.slide_height / Inches(1)))
 
-    def _parse_color(self, color_str: Optional[str], default: RGBColor = DesignSystem.TEXT_COLOR) -> RGBColor:
+    def _parse_color_components(self, color_str: Optional[str]) -> Optional[tuple[int, int, int, float]]:
         if not color_str:
-            return default
+            return None
+        normalized = str(color_str).strip()
+        if not normalized or normalized.lower() in {"transparent", "none", "inherit", "currentcolor"}:
+            return None
         try:
-            if color_str.startswith("#"):
-                h = color_str.lstrip("#")
+            if normalized.startswith("#"):
+                h = normalized.lstrip("#")
                 if len(h) == 3:
                     h = "".join([c*2 for c in h])
-                return RGBColor(int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
-            elif color_str.startswith("rgb"):
-                # Simple rgb(r, g, b) parser
-                matches = re.findall(r"\d+", color_str)
+                if len(h) >= 6:
+                    return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16), 1.0
+            elif normalized.startswith("rgb"):
+                matches = re.findall(r"[\d.]+", normalized)
                 if len(matches) >= 3:
-                    return RGBColor(int(matches[0]), int(matches[1]), int(matches[2]))
+                    alpha = float(matches[3]) if len(matches) >= 4 else 1.0
+                    return (
+                        max(0, min(255, int(float(matches[0])))),
+                        max(0, min(255, int(float(matches[1])))),
+                        max(0, min(255, int(float(matches[2])))),
+                        max(0.0, min(1.0, alpha)),
+                    )
         except Exception:
-            pass
+            return None
+        return None
+
+    def _composite_color(self, color: tuple[int, int, int, float], bg: Optional[RGBColor] = None) -> RGBColor:
+        r, g, b, alpha = color
+        if alpha >= 0.995:
+            return RGBColor(r, g, b)
+        bg = bg or self.slide_bg_rgb
+        return RGBColor(
+            round(r * alpha + bg[0] * (1 - alpha)),
+            round(g * alpha + bg[1] * (1 - alpha)),
+            round(b * alpha + bg[2] * (1 - alpha)),
+        )
+
+    def _parse_color(self, color_str: Optional[str], default: RGBColor = DesignSystem.TEXT_COLOR) -> RGBColor:
+        parsed = self._parse_color_components(color_str)
+        if parsed:
+            return self._composite_color(parsed)
         return default
+
+    def _is_transparent(self, color_str: Optional[str]) -> bool:
+        normalized = str(color_str or "").strip().lower()
+        if normalized in {"", "transparent", "none"}:
+            return True
+        parsed = self._parse_color_components(normalized)
+        return bool(parsed and parsed[3] <= 0.01)
 
     def _parse_px(self, value: Any, fallback: float = 100) -> float:
         match = re.search(r"-?\d+(?:\.\d+)?", str(value or ""))
@@ -231,15 +382,19 @@ class PPTXExporter:
 
     def _set_text_common(self, run: Any, styles: dict[str, Any], *, extra: Optional[dict[str, bool]] = None):
         extra = extra or {}
-        font_size = int(self._parse_px(styles.get("fontSize", "18"), 18))
-        font_color = self._parse_color(styles.get("color"))
-        font_name = str(styles.get("fontFamily", DesignSystem.DEFAULT_FONT)).split(",")[0].replace('"', "").strip()
+        font_size = int(self._parse_px(extra.get("fontSize") or styles.get("fontSize", "18"), 18))
+        font_color = self._parse_color(extra.get("color") or styles.get("color"), self.theme["text"])
+        font_name = str(extra.get("fontFamily") or styles.get("fontFamily", DesignSystem.DEFAULT_FONT)).split(",")[0].replace('"', "").strip()
         run.font.size = Pt(font_size)
         run.font.color.rgb = font_color
         run.font.name = font_name
-        run.font.bold = self._parse_font_weight(styles.get("fontWeight")) >= 600 or extra.get("bold", False)
-        run.font.italic = styles.get("fontStyle") == "italic" or extra.get("italic", False)
+        run.font.bold = self._parse_font_weight(extra.get("fontWeight") or styles.get("fontWeight")) >= 600 or extra.get("bold", False)
+        run.font.italic = (extra.get("fontStyle") or styles.get("fontStyle")) == "italic" or extra.get("italic", False)
         run.font.underline = bool(extra.get("underline", False))
+        if extra.get("verticalAlign") == "super" and hasattr(run.font, "superscript"):
+            run.font.superscript = True
+        if extra.get("verticalAlign") == "sub" and hasattr(run.font, "subscript"):
+            run.font.subscript = True
 
     def _paragraph_alignment(self, styles: dict[str, Any]):
         align = str(styles.get("textAlign", "left")).lower()
@@ -272,6 +427,45 @@ class PPTXExporter:
             
         return None
 
+    def _apply_fill(self, shape: Any, color: Optional[str], default: Optional[RGBColor] = None):
+        if self._is_transparent(color):
+            shape.fill.background()
+            return
+        shape.fill.solid()
+        shape.fill.fore_color.rgb = self._parse_color(color, default or self.theme["accent"])
+
+    def _apply_line(self, shape: Any, styles: dict[str, Any], default_color: Optional[RGBColor] = None):
+        border = str(styles.get("border") or "").strip()
+        color = styles.get("borderColor") or styles.get("stroke")
+        width = styles.get("borderWidth") or styles.get("strokeWidth")
+        if border:
+            color_match = re.search(r"#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)", border)
+            if color_match:
+                color = color_match.group(0)
+            width_match = re.search(r"(-?\d+(?:\.\d+)?)px", border)
+            if width_match:
+                width = width_match.group(1)
+        if not color and not width:
+            shape.line.fill.background()
+            return
+        if self._is_transparent(color):
+            shape.line.fill.background()
+            return
+        shape.line.color.rgb = self._parse_color(color, default_color or self.theme["accent"])
+        shape.line.width = Pt(max(0.25, float(self._parse_px(width, 1))))
+
+    def _set_paragraph_bullet(self, paragraph: Any, char: str = "•"):
+        try:
+            p_pr = paragraph._p.get_or_add_pPr()
+            for child in list(p_pr):
+                if child.tag.endswith("}buNone") or child.tag.endswith("}buChar"):
+                    p_pr.remove(child)
+            bullet = OxmlElement("a:buChar")
+            bullet.set("char", char)
+            p_pr.append(bullet)
+        except Exception:
+            return
+
     def export(self) -> io.BytesIO:
         slides = self.state.get("slides", [])
         for slide_data in slides:
@@ -283,36 +477,176 @@ class PPTXExporter:
         return output
 
     def _add_slide(self, slide_data: Dict[str, Any]):
+        self.slide_bg_rgb = self.theme["background"]
         # Use a blank layout (index 6 is usually blank)
         slide_layout = self.prs.slide_layouts[6]
         slide = self.prs.slides.add_slide(slide_layout)
         
         # 1. Background
+        fill = slide.background.fill
+        fill.solid()
+        fill.fore_color.rgb = self.slide_bg_rgb
         bg = slide_data.get("background")
         if bg and bg.get("content"):
             if bg.get("type") == "color":
-                fill = slide.background.fill
-                fill.solid()
-                fill.fore_color.rgb = self._parse_color(bg["content"], DesignSystem.BG_COLOR)
+                fill.fore_color.rgb = self._parse_color(bg["content"], self.slide_bg_rgb)
+                self.slide_bg_rgb = fill.fore_color.rgb
             elif bg.get("type") == "image":
                 img_stream = self._get_image_stream(bg["content"])
                 if img_stream:
                     slide.shapes.add_picture(img_stream, 0, 0, width=self.prs.slide_width, height=self.prs.slide_height)
         elif slide_data.get("backgroundColor"):
-            fill = slide.background.fill
-            fill.solid()
-            fill.fore_color.rgb = self._parse_color(slide_data.get("backgroundColor"), DesignSystem.BG_COLOR)
+            fill.fore_color.rgb = self._parse_color(slide_data.get("backgroundColor"), self.slide_bg_rgb)
+            self.slide_bg_rgb = fill.fore_color.rgb
         
         if slide_data.get("notes"):
             slide.notes_slide.notes_text_frame.text = str(slide_data.get("notes") or "")
 
         # 2. Elements
-        elements = slide_data.get("elements", [])
+        elements = [*self._build_master_elements(slide_data), *slide_data.get("elements", [])]
         # Sort by zIndex
         sorted_elements = sorted(elements, key=lambda e: e.get("styles", {}).get("zIndex", 0))
         
         for el in sorted_elements:
             self._add_element(slide, el)
+
+    def _master_config(self, master_id: str) -> Optional[dict[str, Any]]:
+        if master_id == "none":
+            return None
+        defaults = {
+            "content": {
+                "id": "content",
+                "enabled": True,
+                "footerText": "Presentation",
+                "logoText": "SlideForge",
+                "showSlideNumber": True,
+                "showFooter": True,
+                "showTopRule": True,
+            },
+            "title": {
+                "id": "title",
+                "enabled": True,
+                "footerText": "",
+                "logoText": "SlideForge",
+                "showSlideNumber": False,
+                "showFooter": False,
+                "showTopRule": True,
+            },
+            "section": {
+                "id": "section",
+                "enabled": True,
+                "footerText": "Section",
+                "logoText": "SlideForge",
+                "showSlideNumber": True,
+                "showFooter": True,
+                "showTopRule": False,
+            },
+        }
+        master_id = master_id if master_id in defaults else "content"
+        masters = self.state.get("masterSlides") if isinstance(self.state.get("masterSlides"), dict) else {}
+        config = {**defaults[master_id], **(masters.get(master_id) if isinstance(masters.get(master_id), dict) else {})}
+        return config if config.get("enabled", True) else None
+
+    def _master_shape(self, x: float, y: float, w: float, h: float, color: str, *, opacity: Optional[str] = None, border: Optional[str] = None, radius: str = "0px") -> dict[str, Any]:
+        return {
+            "type": "shape",
+            "shapeType": "rectangle",
+            "x": x,
+            "y": y,
+            "width": f"{w}px",
+            "height": f"{h}px",
+            "styles": {
+                "backgroundColor": color,
+                "borderRadius": radius,
+                "zIndex": -20,
+                **({"opacity": opacity} if opacity is not None else {}),
+                **({"border": border} if border else {}),
+            },
+        }
+
+    def _master_text(self, x: float, y: float, w: float, text: str, styles: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "type": "text",
+            "x": x,
+            "y": y,
+            "width": f"{w}px",
+            "height": "28px",
+            "content": text,
+            "styles": {"zIndex": -19, "backgroundColor": "transparent", **styles},
+        }
+
+    def _build_master_elements(self, slide_data: dict[str, Any]) -> list[dict[str, Any]]:
+        master_id = str(slide_data.get("masterId") or "content")
+        config = self._master_config(master_id)
+        if not config:
+            return []
+        try:
+            slide_index = self.state.get("slides", []).index(slide_data)
+        except ValueError:
+            slide_index = 0
+        slide_number = str(slide_index + 1).zfill(2)
+        sx = self.base_w / 1024
+        sy = self.base_h / 768
+        text = self._rgb_to_hex(self.theme["text"])
+        muted = self._rgb_to_hex(self.theme["muted"])
+        accent = self._rgb_to_hex(self.theme["accent"])
+        accent2 = self._rgb_to_hex(self.theme["accent2"])
+        border = self._rgb_to_rgba(self.theme["muted"], 0.28)
+        surface = self._rgb_to_rgba(self.theme["text"], 0.06)
+        heading_font = "Aptos Display"
+        body_font = DesignSystem.DEFAULT_FONT
+
+        def sc(el: dict[str, Any]) -> dict[str, Any]:
+            next_el = {**el, "x": round(float(el.get("x", 0)) * sx), "y": round(float(el.get("y", 0)) * sy)}
+            next_el["width"] = f"{max(1, self._parse_px(el.get('width'), 1) * sx)}px"
+            next_el["height"] = f"{max(1, self._parse_px(el.get('height'), 1) * sy)}px"
+            styles = {**next_el.get("styles", {})}
+            if styles.get("fontSize"):
+                styles["fontSize"] = f"{max(1, self._parse_px(styles.get('fontSize'), 1) * min(sx, sy))}px"
+            next_el["styles"] = styles
+            return next_el
+
+        elements: list[dict[str, Any]] = []
+        if master_id == "title":
+            if config.get("showTopRule", True):
+                elements.append(self._master_shape(0, 0, 1024, 8, accent))
+            elements.append(self._master_shape(882, 48, 88, 88, accent2, opacity="0.18", radius="22px"))
+            elements.append(self._master_shape(930, 96, 40, 40, accent, opacity="0.82", radius="999px"))
+            if config.get("logoText"):
+                elements.append(self._master_text(64, 702, 420, str(config.get("logoText")), {
+                    "color": muted, "fontFamily": body_font, "fontSize": "12px", "fontWeight": "700",
+                }))
+        elif master_id == "section":
+            elements.append(self._master_shape(0, 0, 10, 768, accent))
+            elements.append(self._master_shape(24, 42, 92, 92, surface, border=f"1px solid {border}", radius="24px"))
+            elements.append(self._master_text(47, 67, 60, slide_number, {
+                "color": accent, "fontFamily": heading_font, "fontSize": "34px", "fontWeight": "800", "textAlign": "center",
+            }))
+        else:
+            if config.get("showTopRule", True):
+                elements.append(self._master_shape(0, 0, 1024, 5, accent))
+            elements.append(self._master_shape(52, 712, 920, 1, border))
+
+        if config.get("showFooter", True):
+            if config.get("logoText"):
+                elements.append(self._master_text(54, 724, 145, str(config.get("logoText")), {
+                    "color": text, "fontFamily": body_font, "fontSize": "11px", "fontWeight": "800",
+                }))
+            if config.get("footerText"):
+                elements.append(self._master_text(224, 724, 520, str(config.get("footerText")), {
+                    "color": muted, "fontFamily": body_font, "fontSize": "11px", "fontWeight": "600",
+                }))
+        if config.get("showSlideNumber", True):
+            elements.append(self._master_text(918, 724, 54, slide_number, {
+                "color": muted, "fontFamily": body_font, "fontSize": "11px", "fontWeight": "800", "textAlign": "right",
+            }))
+        return [sc(el) for el in elements]
+
+    def _rgb_to_hex(self, color: RGBColor) -> str:
+        return f"#{color[0]:02X}{color[1]:02X}{color[2]:02X}"
+
+    def _rgb_to_rgba(self, color: RGBColor, alpha: float) -> str:
+        return f"rgba({color[0]},{color[1]},{color[2]},{alpha})"
 
     def _add_element(self, slide: Any, el: Dict[str, Any]):
         try:
@@ -348,6 +682,11 @@ class PPTXExporter:
         
         # Create textbox
         shape = slide.shapes.add_textbox(x, y, w, h)
+        if styles.get("backgroundColor") and not self._is_transparent(styles.get("backgroundColor")):
+            self._apply_fill(shape, styles.get("backgroundColor"), self.slide_bg_rgb)
+        else:
+            shape.fill.background()
+        self._apply_line(shape, styles, self.theme["accent"])
         tf = shape.text_frame
         tf.word_wrap = True
         tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
@@ -359,6 +698,7 @@ class PPTXExporter:
                 p = tf.paragraphs[0] if idx == 0 else tf.add_paragraph()
                 p.level = max(0, min(8, int(item.get("level", 0) or 0)))
                 p.alignment = self._paragraph_alignment(styles)
+                self._set_paragraph_bullet(p)
                 raw = item.get("html") if isinstance(item, dict) and item.get("html") is not None else item.get("text", "")
                 self._append_runs_to_paragraph(p, html_to_text_runs(raw), styles)
         else:
@@ -427,23 +767,8 @@ class PPTXExporter:
         shape = slide.shapes.add_shape(mso_type, x, y, w, h)
         
         styles = el.get("styles", {})
-        bg_color = self._parse_color(styles.get("backgroundColor"), DesignSystem.ACCENT_COLOR)
-        
-        shape.fill.solid()
-        shape.fill.fore_color.rgb = bg_color
-        
-        # Border
-        border = styles.get("border")
-        if border:
-            # Simplified border parser (e.g., "2px solid #000")
-            match = re.search(r"(\d+)px", border)
-            if match:
-                shape.line.width = Pt(int(match.group(1)))
-            color_match = re.search(r"#[0-9a-fA-F]{3,6}", border)
-            if color_match:
-                shape.line.color.rgb = self._parse_color(color_match.group(0))
-        else:
-            shape.line.fill.background()
+        self._apply_fill(shape, styles.get("backgroundColor"), self.theme["accent"])
+        self._apply_line(shape, styles, self.theme["accent"])
 
     def _add_table_element(self, slide: Any, el: Dict[str, Any], x: Inches, y: Inches, w: Inches, h: Inches):
         table_data = el.get("tableData") or {}
@@ -469,31 +794,34 @@ class PPTXExporter:
                 cell = table.cell(row_idx, col_idx)
                 raw_cell = cells[row_idx][col_idx] if row_idx < len(cells) and isinstance(cells[row_idx], list) and col_idx < len(cells[row_idx]) else {}
                 text = raw_cell.get("text", "") if isinstance(raw_cell, dict) else str(raw_cell or "")
+                cell_styles = raw_cell.get("styles", {}) if isinstance(raw_cell, dict) and isinstance(raw_cell.get("styles"), dict) else {}
                 cell.text = str(text)
-                fill_color = (
-                    table_data.get("headerFill", "#e2e8f0")
-                    if row_idx == 0 and header_row
-                    else table_data.get("altFill", "#f8fafc") if table_data.get("zebra") and row_idx % 2 == 0 else table_data.get("bodyFill", "#ffffff")
-                )
+                if row_idx == 0 and header_row:
+                    fill_color = cell_styles.get("backgroundColor") or table_data.get("headerFill") or "#e2e8f0"
+                elif table_data.get("zebra") and row_idx % 2 == 0:
+                    fill_color = cell_styles.get("backgroundColor") or table_data.get("altFill") or "#f8fafc"
+                else:
+                    fill_color = cell_styles.get("backgroundColor") or table_data.get("bodyFill") or "#ffffff"
                 cell.fill.solid()
-                cell.fill.fore_color.rgb = self._parse_color(fill_color, RGBColor(255, 255, 255))
+                cell.fill.fore_color.rgb = self._parse_color(fill_color, self.slide_bg_rgb)
                 for paragraph in cell.text_frame.paragraphs:
-                    paragraph.alignment = self._paragraph_alignment({"textAlign": table_data.get("textAlign", "left")})
+                    paragraph.alignment = self._paragraph_alignment({"textAlign": cell_styles.get("textAlign") or table_data.get("textAlign", "left")})
                     for run in paragraph.runs:
                         self._set_text_common(
                             run,
                             {
-                                "fontSize": font_size,
-                                "fontFamily": table_data.get("fontFamily", DesignSystem.DEFAULT_FONT),
-                                "fontWeight": "700" if row_idx == 0 and header_row else table_data.get("fontWeight", "400"),
-                                "color": table_data.get("headerTextColor" if row_idx == 0 and header_row else "textColor", "#172033"),
+                                "fontSize": cell_styles.get("fontSize") or font_size,
+                                "fontFamily": cell_styles.get("fontFamily") or table_data.get("fontFamily", DesignSystem.DEFAULT_FONT),
+                                "fontWeight": cell_styles.get("fontWeight") or ("700" if row_idx == 0 and header_row else table_data.get("fontWeight", "400")),
+                                "fontStyle": cell_styles.get("fontStyle") or table_data.get("fontStyle"),
+                                "color": cell_styles.get("color") or table_data.get("headerTextColor" if row_idx == 0 and header_row else "textColor") or ("#ffffff" if row_idx == 0 and header_row else None),
                             },
                         )
     def _add_connector_element(self, slide: Any, el: Dict[str, Any], x: Inches, y: Inches, w: Inches, h: Inches):
         styles = el.get("styles", {})
         connector = slide.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, x, y, x + w, y + h)
-        connector.line.color.rgb = self._parse_color(styles.get("color") or styles.get("borderColor"), DesignSystem.ACCENT_COLOR)
-        connector.line.width = Pt(float(styles.get("strokeWidth") or styles.get("borderWidth") or 2))
+        connector.line.color.rgb = self._parse_color(styles.get("color") or styles.get("borderColor"), self.theme["accent"])
+        connector.line.width = Pt(float(self._parse_px(styles.get("strokeWidth") or styles.get("borderWidth"), 2)))
 
     def _add_placeholder_element(self, slide: Any, el: Dict[str, Any], x: Inches, y: Inches, w: Inches, h: Inches):
         label_by_type = {
@@ -508,8 +836,8 @@ class PPTXExporter:
         label = label_by_type.get(el.get("type"), "Unsupported content")
         shape = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x, y, w, h)
         shape.fill.solid()
-        shape.fill.fore_color.rgb = RGBColor(241, 245, 249)
-        shape.line.color.rgb = RGBColor(148, 163, 184)
+        shape.fill.fore_color.rgb = self._parse_color("rgba(148, 163, 184, 0.18)", self.theme["muted"])
+        shape.line.color.rgb = self.theme["muted"]
         tf = shape.text_frame
         tf.text = f"{label} placeholder"
         paragraph = tf.paragraphs[0]
@@ -520,4 +848,4 @@ class PPTXExporter:
             run = paragraph.add_run()
             run.text = f"{label} placeholder"
         run.font.size = Pt(14)
-        run.font.color.rgb = RGBColor(71, 85, 105)
+        run.font.color.rgb = self.theme["muted"]

@@ -132,7 +132,7 @@ function getActiveSlideIndex() {
 function ensureActiveSlideSync() {
     const idx = getActiveSlideIndex();
     if (idx !== currentSlideIndex) setCurrentSlideIndex(idx);
-    if (!state.slides[idx]) state.slides[idx] = { id: generateId("slide"), layoutId: "blank-titled", notes: "", elements: [] };
+    if (!state.slides[idx]) state.slides[idx] = { id: generateId("slide"), layoutId: "blank-titled", masterId: "content", notes: "", elements: [] };
     return idx;
 }
 
@@ -146,7 +146,7 @@ function _normalizeSlideIndex(index) {
 function addSlide(targetIndex = null) {
     const activeIndex = _normalizeSlideIndex(targetIndex) ?? ensureActiveSlideSync();
     saveStateToUndo();
-    state.slides.splice(activeIndex + 1, 0, { id: generateId("slide"), layoutId: "blank-titled", notes: "", elements: [] });
+    state.slides.splice(activeIndex + 1, 0, { id: generateId("slide"), layoutId: "blank-titled", masterId: "content", notes: "", elements: [] });
     setCurrentSlideIndex(activeIndex + 1);
     renderSlidesFromState();
     Reveal.slide(activeIndex + 1);
@@ -3573,11 +3573,30 @@ function _resetAnimatedEntry(entry) {
 }
 
 function _syncPresenterPayload() {
-    if (!document.body.classList.contains("play-mode-active")) return;
     const slideConfig = getPresentationPageSetupConfig();
-    const currentSection = document.getElementById(state.slides?.[currentSlideIndex]?.id || "");
+    const buildPresenterSection = slide => {
+        if (!slide || typeof createElementNode !== "function") return null;
+        const section = document.createElement("section");
+        section.id = slide.id || generateId("presenter-slide");
+        section.className = "presentation-slide present";
+        section.style.width = `${Number(slideConfig.width) || 1024}px`;
+        section.style.height = `${Number(slideConfig.height) || 768}px`;
+        const theme = typeof getPresentationTheme === "function" ? getPresentationTheme() : null;
+        if (theme) {
+            section.style.color = theme.defaultTextColor;
+            section.style.fontFamily = theme.bodyFont;
+        }
+        const bgNode = typeof createSlideBackgroundNode === "function" ? createSlideBackgroundNode(slide.background, { slideIndex: currentSlideIndex }) : null;
+        if (bgNode) section.appendChild(bgNode);
+        (slide.elements || []).forEach(element => section.appendChild(createElementNode(element, { slideIndex: currentSlideIndex })));
+        return section;
+    };
+    const currentSlide = state.slides?.[currentSlideIndex];
+    const liveCurrentSection = document.getElementById(currentSlide?.id || "");
+    const currentSection = liveCurrentSection || buildPresenterSection(currentSlide);
     const nextSlide = state.slides?.[currentSlideIndex + 1];
-    const nextSection = nextSlide ? document.getElementById(nextSlide.id) : null;
+    const liveNextSection = nextSlide ? document.getElementById(nextSlide.id) : null;
+    const nextSection = liveNextSection || buildPresenterSection(nextSlide);
     const payload = {
         type: "state",
         currentIndex: currentSlideIndex,
