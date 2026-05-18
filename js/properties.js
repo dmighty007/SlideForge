@@ -1,5 +1,3 @@
-
-
 function getCanvasScale() {
     return typeof Reveal !== "undefined" && typeof Reveal.getScale === "function" ? Reveal.getScale() || 1 : 1;
 }
@@ -10,11 +8,12 @@ function getActiveInlineTextContext(data = getSelectedElementData()) {
     if (!dom) return null;
     const editor = dom.querySelector(".text-element-content");
     if (!editor) return null;
-    
+
     // Check if the editor is in edit mode (either attribute or class based)
-    const isEditing = editor.contentEditable === "true" || 
-                      (dom.classList.contains("editing-text")) ||
-                      (typeof getActiveInlineEditor === "function" && editor === getActiveInlineEditor());
+    const isEditing =
+        editor.contentEditable === "true" ||
+        dom.classList.contains("editing-text") ||
+        (typeof getActiveInlineEditor === "function" && editor === getActiveInlineEditor());
 
     if (isEditing) {
         if (editor.contentEditable !== "true") {
@@ -42,7 +41,9 @@ function markTextElementStyleAsLocal(data, prop) {
     if (!["color"].includes(prop)) return;
     if (data.themeManaged === false) return;
     const theme = typeof getPresentationTheme === "function" ? getPresentationTheme() : null;
-    const currentColor = String(data.styles?.color || "").trim().toLowerCase();
+    const currentColor = String(data.styles?.color || "")
+        .trim()
+        .toLowerCase();
     const normalizedThemeColors = new Set(
         [
             theme?.defaultTextColor,
@@ -181,7 +182,10 @@ function syncTableDomSelection(tableId, selection = null) {
     dom.querySelectorAll(".table-element-cell").forEach(cell => {
         const row = Number(cell.dataset.row);
         const col = Number(cell.dataset.col);
-        cell.classList.toggle("is-active", selection?.type === "cell" && selection.row === row && selection.col === col);
+        cell.classList.toggle(
+            "is-active",
+            selection?.type === "cell" && selection.row === row && selection.col === col,
+        );
         cell.classList.toggle("is-row-selected", selection?.type === "row" && selection.row === row);
         cell.classList.toggle("is-col-selected", selection?.type === "col" && selection.col === col);
     });
@@ -189,7 +193,9 @@ function syncTableDomSelection(tableId, selection = null) {
 
 function clearTablePartSelections() {
     document
-        .querySelectorAll(".table-element-cell.is-active, .table-element-cell.is-row-selected, .table-element-cell.is-col-selected")
+        .querySelectorAll(
+            ".table-element-cell.is-active, .table-element-cell.is-row-selected, .table-element-cell.is-col-selected",
+        )
         .forEach(node => node.classList.remove("is-active", "is-row-selected", "is-col-selected"));
 }
 
@@ -376,7 +382,9 @@ function bindElementOutlineControls(data) {
 }
 
 function isControlBeingEdited(element) {
-    return Boolean(element && document.activeElement === element && ["INPUT", "SELECT", "TEXTAREA"].includes(element.tagName));
+    return Boolean(
+        element && document.activeElement === element && ["INPUT", "SELECT", "TEXTAREA"].includes(element.tagName),
+    );
 }
 
 function bindFontSizeFormattingControl(input) {
@@ -466,11 +474,11 @@ function applyTextFormatting(prop, value, options = {}) {
 
     const inlineContext = getActiveInlineTextContext(data);
     const isInlineEditingSession = !!document.querySelector(
-        ".canvas-element.editing-text .text-element-content[contenteditable='true']"
+        ".canvas-element.editing-text .text-element-content[contenteditable='true']",
     );
-    
+
     if (inlineContext) {
-        // We have an active editor context. 
+        // We have an active editor context.
         // We MUST restore the selection before checking or applying styles
         // because the focus is likely on the sidebar/color picker now.
         if (typeof restoreInlineSelection === "function") {
@@ -490,7 +498,7 @@ function applyTextFormatting(prop, value, options = {}) {
             options.inlineAction || prop,
             options.inlineValue !== undefined ? options.inlineValue : value,
         );
-        
+
         if (success) {
             const nextContent =
                 inlineContext.editor.dataset.structuredEdit === "true" &&
@@ -710,9 +718,11 @@ function syncPdfEmbedDom(data) {
     const badge = dom.querySelector(".pdf-embed-badge");
     if (badge) {
         const mode =
-            data.pdfEditorMode === "highlight" ? "PDF Highlight" :
-            data.pdfEditorMode === "note" ? "PDF Note" :
-            "PDF Navigate";
+            data.pdfEditorMode === "highlight"
+                ? "PDF Highlight"
+                : data.pdfEditorMode === "note"
+                  ? "PDF Note"
+                  : "PDF Navigate";
         badge.innerText = mode;
     }
 }
@@ -762,7 +772,10 @@ function buildTextContentFromSidebarValue(data, value) {
     if (listState.kind === "bulleted") {
         const populatedLines = normalizeBulletedListLines(lines);
         return {
-            content: buildStructuredBulletContent(populatedLines.length ? populatedLines : ["List item"], listState.style || "default"),
+            content: buildStructuredBulletContent(
+                populatedLines.length ? populatedLines : ["List item"],
+                listState.style || "default",
+            ),
             bulletStyle: listState.style || "default",
         };
     }
@@ -770,7 +783,10 @@ function buildTextContentFromSidebarValue(data, value) {
     if (listState.kind === "numbered") {
         const populatedLines = lines.map(line => line.trim()).filter(Boolean);
         return {
-            content: buildNumberedListMarkup(listState.style || "decimal", populatedLines.length ? populatedLines : ["List item"]),
+            content: buildNumberedListMarkup(
+                listState.style || "decimal",
+                populatedLines.length ? populatedLines : ["List item"],
+            ),
             bulletStyle: "",
         };
     }
@@ -848,7 +864,11 @@ function applyTextBulletState(data, nextKind, nextStyle = "default") {
 
     const dom = document.getElementById(data.id);
     const contentHost = dom?.querySelector(".text-element-content");
-    if (contentHost?.dataset?.structuredEdit === "true" && contentHost?.dataset?.structuredEditMode === "list" && isStructuredBulletContent(nextContent)) {
+    if (
+        contentHost?.dataset?.structuredEdit === "true" &&
+        contentHost?.dataset?.structuredEditMode === "list" &&
+        isStructuredBulletContent(nextContent)
+    ) {
         contentHost.dataset.structuredEditBulletStyle = nextBulletStyle || "default";
         contentHost.innerHTML = buildStructuredBulletEditorHtml(nextContent, nextBulletStyle || "default");
         contentHost.contentEditable = true;
@@ -977,9 +997,10 @@ function applyAnimationConfigToSelection(config, { assignSequentialOrder = false
     let nextOrder = 0;
     if (assignSequentialOrder) {
         const entries = getSlideAnimationEntries();
-        nextOrder = entries
-            .filter(entry => entry.animation.trigger === "on-click")
-            .reduce((maxOrder, entry) => Math.max(maxOrder, Number(entry.animation.order) || 0), -1) + 1;
+        nextOrder =
+            entries
+                .filter(entry => entry.animation.trigger === "on-click")
+                .reduce((maxOrder, entry) => Math.max(maxOrder, Number(entry.animation.order) || 0), -1) + 1;
     }
     state.selectedIds.forEach((id, offset) => {
         updateElementState(id, {
@@ -1024,7 +1045,10 @@ function _buildSlideWorkspacePanel(panel) {
                 <label class="text-xs font-bold text-slate-600 uppercase tracking-wide">Theme</label>
                 <select id="prop-global-theme" class="prop-select">
                     ${Object.entries(typeof PRESENTATION_THEMES !== "undefined" ? PRESENTATION_THEMES : {})
-                        .map(([themeId, theme]) => `<option value="${escapeHtml(themeId)}" ${state.presentationTheme === themeId ? "selected" : ""}>${escapeHtml(theme.label || themeId)}</option>`)
+                        .map(
+                            ([themeId, theme]) =>
+                                `<option value="${escapeHtml(themeId)}" ${state.presentationTheme === themeId ? "selected" : ""}>${escapeHtml(theme.label || themeId)}</option>`,
+                        )
                         .join("")}
                 </select>
             </div>
@@ -1042,7 +1066,10 @@ function _buildSlideWorkspacePanel(panel) {
 
     const layoutGrp = createGroup("Slide Layout");
     const presetOptions = Object.entries(window.SLIDE_PRESETS || {})
-        .map(([id, preset]) => `<option value="${id}" ${slide.layoutId === id ? "selected" : ""}>${preset.name}</option>`)
+        .map(
+            ([id, preset]) =>
+                `<option value="${id}" ${slide.layoutId === id ? "selected" : ""}>${preset.name}</option>`,
+        )
         .join("");
     layoutGrp.innerHTML += `
         <div class="space-y-2">
@@ -1056,7 +1083,8 @@ function _buildSlideWorkspacePanel(panel) {
     `;
     panel.appendChild(layoutGrp);
 
-    const masterId = typeof resolveSlideMasterId === "function" ? resolveSlideMasterId(slide) : slide.masterId || "content";
+    const masterId =
+        typeof resolveSlideMasterId === "function" ? resolveSlideMasterId(slide) : slide.masterId || "content";
     const masterConfig = state.masterSlides?.[masterId] || {};
     const masterOptions = Object.entries(
         typeof getMasterSlideOptions === "function"
@@ -1065,7 +1093,10 @@ function _buildSlideWorkspacePanel(panel) {
               ? MASTER_SLIDE_DEFINITIONS
               : {},
     )
-        .map(([id, master]) => `<option value="${escapeHtml(id)}" ${masterId === id ? "selected" : ""}>${escapeHtml(master.name || id)}</option>`)
+        .map(
+            ([id, master]) =>
+                `<option value="${escapeHtml(id)}" ${masterId === id ? "selected" : ""}>${escapeHtml(master.name || id)}</option>`,
+        )
         .join("");
     const masterGrp = createGroup("Master Slide");
     masterGrp.innerHTML += `
@@ -1156,10 +1187,34 @@ function _buildSlideWorkspacePanel(panel) {
         const bgUploadBtn = document.getElementById("prop-slide-bg-upload");
         const bgClearBtn = document.getElementById("prop-slide-bg-clear");
         const bgAdjustmentInputs = [
-            ["prop-slide-bg-opacity", "prop-slide-bg-opacity-label", "opacity", value => Math.max(0, Math.min(100, Number(value) || 0)) / 100, value => `${Math.round(value)}%`],
-            ["prop-slide-bg-blur", "prop-slide-bg-blur-label", "blur", value => Math.max(0, Math.min(40, Number(value) || 0)), value => `${Math.round(value)}px`],
-            ["prop-slide-bg-brightness", "prop-slide-bg-brightness-label", "brightness", value => Math.max(10, Math.min(200, Number(value) || 100)), value => `${Math.round(value)}%`],
-            ["prop-slide-bg-saturate", "prop-slide-bg-saturate-label", "saturate", value => Math.max(0, Math.min(250, Number(value) || 100)), value => `${Math.round(value)}%`],
+            [
+                "prop-slide-bg-opacity",
+                "prop-slide-bg-opacity-label",
+                "opacity",
+                value => Math.max(0, Math.min(100, Number(value) || 0)) / 100,
+                value => `${Math.round(value)}%`,
+            ],
+            [
+                "prop-slide-bg-blur",
+                "prop-slide-bg-blur-label",
+                "blur",
+                value => Math.max(0, Math.min(40, Number(value) || 0)),
+                value => `${Math.round(value)}px`,
+            ],
+            [
+                "prop-slide-bg-brightness",
+                "prop-slide-bg-brightness-label",
+                "brightness",
+                value => Math.max(10, Math.min(200, Number(value) || 100)),
+                value => `${Math.round(value)}%`,
+            ],
+            [
+                "prop-slide-bg-saturate",
+                "prop-slide-bg-saturate-label",
+                "saturate",
+                value => Math.max(0, Math.min(250, Number(value) || 100)),
+                value => `${Math.round(value)}%`,
+            ],
         ];
         const globalTheme = document.getElementById("prop-global-theme");
         const globalSize = document.getElementById("prop-global-size");
@@ -1237,7 +1292,9 @@ function _buildSlideWorkspacePanel(panel) {
                     const currentBackground = normalizeSlideBackground(state.slides[currentSlideIndex]?.background);
                     const nextBackground = { ...currentBackground, [key]: normalized };
                     bgNode.style.filter = `blur(${nextBackground.blur || 0}px) brightness(${nextBackground.brightness || 100}%) saturate(${nextBackground.saturate || 100}%)`;
-                    bgNode.style.transform = nextBackground.blur ? `scale(${1 + Math.min(40, nextBackground.blur) / 120})` : "";
+                    bgNode.style.transform = nextBackground.blur
+                        ? `scale(${1 + Math.min(40, nextBackground.blur) / 120})`
+                        : "";
                 }
             };
             input.onchange = e => {
@@ -1269,10 +1326,8 @@ function shiftTextBulletLevels(data, delta) {
     requestAnimationFrame(updateFloatingToolbars);
 }
 
-
-
 function updateFloatingToolbars() {
-    ['floating-text-toolbar', 'floating-shape-toolbar', 'floating-image-toolbar'].forEach(id => {
+    ["floating-text-toolbar", "floating-shape-toolbar", "floating-image-toolbar"].forEach(id => {
         const tb = document.getElementById(id);
         if (tb) tb.classList.add("hidden");
     });
@@ -1284,9 +1339,9 @@ function updateFloatingToolbars() {
     if (!dom) return;
 
     let toolbarId = null;
-    if (data.type === 'text') toolbarId = 'floating-text-toolbar';
-    else if (data.type === 'shape') toolbarId = 'floating-shape-toolbar';
-    else if (data.type === 'image') toolbarId = 'floating-image-toolbar';
+    if (data.type === "text") toolbarId = "floating-text-toolbar";
+    else if (data.type === "shape") toolbarId = "floating-shape-toolbar";
+    else if (data.type === "image") toolbarId = "floating-image-toolbar";
 
     if (!toolbarId) return;
 
@@ -1296,9 +1351,9 @@ function updateFloatingToolbars() {
     const rect = dom.getBoundingClientRect();
     positionFloatingToolbar(toolbar, rect);
 
-    if (data.type === 'text') _bindFloatingTextToolbar(data, toolbar);
-    else if (data.type === 'shape') _bindFloatingShapeToolbar(data, toolbar);
-    else if (data.type === 'image') _bindFloatingImageToolbar(data, toolbar);
+    if (data.type === "text") _bindFloatingTextToolbar(data, toolbar);
+    else if (data.type === "shape") _bindFloatingShapeToolbar(data, toolbar);
+    else if (data.type === "image") _bindFloatingImageToolbar(data, toolbar);
 }
 
 function positionFloatingToolbar(toolbar, targetRect) {
@@ -1323,17 +1378,10 @@ function positionFloatingToolbar(toolbar, targetRect) {
         ? null
         : document.getElementById("properties-panel")?.getBoundingClientRect();
 
-    const minTop = Math.max(
-        viewportPad,
-        appToolbarRect?.bottom || 0,
-        insertToolbarRect?.bottom || 0,
-    ) + 8;
+    const minTop = Math.max(viewportPad, appToolbarRect?.bottom || 0, insertToolbarRect?.bottom || 0) + 8;
     const maxTop = window.innerHeight - toolbarHeight - viewportPad;
     const minLeft = Math.max(viewportPad, (canvasRect?.left || 0) + 8);
-    const maxLeft = Math.max(
-        minLeft,
-        (propertiesRect?.left || window.innerWidth) - toolbarWidth - 8,
-    );
+    const maxLeft = Math.max(minLeft, (propertiesRect?.left || window.innerWidth) - toolbarWidth - 8);
 
     const centeredLeft = targetRect.left + targetRect.width / 2 - toolbarWidth / 2;
     const left = Math.max(minLeft, Math.min(maxLeft, centeredLeft));
@@ -1372,7 +1420,7 @@ function showImageHoverToolbar(id) {
     if (!data || data.type !== "image" || data.hidden || !dom || !toolbar) return;
 
     clearTimeout(_imageHoverToolbarHideTimer);
-    ['floating-text-toolbar', 'floating-shape-toolbar'].forEach(toolbarId => {
+    ["floating-text-toolbar", "floating-shape-toolbar"].forEach(toolbarId => {
         document.getElementById(toolbarId)?.classList.add("hidden");
     });
 
@@ -1466,7 +1514,10 @@ function _bindFloatingTextToolbar(data, toolbar) {
         if (!isControlBeingEdited(fontSelect)) {
             fontSelect.value = data.styles.fontFamily || "Inter, sans-serif";
         }
-        setTextControlActive(fontSelect, normalizeFontFamily(fontSelect.value) !== normalizeFontFamily(getThemeTextStyleDefaults().fontFamily));
+        setTextControlActive(
+            fontSelect,
+            normalizeFontFamily(fontSelect.value) !== normalizeFontFamily(getThemeTextStyleDefaults().fontFamily),
+        );
     }
     if (sizeInput) {
         bindFontSizeFormattingControl(sizeInput);
@@ -1474,7 +1525,10 @@ function _bindFloatingTextToolbar(data, toolbar) {
             sizeInput.value = parseInt(data.styles.fontSize) || 32;
             sizeInput.dataset.lastCommittedValue = _normalizePx(sizeInput.value, "32px");
         }
-        setTextControlActive(sizeInput, `${parseInt(data.styles.fontSize) || 32}px` !== getThemeTextStyleDefaults().fontSize);
+        setTextControlActive(
+            sizeInput,
+            `${parseInt(data.styles.fontSize) || 32}px` !== getThemeTextStyleDefaults().fontSize,
+        );
     }
     if (colorInput) {
         bindInlineFormattingGuard(colorInput);
@@ -1496,7 +1550,11 @@ function _bindFloatingTextToolbar(data, toolbar) {
         if (!isControlBeingEdited(colorInput)) {
             colorInput.value = _normalizeColorForInput(data.styles.color, "#000000");
         }
-        setTextControlActive(colorInput, _normalizeColorForInput(data.styles.color, "#000000").toLowerCase() !== _normalizeColorForInput(getThemeTextStyleDefaults().color, "#000000").toLowerCase());
+        setTextControlActive(
+            colorInput,
+            _normalizeColorForInput(data.styles.color, "#000000").toLowerCase() !==
+                _normalizeColorForInput(getThemeTextStyleDefaults().color, "#000000").toLowerCase(),
+        );
     }
 
     const paletteContainer = document.getElementById("floating-text-palette");
@@ -1504,7 +1562,8 @@ function _bindFloatingTextToolbar(data, toolbar) {
         paletteContainer.innerHTML = "";
         (state.colorPalette || []).forEach(color => {
             const swatch = document.createElement("button");
-            swatch.className = "w-4 h-4 rounded-full border border-slate-200 hover:scale-110 transition-transform shadow-sm";
+            swatch.className =
+                "w-4 h-4 rounded-full border border-slate-200 hover:scale-110 transition-transform shadow-sm";
             swatch.style.backgroundColor = color;
             swatch.title = color;
             bindInlineFormattingGuard(swatch);
@@ -1558,13 +1617,15 @@ function _bindFloatingShapeToolbar(data, toolbar) {
 
     if (borderInput) {
         if (!isControlBeingEdited(borderInput)) {
-            const borderMatches = (data.styles.border || "").match(/solid\s+(#[0-9a-fA-F]{3,6}|rgb\([^)]+\)|[a-zA-Z]+)/);
+            const borderMatches = (data.styles.border || "").match(
+                /solid\s+(#[0-9a-fA-F]{3,6}|rgb\([^)]+\)|[a-zA-Z]+)/,
+            );
             borderInput.value = borderMatches ? _normalizeColorForInput(borderMatches[1], "#000000") : "#000000";
         }
         borderInput.oninput = e => {
             const currentBorder = data.styles.border || "0px solid #000000";
             const widthMatch = currentBorder.match(/^(\d+)px/);
-            const w = widthMatch ? widthMatch[1] : (data.styles.borderWidth || "1");
+            const w = widthMatch ? widthMatch[1] : data.styles.borderWidth || "1";
             updateElementState(data.id, { styles: { border: `${Math.max(1, w)}px solid ${e.target.value}` } });
         };
         borderInput.onchange = () => {
@@ -1577,7 +1638,7 @@ function _bindFloatingShapeToolbar(data, toolbar) {
         if (!isControlBeingEdited(widthSelect)) {
             const currentBorder = data.styles.border || "0px solid #000000";
             const widthMatch = currentBorder.match(/^(\d+)px/);
-            const w = widthMatch ? widthMatch[1] : (data.styles.border ? "1" : "0");
+            const w = widthMatch ? widthMatch[1] : data.styles.border ? "1" : "0";
             widthSelect.value = w;
         }
         widthSelect.onchange = e => {
@@ -1585,7 +1646,9 @@ function _bindFloatingShapeToolbar(data, toolbar) {
             if (w === 0) {
                 updateElementState(data.id, { styles: { border: "none" } });
             } else {
-                const borderMatches = (data.styles.border || "").match(/solid\s+(#[0-9a-fA-F]{3,6}|rgb\([^)]+\)|[a-zA-Z]+)/);
+                const borderMatches = (data.styles.border || "").match(
+                    /solid\s+(#[0-9a-fA-F]{3,6}|rgb\([^)]+\)|[a-zA-Z]+)/,
+                );
                 const color = borderMatches ? borderMatches[1] : "#000000";
                 updateElementState(data.id, { styles: { border: `${w}px solid ${color}` } });
             }
@@ -1637,7 +1700,6 @@ function _bindFloatingImageToolbar(data, toolbar) {
     }
 }
 
-
 function createGroup(title) {
     const wrap = document.createElement("div");
     wrap.className = "prop-group";
@@ -1664,13 +1726,17 @@ function createGroup(title) {
 
     // We override appendChild and innerHTML on 'wrap' so existing code seamlessly adds to 'content' instead of 'wrap'
     wrap._originalAppendChild = wrap.appendChild;
-    wrap.appendChild = function(node) {
+    wrap.appendChild = function (node) {
         if (node === header || node === content) return wrap._originalAppendChild(node);
         return content.appendChild(node);
     };
-    Object.defineProperty(wrap, 'innerHTML', {
-        get() { return content.innerHTML; },
-        set(html) { content.innerHTML = html; }
+    Object.defineProperty(wrap, "innerHTML", {
+        get() {
+            return content.innerHTML;
+        },
+        set(html) {
+            content.innerHTML = html;
+        },
     });
 
     return wrap;
@@ -1732,7 +1798,9 @@ function buildPropertiesPanel() {
             <h3 class="text-xs font-bold text-slate-700 uppercase tracking-widest">${state.selectedIds.length} Object${isSingle ? "" : "s"}</h3>
             ${!isSingle ? `<span class="text-[10px] text-accent font-bold px-2 py-0.5 rounded bg-accent/10 border border-accent/20">${isGrouped ? "GROUPED" : "MULTIPLE"}</span>` : ""}
         </div>
-        ${!isSingle ? `
+        ${
+            !isSingle
+                ? `
         <div class="grid grid-cols-6 gap-1 mb-3 bg-slate-50 p-1.5 rounded-lg border border-slate-200">
             <button class="prop-align-btn" onclick="alignSelection('left')" title="Align Left"><i class="fa-solid fa-align-left text-xs"></i></button>
             <button class="prop-align-btn" onclick="alignSelection('center')" title="Align Center"><i class="fa-solid fa-align-center text-xs"></i></button>
@@ -1741,7 +1809,9 @@ function buildPropertiesPanel() {
             <button class="prop-align-btn" onclick="alignSelection('middle')" title="Align Middle"><i class="fa-solid fa-align-center rotate-90 text-xs"></i></button>
             <button class="prop-align-btn" onclick="alignSelection('bottom')" title="Align Bottom"><i class="fa-solid fa-align-right rotate-90 text-xs"></i></button>
         </div>
-        ` : ""}
+        `
+                : ""
+        }
         <div class="flex gap-2">
             <button id="prop-group" class="prop-action-btn prop-action-primary flex-1">
                 <i class="fa-solid fa-object-group"></i> GROUP
@@ -1754,23 +1824,26 @@ function buildPropertiesPanel() {
     panel.appendChild(selGrp);
 
     const data = getSelectedElementData();
-    
+
     // ── LAYERS & APPEARANCE (Common to all) ──────────────────────────
     if (data) {
         const layerGrp = createGroup("Layers & Appearance");
-        
+
         // Flex row for Background and Opacity Label
         const bgOpacityRow = document.createElement("div");
         bgOpacityRow.className = "flex items-end gap-3";
-        
+
         // Background Color (if not image)
         if (data.type !== "image") {
-            const bgField = createField("Fill", `<input type="color" id="prop-bg" class="w-12 h-7 cursor-pointer rounded-md p-0" value="${_normalizeColorForInput(data.styles.backgroundColor, "#000000")}">`);
+            const bgField = createField(
+                "Fill",
+                `<input type="color" id="prop-bg" class="w-12 h-7 cursor-pointer rounded-md p-0" value="${_normalizeColorForInput(data.styles.backgroundColor, "#000000")}">`,
+            );
             bgOpacityRow.appendChild(bgField);
         }
 
         // Opacity Slider (More compact)
-        const opacityVal = Math.round((parseFloat(data.styles.opacity ?? 1)) * 100);
+        const opacityVal = Math.round(parseFloat(data.styles.opacity ?? 1) * 100);
         const opField = document.createElement("div");
         opField.className = "flex-1 flex flex-col gap-1";
         opField.innerHTML = `
@@ -1828,8 +1901,12 @@ function buildPropertiesPanel() {
 
         if (textElements.length) {
             const firstAlign = textElements[0]?.styles?.textAlign || "left";
-            const sharedAlign = textElements.every(e => (e.styles?.textAlign || "left") === firstAlign) ? firstAlign : "";
-            const textAlignGrp = createGroup(textElements.length === elements.length ? "Text Alignment" : "Text in Group");
+            const sharedAlign = textElements.every(e => (e.styles?.textAlign || "left") === firstAlign)
+                ? firstAlign
+                : "";
+            const textAlignGrp = createGroup(
+                textElements.length === elements.length ? "Text Alignment" : "Text in Group",
+            );
             textAlignGrp.appendChild(
                 createField(
                     "Alignment",
@@ -1914,14 +1991,17 @@ function buildPropertiesPanel() {
         if (data.type === "table") {
             const tableData = normalizeTableData(data.tableData);
             const tableSelection = tableData.selection;
-            const selectedRow = tableSelection?.type === "row" || tableSelection?.type === "cell" ? tableSelection.row : null;
-            const selectedCol = tableSelection?.type === "col" || tableSelection?.type === "cell" ? tableSelection.col : null;
+            const selectedRow =
+                tableSelection?.type === "row" || tableSelection?.type === "cell" ? tableSelection.row : null;
+            const selectedCol =
+                tableSelection?.type === "col" || tableSelection?.type === "cell" ? tableSelection.col : null;
             const selectedCell =
                 tableSelection?.type === "cell" && selectedRow !== null && selectedCol !== null
                     ? tableData.cells[selectedRow]?.[selectedCol]
                     : null;
             const selectedStyles = selectedCell?.styles || {};
-            const effectiveTableFontFamily = selectedStyles.fontFamily || tableData.fontFamily || '"Manrope", sans-serif';
+            const effectiveTableFontFamily =
+                selectedStyles.fontFamily || tableData.fontFamily || '"Manrope", sans-serif';
             const effectiveTableFontSize = selectedStyles.fontSize || tableData.fontSize || "16px";
             const effectiveTableTextColor = selectedStyles.color || tableData.textColor || "#172033";
             const effectiveTableFontWeight = selectedStyles.fontWeight || tableData.fontWeight || "400";
@@ -2230,7 +2310,9 @@ function buildPropertiesPanel() {
             const pdfGrp = createGroup("PDF Embed");
             const hasLocalPdf =
                 typeof data.content === "string" &&
-                (data.content.startsWith("blob:") || data.content.startsWith("data:") || data.content.startsWith("/media/"));
+                (data.content.startsWith("blob:") ||
+                    data.content.startsWith("data:") ||
+                    data.content.startsWith("/media/"));
             pdfGrp.innerHTML += `
                 <div class="flex flex-col gap-2 mb-3">
                     <input type="text" id="prop-pdf-url" class="w-full text-xs" value="${hasLocalPdf ? "Local PDF File" : data.content || ""}" placeholder="https://.../file.pdf" ${hasLocalPdf ? "disabled" : ""}>
@@ -2263,13 +2345,20 @@ function buildPropertiesPanel() {
         if (data.type === "molecule") {
             const moleculeGrp = createGroup("Molecule Viewer");
             const moleculeName = String(data.moleculeName || "Molecule").replace(/"/g, "&quot;");
-            const moleculeBackground = typeof normalizeMoleculeBackgroundColor === "function"
-                ? normalizeMoleculeBackgroundColor(data.styles?.backgroundColor || "#020617")
-                : (data.styles?.backgroundColor || "#020617");
+            const moleculeBackground =
+                typeof normalizeMoleculeBackgroundColor === "function"
+                    ? normalizeMoleculeBackgroundColor(data.styles?.backgroundColor || "#020617")
+                    : data.styles?.backgroundColor || "#020617";
             const moleculeBackgroundInput = _normalizeColorForInput(moleculeBackground, "#020617");
             const moleculeBackgroundTransparent = moleculeBackground === "transparent";
-            const moleculeLayers = (Array.isArray(data.moleculeRepresentationLayers) ? data.moleculeRepresentationLayers : [])
-                .map(layer => typeof normalizeMoleculeRepresentationLayer === "function" ? normalizeMoleculeRepresentationLayer(layer) : layer)
+            const moleculeLayers = (
+                Array.isArray(data.moleculeRepresentationLayers) ? data.moleculeRepresentationLayers : []
+            )
+                .map(layer =>
+                    typeof normalizeMoleculeRepresentationLayer === "function"
+                        ? normalizeMoleculeRepresentationLayer(layer)
+                        : layer,
+                )
                 .slice(0, 12);
             moleculeGrp.innerHTML += `
                 <div class="flex flex-col gap-2 mb-3">
@@ -2367,17 +2456,27 @@ function buildPropertiesPanel() {
                         <button id="prop-molecule-clear-layers" class="text-[11px] text-gray-400 hover:text-red-400" ${moleculeLayers.length ? "" : "disabled"}>Clear</button>
                     </div>
                     <div id="prop-molecule-layer-list" class="space-y-1">
-                        ${moleculeLayers.length ? moleculeLayers.map(layer => {
-                            const layerLabel = typeof escapeHtml === "function" ? escapeHtml(layer.label || "Layer") : String(layer.label || "Layer");
-                            const layerTitle = String(layer.label || "Layer").replace(/"/g, "&quot;");
-                            return `
+                        ${
+                            moleculeLayers.length
+                                ? moleculeLayers
+                                      .map(layer => {
+                                          const layerLabel =
+                                              typeof escapeHtml === "function"
+                                                  ? escapeHtml(layer.label || "Layer")
+                                                  : String(layer.label || "Layer");
+                                          const layerTitle = String(layer.label || "Layer").replace(/"/g, "&quot;");
+                                          return `
                             <div class="flex items-center gap-2 rounded border border-gray-700 bg-gray-900 px-2 py-1.5">
                                 <span class="w-2 h-2 rounded-full bg-accent shrink-0"></span>
                                 <span class="min-w-0 flex-1 truncate text-[11px] text-gray-300" title="${layerTitle}">${layerLabel}</span>
                                 <button class="prop-molecule-edit-layer text-[12px] text-gray-300 hover:text-accent" data-layer-id="${layer.id}">Edit</button>
                                 <button class="prop-molecule-remove-layer text-[12px] text-red-400 hover:text-red-300" data-layer-id="${layer.id}">×</button>
                             </div>
-                        `; }).join("") : `<div class="text-[11px] text-gray-500 italic">No saved layers</div>`}
+                        `;
+                                      })
+                                      .join("")
+                                : `<div class="text-[11px] text-gray-500 italic">No saved layers</div>`
+                        }
                     </div>
                 </div>
                 <p class="text-[11px] text-gray-500 leading-relaxed mt-3">
@@ -2422,9 +2521,11 @@ function buildPropertiesPanel() {
                         <div class="flex flex-col gap-1">
                             <label class="text-xs text-slate-600 uppercase font-semibold tracking-wider">Effect</label>
                             <select id="prop-anim-effect" class="w-full text-xs">
-                                ${PRESENTATION_ANIMATION_EFFECTS.map(effect => `
+                                ${PRESENTATION_ANIMATION_EFFECTS.map(
+                                    effect => `
                                     <option value="${effect}" ${(animation?.effect || "fade-in") === effect ? "selected" : ""}>${describeAnimationEffect(effect)}</option>
-                                `).join("")}
+                                `,
+                                ).join("")}
                             </select>
                         </div>
                         <div class="flex flex-col gap-1">
@@ -2460,6 +2561,13 @@ function buildPropertiesPanel() {
                 </div>
             `;
             panel.appendChild(animGrp);
+
+            // Modern animation inspector panel
+            if (typeof buildAnimationInspectorPanel === "function") {
+                const modernAnimPanel = document.createElement("div");
+                modernAnimPanel.innerHTML = buildAnimationInspectorPanel();
+                panel.appendChild(modernAnimPanel.firstElementChild);
+            }
         }
     }
 
@@ -2587,7 +2695,8 @@ function buildPropertiesPanel() {
         if (multiAnimApply) {
             multiAnimApply.onclick = () => {
                 const effect = document.getElementById("prop-multi-anim-effect")?.value || "fade-in";
-                const trigger = document.getElementById("prop-multi-anim-trigger")?.value === "on-click" ? "on-click" : "on-slide";
+                const trigger =
+                    document.getElementById("prop-multi-anim-trigger")?.value === "on-click" ? "on-click" : "on-slide";
                 const durationMs = parseInt(document.getElementById("prop-multi-anim-duration")?.value, 10) || 800;
                 const delayMs = parseInt(document.getElementById("prop-multi-anim-delay")?.value, 10) || 0;
                 const easing = document.getElementById("prop-multi-anim-easing")?.value || "ease-out";
@@ -2652,7 +2761,7 @@ function buildPropertiesPanel() {
             bindElementOutlineControls(data);
 
             if (data.type === "text") {
-                // Listeners are now handled within buildTextPanel(panel, data) 
+                // Listeners are now handled within buildTextPanel(panel, data)
                 // in js/properties/panels/text.js
             }
 
@@ -2756,7 +2865,10 @@ function buildPropertiesPanel() {
                 if (rowHeightInput) {
                     const commit = () => {
                         const tableData = normalizeTableData(data.tableData);
-                        const row = tableData.selection?.type === "row" || tableData.selection?.type === "cell" ? tableData.selection.row : null;
+                        const row =
+                            tableData.selection?.type === "row" || tableData.selection?.type === "cell"
+                                ? tableData.selection.row
+                                : null;
                         if (row === null || row === undefined) return;
                         mutateSelectedTableData(nextTableData => {
                             nextTableData.rowHeights[row] = Math.max(24, Number(rowHeightInput.value) || 24);
@@ -2771,7 +2883,10 @@ function buildPropertiesPanel() {
                 if (colWidthInput) {
                     const commit = () => {
                         const tableData = normalizeTableData(data.tableData);
-                        const col = tableData.selection?.type === "col" || tableData.selection?.type === "cell" ? tableData.selection.col : null;
+                        const col =
+                            tableData.selection?.type === "col" || tableData.selection?.type === "cell"
+                                ? tableData.selection.col
+                                : null;
                         if (col === null || col === undefined) return;
                         mutateSelectedTableData(nextTableData => {
                             nextTableData.colWidths[col] = Math.max(36, Number(colWidthInput.value) || 36);
@@ -2832,7 +2947,8 @@ function buildPropertiesPanel() {
                 }
                 const tableCellTextColor = document.getElementById("prop-table-cell-text-color");
                 if (tableCellTextColor) {
-                    tableCellTextColor.oninput = e => mutateTableTextStyle("color", _normalizeColorForInput(e.target.value, "#172033"));
+                    tableCellTextColor.oninput = e =>
+                        mutateTableTextStyle("color", _normalizeColorForInput(e.target.value, "#172033"));
                 }
                 const tableTextAlign = document.getElementById("prop-table-text-align");
                 if (tableTextAlign) {
@@ -2842,7 +2958,9 @@ function buildPropertiesPanel() {
                     const current = normalizeTableData(data.tableData);
                     const selection = current.selection;
                     const selected =
-                        selection?.type === "cell" ? current.cells[selection.row]?.[selection.col]?.styles?.fontWeight : null;
+                        selection?.type === "cell"
+                            ? current.cells[selection.row]?.[selection.col]?.styles?.fontWeight
+                            : null;
                     const effective = selected || current.fontWeight || "400";
                     mutateTableTextStyle("fontWeight", effective === "700" || effective === "bold" ? "400" : "700");
                 });
@@ -2850,7 +2968,9 @@ function buildPropertiesPanel() {
                     const current = normalizeTableData(data.tableData);
                     const selection = current.selection;
                     const selected =
-                        selection?.type === "cell" ? current.cells[selection.row]?.[selection.col]?.styles?.fontStyle : null;
+                        selection?.type === "cell"
+                            ? current.cells[selection.row]?.[selection.col]?.styles?.fontStyle
+                            : null;
                     const effective = selected || current.fontStyle || "normal";
                     mutateTableTextStyle("fontStyle", effective === "italic" ? "normal" : "italic");
                 });
@@ -2900,18 +3020,29 @@ function buildPropertiesPanel() {
                 const bindTableValue = (id, key, normalize = value => value) => {
                     const input = document.getElementById(id);
                     if (!input) return;
-                    const commit = () => mutateSelectedTableData(tableData => { tableData[key] = normalize(input.value); });
+                    const commit = () =>
+                        mutateSelectedTableData(tableData => {
+                            tableData[key] = normalize(input.value);
+                        });
                     input.addEventListener("change", commit);
                     input.addEventListener("blur", commit);
                 };
-                bindTableValue("prop-table-border-color", "borderColor", value => _normalizeColorForInput(value, "#cbd5e1"));
+                bindTableValue("prop-table-border-color", "borderColor", value =>
+                    _normalizeColorForInput(value, "#cbd5e1"),
+                );
                 bindTableValue("prop-table-border-width", "borderWidth", value => Math.max(0, Number(value) || 0));
-                bindTableValue("prop-table-header-fill", "headerFill", value => _normalizeColorForInput(value, "#e2e8f0"));
+                bindTableValue("prop-table-header-fill", "headerFill", value =>
+                    _normalizeColorForInput(value, "#e2e8f0"),
+                );
                 bindTableValue("prop-table-body-fill", "bodyFill", value => _normalizeColorForInput(value, "#ffffff"));
                 bindTableValue("prop-table-alt-fill", "altFill", value => _normalizeColorForInput(value, "#f8fafc"));
                 bindTableValue("prop-table-padding", "cellPadding", value => Math.max(2, Number(value) || 2));
-                bindTableValue("prop-table-text-color", "textColor", value => _normalizeColorForInput(value, "#172033"));
-                bindTableValue("prop-table-header-text-color", "headerTextColor", value => _normalizeColorForInput(value, "#172033"));
+                bindTableValue("prop-table-text-color", "textColor", value =>
+                    _normalizeColorForInput(value, "#172033"),
+                );
+                bindTableValue("prop-table-header-text-color", "headerTextColor", value =>
+                    _normalizeColorForInput(value, "#172033"),
+                );
                 document.getElementById("prop-table-header-row")?.addEventListener("click", () => {
                     mutateSelectedTableData(tableData => {
                         tableData.headerRow = !tableData.headerRow;
@@ -2938,7 +3069,8 @@ function buildPropertiesPanel() {
                 if (connectorType) {
                     connectorType.onchange = e => {
                         onCommit(() => {
-                            const nextType = e.target.value === "curve" || e.target.value === "poly" ? e.target.value : "line";
+                            const nextType =
+                                e.target.value === "curve" || e.target.value === "poly" ? e.target.value : "line";
                             let nextPoints = getConnectorPoints(data).map(point => ({ ...point }));
                             if (nextType === "line") {
                                 nextPoints = [nextPoints[0], nextPoints[nextPoints.length - 1]];
@@ -2947,17 +3079,16 @@ function buildPropertiesPanel() {
                                 const end = nextPoints[nextPoints.length - 1];
                                 nextPoints = [
                                     start,
-                                    { x: Math.round((start.x + end.x) / 2), y: Math.round(Math.min(start.y, end.y) - 60) },
+                                    {
+                                        x: Math.round((start.x + end.x) / 2),
+                                        y: Math.round(Math.min(start.y, end.y) - 60),
+                                    },
                                     end,
                                 ];
                             } else if (nextType === "poly" && nextPoints.length < 3) {
                                 const start = nextPoints[0];
                                 const end = nextPoints[nextPoints.length - 1];
-                                nextPoints = [
-                                    start,
-                                    { x: Math.round((start.x + end.x) / 2), y: start.y },
-                                    end,
-                                ];
+                                nextPoints = [start, { x: Math.round((start.x + end.x) / 2), y: start.y }, end];
                             }
                             data.connectorType = nextType;
                             data.points = nextPoints;
@@ -3109,19 +3240,18 @@ function buildPropertiesPanel() {
                         saveStateToUndo();
                         const locked = e.target.checked;
                         const ratio = data.cropTransform
-                            ? ((parseFloat(data.width) || 1) / Math.max(1, parseFloat(data.height) || 1))
+                            ? (parseFloat(data.width) || 1) / Math.max(1, parseFloat(data.height) || 1)
                             : typeof getImageAspectRatio === "function"
                               ? getImageAspectRatio(data)
-                              : ((parseFloat(data.width) || 1) / Math.max(1, parseFloat(data.height) || 1));
+                              : (parseFloat(data.width) || 1) / Math.max(1, parseFloat(data.height) || 1);
                         updateElementState(data.id, { lockAspectRatio: locked, imageAspectRatio: ratio });
                         data.lockAspectRatio = locked;
                         data.imageAspectRatio = ratio;
-                        
                     };
                 }
 
                 if (imgW && imgH) {
-                    const commitDim = (isWidth) => {
+                    const commitDim = isWidth => {
                         onCommit(() => {
                             let newW = parseFloat(imgW.value);
                             let newH = parseFloat(imgH.value);
@@ -3130,10 +3260,10 @@ function buildPropertiesPanel() {
 
                             if (data.lockAspectRatio) {
                                 const ratio = data.cropTransform
-                                    ? ((parseFloat(data.width) || newW) / Math.max(1, parseFloat(data.height) || newH))
+                                    ? (parseFloat(data.width) || newW) / Math.max(1, parseFloat(data.height) || newH)
                                     : typeof getImageAspectRatio === "function"
                                       ? getImageAspectRatio(data)
-                                      : ((parseFloat(data.width) || newW) / Math.max(1, parseFloat(data.height) || newH));
+                                      : (parseFloat(data.width) || newW) / Math.max(1, parseFloat(data.height) || newH);
                                 if (isWidth) {
                                     newH = newW / ratio;
                                     imgH.value = Math.round(newH);
@@ -3144,7 +3274,12 @@ function buildPropertiesPanel() {
                             }
 
                             const updates = { width: newW + "px", height: newH + "px", heightSetManually: true };
-                            if (data.lockAspectRatio) updates.imageAspectRatio = data.cropTransform ? (newW / Math.max(1, newH)) : (typeof getImageAspectRatio === "function" ? getImageAspectRatio(data) : (newW / Math.max(1, newH)));
+                            if (data.lockAspectRatio)
+                                updates.imageAspectRatio = data.cropTransform
+                                    ? newW / Math.max(1, newH)
+                                    : typeof getImageAspectRatio === "function"
+                                      ? getImageAspectRatio(data)
+                                      : newW / Math.max(1, newH);
                             updateElementState(data.id, updates);
                             data.width = newW + "px";
                             data.height = newH + "px";
@@ -3200,7 +3335,8 @@ function buildPropertiesPanel() {
                             buildPropertiesPanel();
                         });
                     };
-                }                const fitBtn = document.getElementById("prop-html-fit");
+                }
+                const fitBtn = document.getElementById("prop-html-fit");
                 if (fitBtn) {
                     fitBtn.onclick = () => {
                         onCommit(() => {
@@ -3238,10 +3374,15 @@ function buildPropertiesPanel() {
                 const refreshMoleculeDom = updates => {
                     const dom = document.getElementById(data.id);
                     if (!dom) return;
-                    const merged = { ...data, ...updates, styles: { ...(data.styles || {}), ...(updates.styles || {}) } };
-                    const background = typeof normalizeMoleculeBackgroundColor === "function"
-                        ? normalizeMoleculeBackgroundColor(merged.styles.backgroundColor || "#020617")
-                        : (merged.styles.backgroundColor || "#020617");
+                    const merged = {
+                        ...data,
+                        ...updates,
+                        styles: { ...(data.styles || {}), ...(updates.styles || {}) },
+                    };
+                    const background =
+                        typeof normalizeMoleculeBackgroundColor === "function"
+                            ? normalizeMoleculeBackgroundColor(merged.styles.backgroundColor || "#020617")
+                            : merged.styles.backgroundColor || "#020617";
                     dom.style.backgroundColor = background;
                     const wrapper = dom.querySelector(".molecule-embed-wrapper");
                     if (wrapper) wrapper.style.backgroundColor = background;
@@ -3254,7 +3395,10 @@ function buildPropertiesPanel() {
                         const enabled = Boolean(merged.moleculeInteractive);
                         editorToggle.classList.toggle("active", enabled);
                         editorToggle.title = enabled ? "Switch to select and resize mode" : "Enable 3D orbit mode";
-                        editorToggle.setAttribute("aria-label", enabled ? "Switch molecule to select and resize mode" : "Enable molecule 3D orbit mode");
+                        editorToggle.setAttribute(
+                            "aria-label",
+                            enabled ? "Switch molecule to select and resize mode" : "Enable molecule 3D orbit mode",
+                        );
                         const icon = editorToggle.querySelector("i");
                         if (icon) icon.className = `fa-solid ${enabled ? "fa-cube" : "fa-arrow-pointer"}`;
                         const label = editorToggle.querySelector("span");
@@ -3268,29 +3412,45 @@ function buildPropertiesPanel() {
                         if (typeof attachMoleculeDataBridge === "function") attachMoleculeDataBridge(iframe, merged);
                         iframe.srcdoc = buildMoleculeEmbedSrcdoc(merged);
                     } else if (iframe && iframe.contentWindow) {
-                        iframe.contentWindow.postMessage({
-                            type: "pptmaker:molecule:update",
-                            name: merged.moleculeName || "Molecule",
-                            backgroundColor: background,
-                            autoRotate: Boolean(merged.moleculeAutoRotate),
-                            projection: merged.moleculeProjection === "orthographic" ? "orthographic" : "perspective",
-                            defaultStyle: ["cartoon", "stick", "sphere", "line", "surface"].includes(merged.moleculeDefaultStyle)
-                                ? merged.moleculeDefaultStyle
-                                : "cartoon",
-                            defaultColor: ["default", "chain", "amino", "ssJmol", "spectrum", "custom"].includes(merged.moleculeDefaultColor)
-                                ? merged.moleculeDefaultColor
-                                : "spectrum",
-                            layers: Array.isArray(merged.moleculeRepresentationLayers)
-                                ? merged.moleculeRepresentationLayers
-                                    .map(layer => typeof normalizeMoleculeRepresentationLayer === "function" ? normalizeMoleculeRepresentationLayer(layer) : layer)
-                                    .slice(0, 12)
-                                : [],
-                        }, "*");
+                        iframe.contentWindow.postMessage(
+                            {
+                                type: "pptmaker:molecule:update",
+                                name: merged.moleculeName || "Molecule",
+                                backgroundColor: background,
+                                autoRotate: Boolean(merged.moleculeAutoRotate),
+                                projection:
+                                    merged.moleculeProjection === "orthographic" ? "orthographic" : "perspective",
+                                defaultStyle: ["cartoon", "stick", "sphere", "line", "surface"].includes(
+                                    merged.moleculeDefaultStyle,
+                                )
+                                    ? merged.moleculeDefaultStyle
+                                    : "cartoon",
+                                defaultColor: ["default", "chain", "amino", "ssJmol", "spectrum", "custom"].includes(
+                                    merged.moleculeDefaultColor,
+                                )
+                                    ? merged.moleculeDefaultColor
+                                    : "spectrum",
+                                layers: Array.isArray(merged.moleculeRepresentationLayers)
+                                    ? merged.moleculeRepresentationLayers
+                                          .map(layer =>
+                                              typeof normalizeMoleculeRepresentationLayer === "function"
+                                                  ? normalizeMoleculeRepresentationLayer(layer)
+                                                  : layer,
+                                          )
+                                          .slice(0, 12)
+                                    : [],
+                            },
+                            "*",
+                        );
                     }
                 };
                 const normalizedLayers = () =>
                     (Array.isArray(data.moleculeRepresentationLayers) ? data.moleculeRepresentationLayers : [])
-                        .map(layer => typeof normalizeMoleculeRepresentationLayer === "function" ? normalizeMoleculeRepresentationLayer(layer) : layer)
+                        .map(layer =>
+                            typeof normalizeMoleculeRepresentationLayer === "function"
+                                ? normalizeMoleculeRepresentationLayer(layer)
+                                : layer,
+                        )
                         .slice(0, 12);
 
                 const nameInput = document.getElementById("prop-molecule-name");
@@ -3310,9 +3470,10 @@ function buildPropertiesPanel() {
                 const bgInput = document.getElementById("prop-molecule-bg");
                 const bgTransparent = document.getElementById("prop-molecule-bg-transparent");
                 const applyMoleculeBackground = (next, commit = false) => {
-                    const normalized = typeof normalizeMoleculeBackgroundColor === "function"
-                        ? normalizeMoleculeBackgroundColor(next)
-                        : next;
+                    const normalized =
+                        typeof normalizeMoleculeBackgroundColor === "function"
+                            ? normalizeMoleculeBackgroundColor(next)
+                            : next;
                     data.styles = { ...(data.styles || {}), backgroundColor: normalized };
                     if (commit) {
                         onCommit(() => updateElementState(data.id, { styles: { backgroundColor: normalized } }));
@@ -3329,7 +3490,7 @@ function buildPropertiesPanel() {
                     bgTransparent.onchange = event => {
                         const transparent = event.target.checked;
                         if (bgInput) bgInput.disabled = transparent;
-                        applyMoleculeBackground(transparent ? "transparent" : (bgInput?.value || "#020617"), true);
+                        applyMoleculeBackground(transparent ? "transparent" : bgInput?.value || "#020617", true);
                     };
                 }
 
@@ -3350,7 +3511,9 @@ function buildPropertiesPanel() {
                 if (styleField) {
                     styleField.onchange = e => {
                         onCommit(() => {
-                            const next = ["cartoon", "stick", "sphere", "line", "surface"].includes(e.target.value) ? e.target.value : "cartoon";
+                            const next = ["cartoon", "stick", "sphere", "line", "surface"].includes(e.target.value)
+                                ? e.target.value
+                                : "cartoon";
                             data.moleculeDefaultStyle = next;
                             updateElementState(data.id, { moleculeDefaultStyle: next });
                             refreshMoleculeDom({ moleculeDefaultStyle: next });
@@ -3362,7 +3525,9 @@ function buildPropertiesPanel() {
                 if (colorField) {
                     colorField.onchange = e => {
                         onCommit(() => {
-                            const next = ["default", "chain", "amino", "ssJmol", "spectrum"].includes(e.target.value) ? e.target.value : "spectrum";
+                            const next = ["default", "chain", "amino", "ssJmol", "spectrum"].includes(e.target.value)
+                                ? e.target.value
+                                : "spectrum";
                             data.moleculeDefaultColor = next;
                             updateElementState(data.id, { moleculeDefaultColor: next });
                             refreshMoleculeDom({ moleculeDefaultColor: next });
@@ -3447,18 +3612,26 @@ function buildPropertiesPanel() {
                     syncLayerParameterControls({ resetValues: true });
                 };
                 const populateLayerForm = layer => {
-                    const normalized = typeof normalizeMoleculeRepresentationLayer === "function" ? normalizeMoleculeRepresentationLayer(layer) : layer;
+                    const normalized =
+                        typeof normalizeMoleculeRepresentationLayer === "function"
+                            ? normalizeMoleculeRepresentationLayer(layer)
+                            : layer;
                     if (layerEditIdField) layerEditIdField.value = normalized.id || "";
                     if (layerSelectionField) layerSelectionField.value = normalized.selectionQuery || "all";
                     if (layerStyleField) layerStyleField.value = normalized.kind || "cartoon";
                     if (layerColorField) layerColorField.value = normalized.colorScheme || "spectrum";
                     if (layerCustomField) {
                         layerCustomField.value = normalized.customColor || "#6366f1";
-                        layerCustomField.classList.toggle("hidden", (normalized.colorScheme || "spectrum") !== "custom");
+                        layerCustomField.classList.toggle(
+                            "hidden",
+                            (normalized.colorScheme || "spectrum") !== "custom",
+                        );
                     }
                     syncLayerParameterControls({ resetValues: true });
-                    if (layerRadiusField && normalized.radius != null) layerRadiusField.value = String(normalized.radius);
-                    if (layerOpacityField && normalized.opacity != null) layerOpacityField.value = String(normalized.opacity);
+                    if (layerRadiusField && normalized.radius != null)
+                        layerRadiusField.value = String(normalized.radius);
+                    if (layerOpacityField && normalized.opacity != null)
+                        layerOpacityField.value = String(normalized.opacity);
                     if (addLayerBtn) addLayerBtn.textContent = "Update Layer";
                     if (cancelLayerEditBtn) cancelLayerEditBtn.classList.remove("hidden");
                 };
@@ -3488,12 +3661,17 @@ function buildPropertiesPanel() {
                                 ...(Number.isFinite(radius) && !["surface", "hidden"].includes(kind) ? { radius } : {}),
                                 ...(Number.isFinite(opacity) && kind === "surface" ? { opacity } : {}),
                             };
-                            const layer = typeof normalizeMoleculeRepresentationLayer === "function"
-                                ? normalizeMoleculeRepresentationLayer(rawLayer)
-                                : { ...rawLayer, id: generateId("mol_layer"), label: `${kind} · ${selectionQuery}` };
+                            const layer =
+                                typeof normalizeMoleculeRepresentationLayer === "function"
+                                    ? normalizeMoleculeRepresentationLayer(rawLayer)
+                                    : {
+                                          ...rawLayer,
+                                          id: generateId("mol_layer"),
+                                          label: `${kind} · ${selectionQuery}`,
+                                      };
                             const existingLayers = normalizedLayers();
                             const nextLayers = editingId
-                                ? existingLayers.map(item => String(item.id) === String(editingId) ? layer : item)
+                                ? existingLayers.map(item => (String(item.id) === String(editingId) ? layer : item))
                                 : [...existingLayers, layer].slice(0, 12);
                             data.moleculeRepresentationLayers = nextLayers;
                             updateElementState(data.id, { moleculeRepresentationLayers: nextLayers });
@@ -3619,15 +3797,22 @@ function buildPropertiesPanel() {
                 };
 
                 document.getElementById("prop-pdf-mode-nav")?.addEventListener("click", () => setPdfMode("navigate"));
-                document.getElementById("prop-pdf-mode-highlight")?.addEventListener("click", () => setPdfMode("highlight"));
+                document
+                    .getElementById("prop-pdf-mode-highlight")
+                    ?.addEventListener("click", () => setPdfMode("highlight"));
                 document.getElementById("prop-pdf-mode-note")?.addEventListener("click", () => setPdfMode("note"));
 
                 const deleteBtn = document.getElementById("prop-pdf-delete-annotation");
                 if (deleteBtn) {
                     deleteBtn.onclick = () => {
                         onCommit(() => {
-                            const nextAnnotations = (data.pdfAnnotations || []).filter(item => item.id !== data.pdfSelectedAnnotationId);
-                            updateElementState(data.id, { pdfAnnotations: nextAnnotations, pdfSelectedAnnotationId: "" });
+                            const nextAnnotations = (data.pdfAnnotations || []).filter(
+                                item => item.id !== data.pdfSelectedAnnotationId,
+                            );
+                            updateElementState(data.id, {
+                                pdfAnnotations: nextAnnotations,
+                                pdfSelectedAnnotationId: "",
+                            });
                             schedulePresentationAutosave?.(150);
                             if (window.renderSlidesFromState) window.renderSlidesFromState();
                             buildPropertiesPanel();
@@ -3707,21 +3892,23 @@ function buildPropertiesPanel() {
                     setElementAnimationConfig(data.id, buildConfig());
                 };
 
-                enabled && (enabled.onchange = () => {
-                    controls?.classList.toggle("hidden", !enabled.checked);
-                    if (enabled.checked && trigger?.value === "on-click" && !currentAnimation && order) {
-                        order.value = String(getNextClickAnimationOrder(data.id));
-                    }
-                    commitAnimation();
-                });
-                trigger && (trigger.onchange = () => {
-                    const isClickTriggered = trigger.value === "on-click";
-                    orderWrap?.classList.toggle("hidden", !isClickTriggered);
-                    if (isClickTriggered && currentAnimation?.trigger !== "on-click" && order) {
-                        order.value = String(getNextClickAnimationOrder(data.id));
-                    }
-                    commitAnimation();
-                });
+                enabled &&
+                    (enabled.onchange = () => {
+                        controls?.classList.toggle("hidden", !enabled.checked);
+                        if (enabled.checked && trigger?.value === "on-click" && !currentAnimation && order) {
+                            order.value = String(getNextClickAnimationOrder(data.id));
+                        }
+                        commitAnimation();
+                    });
+                trigger &&
+                    (trigger.onchange = () => {
+                        const isClickTriggered = trigger.value === "on-click";
+                        orderWrap?.classList.toggle("hidden", !isClickTriggered);
+                        if (isClickTriggered && currentAnimation?.trigger !== "on-click" && order) {
+                            order.value = String(getNextClickAnimationOrder(data.id));
+                        }
+                        commitAnimation();
+                    });
                 [effect, order, duration, delay, easing].forEach(input => {
                     if (!input) return;
                     input.onchange = commitAnimation;
@@ -3773,16 +3960,12 @@ function buildPropertiesPanel() {
                     }
                 });
             }
-
-
         }
     }, 0);
 
     restorePropertiesScroll();
     requestAnimationFrame(updateFloatingToolbars);
 }
-
-
 
 function groupSelected() {
     if (state.selectedIds.length < 2) return;
@@ -3841,7 +4024,7 @@ function applyTextAlignmentToSelection(align) {
 
 function applyStyle(prop, value) {
     if (state.selectedIds.length === 0) return;
-    
+
     saveStateToUndo();
 
     state.selectedIds.forEach(id => {
@@ -3855,7 +4038,9 @@ function applyStyle(prop, value) {
             let nextContent = contentHost?.isContentEditable ? contentHost.innerHTML : data.content;
             let contentChanged = false;
             if (contentHost?.dataset.structuredEdit === "true" && _getStructuredEditorMode(contentHost) === "list") {
-                nextContent = stripInlineTextStylesFromTextContent(parseStructuredBulletEditorHtml(contentHost), [prop]);
+                nextContent = stripInlineTextStylesFromTextContent(parseStructuredBulletEditorHtml(contentHost), [
+                    prop,
+                ]);
                 contentHost.innerHTML = buildStructuredBulletEditorHtml(nextContent, data.bulletStyle || "default");
             } else {
                 nextContent = stripInlineTextStylesFromTextContent(nextContent, [prop]);
@@ -3882,9 +4067,18 @@ function applyStyle(prop, value) {
 
         const cssProp = prop.replace(/([A-Z])/g, "-$1").toLowerCase();
         // Force important for text styles to override Reveal.js and theme defaults
-        const textProps = ["color", "fontSize", "fontFamily", "fontWeight", "fontStyle", "textAlign", "lineHeight", "textShadow"];
+        const textProps = [
+            "color",
+            "fontSize",
+            "fontFamily",
+            "fontWeight",
+            "fontStyle",
+            "textAlign",
+            "lineHeight",
+            "textShadow",
+        ];
         const priority = textProps.includes(prop) ? "important" : "";
-        
+
         _setElementDomStyleProperty(dom, prop, value, priority);
 
         if (data.type === "text") {
@@ -3929,7 +4123,9 @@ function updateUIFromSelection() {
     const defaults = getThemeTextStyleDefaults();
 
     // Update Font Family
-    const fontControls = [document.getElementById("prop-font"), document.getElementById("floating-text-font")].filter(Boolean);
+    const fontControls = [document.getElementById("prop-font"), document.getElementById("floating-text-font")].filter(
+        Boolean,
+    );
     fontControls.forEach(fontSelect => {
         if (!inline.fontFamily) return;
         const family = inline.fontFamily.replace(/['"]/g, "").split(",")[0].trim();
@@ -3940,11 +4136,16 @@ function updateUIFromSelection() {
                 break;
             }
         }
-        setTextControlActive(fontSelect, normalizeFontFamily(fontSelect.value) !== normalizeFontFamily(defaults.fontFamily));
+        setTextControlActive(
+            fontSelect,
+            normalizeFontFamily(fontSelect.value) !== normalizeFontFamily(defaults.fontFamily),
+        );
     });
 
     // Update Font Size
-    const sizeControls = [document.getElementById("prop-fs"), document.getElementById("floating-text-size")].filter(Boolean);
+    const sizeControls = [document.getElementById("prop-fs"), document.getElementById("floating-text-size")].filter(
+        Boolean,
+    );
     sizeControls.forEach(fsInput => {
         if (!inline.fontSize) return;
         if (!isControlBeingEdited(fsInput)) {
@@ -3955,7 +4156,9 @@ function updateUIFromSelection() {
     });
 
     // Update Color
-    const colorControls = [document.getElementById("prop-tc"), document.getElementById("floating-text-color")].filter(Boolean);
+    const colorControls = [document.getElementById("prop-tc"), document.getElementById("floating-text-color")].filter(
+        Boolean,
+    );
     colorControls.forEach(colorInput => {
         if (!inline.color) return;
         // Convert rgb(r, g, b) to #rrggbb
@@ -3963,20 +4166,32 @@ function updateUIFromSelection() {
         if (color.startsWith("rgb")) {
             const match = color.match(/\d+/g);
             if (match) {
-                color = "#" + match.slice(0, 3).map(x => parseInt(x).toString(16).padStart(2, '0')).join('');
+                color =
+                    "#" +
+                    match
+                        .slice(0, 3)
+                        .map(x => parseInt(x).toString(16).padStart(2, "0"))
+                        .join("");
             }
         }
         colorInput.value = color;
-        setTextControlActive(colorInput, color.toLowerCase() !== _normalizeColorForInput(defaults.color, "#000000").toLowerCase());
+        setTextControlActive(
+            colorInput,
+            color.toLowerCase() !== _normalizeColorForInput(defaults.color, "#000000").toLowerCase(),
+        );
     });
 
     // Update Bold/Italic states
-    [document.getElementById("prop-bold"), document.getElementById("floating-text-bold")].filter(Boolean).forEach(boldBtn => {
-        boldBtn.classList.toggle("active", inline.fontWeight === "bold");
-    });
-    [document.getElementById("prop-italic"), document.getElementById("floating-text-italic")].filter(Boolean).forEach(italicBtn => {
-        italicBtn.classList.toggle("active", inline.fontStyle === "italic");
-    });
+    [document.getElementById("prop-bold"), document.getElementById("floating-text-bold")]
+        .filter(Boolean)
+        .forEach(boldBtn => {
+            boldBtn.classList.toggle("active", inline.fontWeight === "bold");
+        });
+    [document.getElementById("prop-italic"), document.getElementById("floating-text-italic")]
+        .filter(Boolean)
+        .forEach(italicBtn => {
+            italicBtn.classList.toggle("active", inline.fontStyle === "italic");
+        });
 }
 
 // Global selection listener
@@ -4063,24 +4278,28 @@ function renderLayersList() {
         return;
     }
 
-    container.innerHTML = sortedElements.map(el => {
-        const isSelected = state.selectedIds.includes(el.id);
-        const icon = getElementIcon(el.type);
-        const name = getElementDisplayName(el);
-        const hiddenClass = el.hidden ? "opacity-55 cursor-default" : "cursor-pointer";
-        const hiddenAttrs = el.hidden ? 'aria-disabled="true" title="Hidden layer. Use the eye button to show it before selecting."' : "";
-        return `
-            <div class="layer-list-item flex items-center gap-2 p-2 rounded-lg transition-colors border ${hiddenClass} ${isSelected ? 'bg-primary/5 border-primary/20 text-primary' : 'bg-white border-transparent text-slate-700 hover:bg-slate-50'}"
+    container.innerHTML = sortedElements
+        .map(el => {
+            const isSelected = state.selectedIds.includes(el.id);
+            const icon = getElementIcon(el.type);
+            const name = getElementDisplayName(el);
+            const hiddenClass = el.hidden ? "opacity-55 cursor-default" : "cursor-pointer";
+            const hiddenAttrs = el.hidden
+                ? 'aria-disabled="true" title="Hidden layer. Use the eye button to show it before selecting."'
+                : "";
+            return `
+            <div class="layer-list-item flex items-center gap-2 p-2 rounded-lg transition-colors border ${hiddenClass} ${isSelected ? "bg-primary/5 border-primary/20 text-primary" : "bg-white border-transparent text-slate-700 hover:bg-slate-50"}"
                  ${hiddenAttrs}
                  onclick="layerItemClicked('${el.id}', event)">
-                <i class="${icon} w-4 text-center ${isSelected ? 'text-primary' : 'text-slate-400'}"></i>
+                <i class="${icon} w-4 text-center ${isSelected ? "text-primary" : "text-slate-400"}"></i>
                 <span class="text-[11px] font-medium truncate flex-1">${name}</span>
                 <button class="w-5 h-5 rounded hover:bg-slate-200 flex items-center justify-center text-slate-400 transition-colors" onclick="toggleLayerVisibility('${el.id}', event)" title="Toggle Visibility">
-                    <i class="fa-regular ${el.hidden ? 'fa-eye-slash text-slate-300' : 'fa-eye'} text-[10px]"></i>
+                    <i class="fa-regular ${el.hidden ? "fa-eye-slash text-slate-300" : "fa-eye"} text-[10px]"></i>
                 </button>
             </div>
         `;
-    }).join("");
+        })
+        .join("");
 }
 
 function layerItemClicked(id, event) {
@@ -4110,34 +4329,46 @@ function layerItemClicked(id, event) {
 
 function getElementIcon(type) {
     switch (type) {
-        case 'text': return 'fa-solid fa-t';
-        case 'image': return 'fa-regular fa-image';
-        case 'shape': return 'fa-regular fa-square';
-        case 'video': return 'fa-solid fa-video';
-        case 'connector': return 'fa-solid fa-arrow-right-long';
-        case 'table': return 'fa-solid fa-table';
-        case 'chart': return 'fa-solid fa-chart-pie';
-        case 'molecule': return 'fa-solid fa-dna';
-        case 'pdf': return 'fa-regular fa-file-pdf';
-        default: return 'fa-solid fa-cube';
+        case "text":
+            return "fa-solid fa-t";
+        case "image":
+            return "fa-regular fa-image";
+        case "shape":
+            return "fa-regular fa-square";
+        case "video":
+            return "fa-solid fa-video";
+        case "connector":
+            return "fa-solid fa-arrow-right-long";
+        case "table":
+            return "fa-solid fa-table";
+        case "chart":
+            return "fa-solid fa-chart-pie";
+        case "molecule":
+            return "fa-solid fa-dna";
+        case "pdf":
+            return "fa-regular fa-file-pdf";
+        default:
+            return "fa-solid fa-cube";
     }
 }
 
 function getElementDisplayName(el) {
-    if (el.type === 'text') {
-        let text = String(el.content || "").replace(/<[^>]+>/g, '').trim();
-        if (!text) return 'Text Box';
-        return text.length > 20 ? text.substring(0, 20) + '...' : text;
+    if (el.type === "text") {
+        let text = String(el.content || "")
+            .replace(/<[^>]+>/g, "")
+            .trim();
+        if (!text) return "Text Box";
+        return text.length > 20 ? text.substring(0, 20) + "..." : text;
     }
-    if (el.type === 'image') return 'Image';
-    if (el.type === 'shape') {
-        const shapeType = el.shapeType || 'Rectangle';
+    if (el.type === "image") return "Image";
+    if (el.type === "shape") {
+        const shapeType = el.shapeType || "Rectangle";
         return shapeType.charAt(0).toUpperCase() + shapeType.slice(1);
     }
-    if (el.type === 'connector') return 'Connector';
-    if (el.type === 'video') return 'Video';
-    if (el.type === 'table') return 'Table';
-    if (el.type === 'molecule') return 'Molecule';
+    if (el.type === "connector") return "Connector";
+    if (el.type === "video") return "Video";
+    if (el.type === "table") return "Table";
+    if (el.type === "molecule") return "Molecule";
     return el.type.charAt(0).toUpperCase() + el.type.slice(1);
 }
 
@@ -4181,12 +4412,12 @@ function moveSelectedLayer(direction) {
     const currentIndex = slide.elements.findIndex(e => e.id === id);
     if (currentIndex === -1) return;
 
-    if (direction === 'up' && currentIndex < slide.elements.length - 1) {
+    if (direction === "up" && currentIndex < slide.elements.length - 1) {
         // Swap with the element immediately above it
         const tempZ = slide.elements[currentIndex].styles.zIndex;
         slide.elements[currentIndex].styles.zIndex = slide.elements[currentIndex + 1].styles.zIndex;
         slide.elements[currentIndex + 1].styles.zIndex = tempZ;
-    } else if (direction === 'down' && currentIndex > 0) {
+    } else if (direction === "down" && currentIndex > 0) {
         // Swap with the element immediately below it
         const tempZ = slide.elements[currentIndex].styles.zIndex;
         slide.elements[currentIndex].styles.zIndex = slide.elements[currentIndex - 1].styles.zIndex;
