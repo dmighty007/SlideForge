@@ -991,6 +991,15 @@
     <!-- ══════════════════════════════════════════ APP SCRIPTS -->
     <script src="js/pageSetup.js"></script>
     <script src="js/state.js"></script>
+    <script src="js/animation-utils.js"></script>
+    <script src="js/animation-state.js"></script>
+    <script src="js/animation-engine.js"></script>
+    <script src="js/animation-export.js"></script>
+    <script src="js/animation-presets.js"></script>
+    <script src="js/animation-auto-animate.js"></script>
+    <script src="js/ui/timeline-editor.js"></script>
+    <script src="js/animation-examples.js"></script>
+    <script src="js/animation-properties-tests.js"></script>
     <script src="js/textContent.js"></script>
     <script src="js/themes.js"></script>
     <script src="js/masterSlides.js"></script>
@@ -1010,6 +1019,19 @@
     <script src="js/zoom.js"></script>
     <script src="js/contextMenu.js"></script>
     <script src="js/main.js"></script>
+    <script src="js/animation-interaction.js"></script>
+    <script>
+        // Initialize auto-animate interaction when Reveal.js is ready
+        if (typeof Reveal !== 'undefined') {
+            if (Reveal.isReady && Reveal.isReady()) {
+                initializeAutoAnimateInteraction();
+            } else {
+                Reveal.on('ready', () => {
+                    initializeAutoAnimateInteraction();
+                });
+            }
+        }
+    </script>
 
     <!-- ══════════════════════════════════════════ UI HELPERS -->
     <script>
