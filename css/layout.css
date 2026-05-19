@@ -1366,14 +1366,6 @@
     pointer-events: none;
 }
 
-/* Disable all animations/transitions in preview thumbnails to prevent "reset" flicker */
-.slide-thumbnail,
-.slide-thumbnail * {
-    animation: none !important;
-    transition: none !important;
-    pointer-events: none !important;
-}
-
 /* ── Optimized Slide Previews ── */
 .slide-thumbnail {
     position: relative;
@@ -1383,7 +1375,8 @@
     background: var(--panel-card);
 }
 
-/* Hard-disable animations in preview mode to stop "reset" jumps */
+/* Disable all animations/transitions in preview thumbnails to prevent "reset" flicker */
+.slide-thumbnail,
 .slide-thumbnail *,
 .slide-thumbnail .canvas-element,
 .slide-thumbnail .canvas-element * {

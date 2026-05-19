@@ -3949,6 +3949,7 @@ function _clearAnimationClasses(dom) {
         "sf-anim-hidden",
         "sf-anim-visible",
         "sf-anim-playing",
+        "sf-anim-done",
         "sf-anim-effect-fade-in",
         "sf-anim-effect-slide-up",
         "sf-anim-effect-slide-down",
@@ -3984,7 +3985,7 @@ function _hideAnimatedEntry(entry) {
     const dom = document.getElementById(entry.el.id);
     if (!dom) return;
     _applyAnimationDomState(dom, entry.animation);
-    dom.classList.remove("sf-anim-visible", "sf-anim-playing");
+    dom.classList.remove("sf-anim-visible", "sf-anim-playing", "sf-anim-done");
     dom.classList.add("sf-anim-hidden");
 }
 
@@ -3995,18 +3996,30 @@ function _showAnimatedEntry(entry, { animate = true } = {}) {
     dom.classList.remove("sf-anim-hidden");
     dom.classList.add("sf-anim-visible");
     if (!animate) {
-        dom.classList.remove("sf-anim-playing");
+        dom.classList.remove("sf-anim-playing", "sf-anim-done");
         return;
     }
-    dom.classList.remove("sf-anim-playing");
+    dom.classList.remove("sf-anim-playing", "sf-anim-done");
     void dom.offsetWidth;
     dom.classList.add("sf-anim-playing");
+
+    // Add professional cleanup once animation ends to free GPU memory
+    const onAnimEnd = (e) => {
+        if (e.target !== dom) return;
+        dom.classList.remove("sf-anim-playing");
+        dom.classList.add("sf-anim-done");
+        dom.removeEventListener("animationend", onAnimEnd);
+    };
+    dom.removeEventListener("animationend", dom._sfAnimEndListener);
+    dom._sfAnimEndListener = onAnimEnd;
+    dom.addEventListener("animationend", onAnimEnd);
 }
 
 function _resetAnimatedEntry(entry) {
     const dom = document.getElementById(entry.el.id);
     if (!dom) return;
     _clearAnimationClasses(dom);
+    dom.removeEventListener("animationend", dom._sfAnimEndListener);
 }
 
 function _syncPresenterPayload() {

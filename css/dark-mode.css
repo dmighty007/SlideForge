@@ -196,15 +196,9 @@
 
 /* ── Button Press Effect ── */
 @keyframes button-press {
-    0% {
-        transform: scale(1);
-    }
-    50% {
-        transform: scale(0.95);
-    }
-    100% {
-        transform: scale(1);
-    }
+    0%   { transform: scale(1);    }
+    40%  { transform: scale(0.93); }
+    100% { transform: scale(1);    }
 }
 
 .toolbar-btn,
@@ -219,26 +213,20 @@ button {
 .prop-btn:active,
 .prop-action-btn:active,
 button:active {
-    animation: button-press 0.2s cubic-bezier(0.4, 0, 0.6, 1);
+    animation: button-press 0.18s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 /* ── Smooth Focus Glow ── */
 @keyframes focus-glow {
-    0% {
-        box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.4);
-    }
-    70% {
-        box-shadow: 0 0 0 6px rgba(37, 99, 235, 0);
-    }
-    100% {
-        box-shadow: 0 0 0 0 rgba(37, 99, 235, 0);
-    }
+    0%   { box-shadow: 0 0 0 0   rgba(37, 99, 235, 0.5); }
+    50%  { box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.2); }
+    100% { box-shadow: 0 0 0 0   rgba(37, 99, 235, 0); }
 }
 
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-    animation: focus-glow 0.6s ease-out;
+    animation: focus-glow 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* ── Smooth Hover Lift ── */
@@ -259,20 +247,20 @@ textarea:focus-visible {
 
 /* ── Smooth Slide Transition ── */
 @keyframes slide-in-from-bottom {
-    from {
+    0% {
         opacity: 0;
-        transform: translateY(8px);
+        transform: translateY(6px) scale(0.99);
     }
-    to {
+    100% {
         opacity: 1;
-        transform: translateY(0);
+        transform: translateY(0) scale(1);
     }
 }
 
 .modal,
 .tooltip,
 .dropdown {
-    animation: slide-in-from-bottom 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    animation: slide-in-from-bottom 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 /* ── Ripple Effect on Click ── */
@@ -287,9 +275,21 @@ textarea:focus-visible {
     }
 }
 
-/* ── Smooth Color Transitions ── */
-* {
-    transition-property: color, background-color, border-color, box-shadow;
+/* ── Scoped color transitions — applied only to interactive UI elements,
+   NOT to all `*` (which caused drag jitter and cascading recalculations) ── */
+.toolbar-btn,
+.prop-btn,
+.prop-action-btn,
+.prop-input,
+.prop-select,
+.prop-textarea,
+.slide-preview-card,
+.shape-picker-item,
+.prop-group,
+.zoom-icon-btn,
+.floating-text-button,
+.floating-text-select {
+    transition-property: color, background-color, border-color, box-shadow, opacity;
     transition-duration: 0.15s;
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -332,32 +332,34 @@ textarea:focus-visible {
 
 /* ── Smooth Selection Glow ── */
 .canvas-element.selected {
-    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    transition:
+        outline-color 0.12s cubic-bezier(0.4, 0, 0.2, 1),
+        box-shadow 0.12s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* ── Smooth Resize ── */
+/* ── Canvas element: only transition visual decoration, never geometry ──
+   `transform` and `width/height` must NOT transition — they break drag/resize. */
 .canvas-element {
-    transition: all 0.1s cubic-bezier(0.4, 0, 0.2, 1);
+    transition:
+        outline-color 0.1s cubic-bezier(0.4, 0, 0.2, 1),
+        box-shadow 0.1s cubic-bezier(0.4, 0, 0.2, 1),
+        opacity 0.1s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.canvas-element:active {
+.canvas-element:active,
+.canvas-element.dragging,
+.canvas-element.resizing {
     transition: none;
 }
 
 /* ── Tooltip Fade ── */
 @keyframes tooltip-fade {
-    from {
-        opacity: 0;
-        visibility: hidden;
-    }
-    to {
-        opacity: 1;
-        visibility: visible;
-    }
+    0%   { opacity: 0; transform: translateY(3px); }
+    100% { opacity: 1; transform: translateY(0); }
 }
 
 [class*="tooltip"] {
-    animation: tooltip-fade 0.2s ease-in;
+    animation: tooltip-fade 0.16s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 /* ═══════════════════════════════════════════════════════

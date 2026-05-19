@@ -404,291 +404,417 @@ function buildAnimationTypeSpecificProps(anim, elementId, timelineIdx, animIdx) 
     return html;
 }
 
-function buildAnimationInspectorPanel() {
-    const data = getSelectedElementData();
+function buildAnimationInspectorPanel(data) {
+    if (!data) data = (typeof getSelectedElementData === "function") ? getSelectedElementData() : null;
     if (!data) return "";
 
-    const config = normalizeElementAnimationConfig(data);
-    const hasAnimations = config && config.timelines && config.timelines.length > 0;
+    const animation = (typeof getElementAnimationConfig === "function") ? getElementAnimationConfig(data) : null;
+    const config    = (typeof normalizeElementAnimationConfig === "function") ? normalizeElementAnimationConfig(data) : null;
+    const hasTimelines = config?.timelines?.length > 0;
+    const isEnabled = !!animation;
+    const isOnClick = (animation?.trigger || "on-slide") === "on-click";
 
-    let html = `
-    <div class="panel-section animation-inspector">
-      <div class="section-header">
-        <span class="icon">🎬</span>
-        <span class="title">Animation</span>
-      </div>
+    // Effect options
+    const effectOpts = (typeof PRESENTATION_ANIMATION_EFFECTS !== "undefined" ? PRESENTATION_ANIMATION_EFFECTS : [
+        "fade-in","slide-up","slide-down","slide-left","slide-right","zoom-in","pop-in","wipe-in","pulse","glow"
+    ]).map(e => `<option value="${e}" ${(animation?.effect||"fade-in")===e?"selected":""}>${
+        typeof describeAnimationEffect === "function" ? describeAnimationEffect(e) : e}</option>`).join("");
 
-      <div class="section-content">
-  `;
+    // Easing options
+    const easingOpts = [
+        ["ease-out","Ease Out"],["ease-in","Ease In"],["ease-in-out","Ease In-Out"],["linear","Linear"],
+        ["cubic-bezier(0.34,1.56,0.64,1)","Spring"],["cubic-bezier(0.4,0,0.2,1)","Material"]
+    ].map(([v,l]) => `<option value="${v}" ${(animation?.easing||"ease-out")===v?"selected":""}>${l}</option>`).join("");
 
-    if (!hasAnimations) {
-        html += `
-      <div class="empty-state">
-        <p>No animations yet</p>
-        <button class="btn-primary btn-sm" onclick="openAnimationPresetSelector('${data.id}')">
-          + Add Animation
-        </button>
-      </div>
-    `;
-    } else {
-        // Show animation list
-        html += `<div class="animation-list">`;
-
-        config.timelines.forEach((timeline, timelineIdx) => {
-            timeline.animations.forEach((anim, animIdx) => {
-                html += `
-          <div class="animation-item">
-            <div class="animation-header">
-              <span class="animation-type">${anim.type}</span>
-              <div class="animation-controls">
-                <button class="btn-icon" onclick="editAnimation('${data.id}', ${timelineIdx}, ${animIdx})">✎</button>
-                <button class="btn-icon danger" onclick="removeAnimation('${data.id}', ${timelineIdx}, ${animIdx})">✕</button>
-              </div>
-            </div>
-            <div class="animation-props">
-              <div class="prop">
-                <label>Start:</label>
-                <select onchange="updateAnimationProperty('${data.id}', ${timelineIdx}, ${animIdx}, 'trigger', this.value)">
-                  <option value="on-slide" ${(anim.trigger || "on-slide") === "on-slide" ? "selected" : ""}>After slide appears</option>
-                  <option value="on-click" ${anim.trigger === "on-click" ? "selected" : ""}>On click</option>
-                </select>
-              </div>
-              <div class="prop">
-                <label>Duration:</label>
-                <input type="number" min="100" max="5000" step="100" value="${anim.duration}"
-                  onchange="updateAnimationProperty('${data.id}', ${timelineIdx}, ${animIdx}, 'duration', this.value)">
-                <span class="unit">ms</span>
-              </div>
-              <div class="prop">
-                <label>Delay:</label>
-                <input type="number" min="0" max="2000" step="50" value="${anim.delay || 0}"
-                  onchange="updateAnimationProperty('${data.id}', ${timelineIdx}, ${animIdx}, 'delay', this.value)">
-                <span class="unit">ms</span>
-              </div>
-              <div class="prop">
-                <label>Easing:</label>
-                <select onchange="updateAnimationProperty('${data.id}', ${timelineIdx}, ${animIdx}, 'easing', this.value)">
-                  ${ANIMATION_EASINGS.map(
-                      easing => `
-                    <option value="${easing}" ${anim.easing === easing ? "selected" : ""}>${easing}</option>
-                  `,
-                  ).join("")}
-                </select>
-              </div>
-              ${buildAnimationTypeSpecificProps(anim, data.id, timelineIdx, animIdx)}
-            </div>
-          </div>
-        `;
+    // Timeline items
+    let timelineHTML = "";
+    if (hasTimelines) {
+        config.timelines.forEach((tl, ti) => {
+            tl.animations.forEach((anim, ai) => {
+                const typeLabel = anim.type || "animation";
+                const icon = { fadeIn:"✦", slideUp:"↑", slideDown:"↓", slideLeft:"←", slideRight:"→",
+                    zoomIn:"⊕", popIn:"⊛", emphasis:"★", blur:"◎", glow:"✵",
+                    colorShift:"🎨", flip3D:"⟳", textMorph:"Ꞇ", moveAlongPath:"⤷" }[typeLabel] || "▶";
+                timelineHTML += `
+                <div class="sf-anim-item" data-ti="${ti}" data-ai="${ai}">
+                    <div class="sf-anim-item-header">
+                        <span class="sf-anim-item-icon">${icon}</span>
+                        <span class="sf-anim-item-type">${typeLabel}</span>
+                        <span class="sf-anim-item-meta">${anim.duration||600}ms · ${anim.trigger||"on-slide"}</span>
+                        <div class="sf-anim-item-actions">
+                            <button class="sf-anim-edit-btn" onclick="editAnimation('${data.id}',${ti},${ai})" title="Edit">✎</button>
+                            <button class="sf-anim-del-btn" onclick="removeAnimation('${data.id}',${ti},${ai})" title="Remove">✕</button>
+                        </div>
+                    </div>
+                    <div class="sf-anim-item-props">
+                        <div class="sf-anim-prop-row">
+                            <label>Trigger</label>
+                            <select onchange="updateAnimationProperty('${data.id}',${ti},${ai},'trigger',this.value)">
+                                <option value="on-slide" ${(anim.trigger||"on-slide")==="on-slide"?"selected":""}>With slide</option>
+                                <option value="on-click" ${anim.trigger==="on-click"?"selected":""}>On click</option>
+                            </select>
+                        </div>
+                        <div class="sf-anim-prop-row">
+                            <label>Duration</label>
+                            <input type="number" min="100" max="5000" step="100" value="${anim.duration||600}"
+                                onchange="updateAnimationProperty('${data.id}',${ti},${ai},'duration',this.value)">
+                            <span class="sf-anim-unit">ms</span>
+                        </div>
+                        <div class="sf-anim-prop-row">
+                            <label>Delay</label>
+                            <input type="number" min="0" max="3000" step="50" value="${anim.delay||0}"
+                                onchange="updateAnimationProperty('${data.id}',${ti},${ai},'delay',this.value)">
+                            <span class="sf-anim-unit">ms</span>
+                        </div>
+                        <div class="sf-anim-prop-row">
+                            <label>Easing</label>
+                            <select onchange="updateAnimationProperty('${data.id}',${ti},${ai},'easing',this.value)">
+                                ${(typeof ANIMATION_EASINGS !== "undefined" ? ANIMATION_EASINGS : ["ease-out","ease-in","ease-in-out","linear"])
+                                    .map(e => `<option value="${e}" ${anim.easing===e?"selected":""}>${e}</option>`).join("")}
+                            </select>
+                        </div>
+                        ${buildAnimationTypeSpecificProps(anim, data.id, ti, ai)}
+                    </div>
+                </div>`;
             });
         });
-
-        html += `</div>`;
-
-        html += `
-      <button class="btn-secondary btn-sm" onclick="openAnimationPresetSelector('${data.id}')">
-        + Add Animation
-      </button>
-    `;
     }
 
-    html += `
+    return `
+<div class="sf-anim-panel">
+  <div class="sf-anim-panel-header">
+    <span class="sf-anim-panel-icon">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+    </span>
+    <span class="sf-anim-panel-title">Animation</span>
+    <label class="sf-anim-toggle-wrap" title="Enable animation">
+      <input type="checkbox" id="prop-anim-enabled" class="sf-anim-toggle-input" ${isEnabled ? "checked" : ""}>
+      <span class="sf-anim-toggle-track"><span class="sf-anim-toggle-thumb"></span></span>
+    </label>
+  </div>
+
+  <div id="prop-anim-controls" class="sf-anim-controls${isEnabled ? "" : " sf-anim-hidden"}">
+
+    <!-- Slide Animation (Reveal.js) -->
+    <div class="sf-anim-section">
+      <div class="sf-anim-section-label">Slide Entry</div>
+      <div class="sf-anim-grid-2">
+        <div class="sf-anim-field">
+          <label>Effect</label>
+          <select id="prop-anim-effect">${effectOpts}</select>
+        </div>
+        <div class="sf-anim-field">
+          <label>Trigger</label>
+          <select id="prop-anim-trigger">
+            <option value="on-slide" ${!isOnClick?"selected":""}>With Slide</option>
+            <option value="on-click" ${isOnClick?"selected":""}>On Click</option>
+          </select>
+        </div>
+      </div>
+      <div id="prop-anim-order-wrap" class="sf-anim-field${isOnClick?"":" sf-anim-hidden"}">
+        <label>Click Order</label>
+        <input type="number" id="prop-anim-order" min="0" max="99" value="${animation?.order??0}">
+      </div>
+      <div class="sf-anim-grid-3">
+        <div class="sf-anim-field">
+          <label>Duration</label>
+          <div class="sf-anim-input-unit">
+            <input type="number" id="prop-anim-duration" min="100" step="50" value="${animation?.durationMs??800}">
+            <span>ms</span>
+          </div>
+        </div>
+        <div class="sf-anim-field">
+          <label>Delay</label>
+          <div class="sf-anim-input-unit">
+            <input type="number" id="prop-anim-delay" min="0" step="50" value="${animation?.delayMs??0}">
+            <span>ms</span>
+          </div>
+        </div>
+        <div class="sf-anim-field">
+          <label>Easing</label>
+          <select id="prop-anim-easing">${easingOpts}</select>
+        </div>
       </div>
     </div>
 
-    <style>
-      .animation-inspector {
-        margin-top: 12px;
-      }
+    <!-- Advanced Timeline -->
+    <div class="sf-anim-section">
+      <div class="sf-anim-section-label">Advanced Timeline</div>
+      ${hasTimelines
+        ? `<div class="sf-anim-timeline-list">${timelineHTML}</div>`
+        : `<div class="sf-anim-empty">No timeline animations yet.</div>`}
+      <button class="sf-anim-add-btn" onclick="openAnimationPresetSelector('${data.id}')">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Timeline Animation
+      </button>
+    </div>
 
-      .animation-inspector .section-header {
-        display: flex;
-        align-items: center;
-        padding: 8px 12px;
-        border-bottom: 1px solid var(--divider, #e5e7eb);
-        cursor: pointer;
-        user-select: none;
-      }
+  </div>
+</div>
 
-      .animation-inspector .icon {
-        margin-right: 8px;
-        font-size: 16px;
-      }
+<style>
+.sf-anim-panel {
+    margin: 6px 0;
+    border: 1px solid rgba(148,163,184,0.22);
+    border-radius: 12px;
+    background: var(--panel-card, #fff);
+    overflow: hidden;
+    box-shadow: 0 1px 4px rgba(15,23,42,0.06);
+}
+.sf-anim-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: linear-gradient(90deg, rgba(37,99,235,0.07) 0%, rgba(99,102,241,0.04) 100%);
+    border-bottom: 1px solid rgba(148,163,184,0.15);
+}
+.sf-anim-panel-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px; height: 24px;
+    border-radius: 7px;
+    background: linear-gradient(135deg, #2563eb, #4f46e5);
+    color: #fff;
+    flex-shrink: 0;
+}
+.sf-anim-panel-title {
+    flex: 1;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-main, #0f172a);
+    letter-spacing: 0.01em;
+}
+/* Toggle switch */
+.sf-anim-toggle-wrap { display: inline-flex; align-items: center; cursor: pointer; }
+.sf-anim-toggle-input { position: absolute; opacity: 0; width: 0; height: 0; }
+.sf-anim-toggle-track {
+    position: relative;
+    width: 32px; height: 18px;
+    border-radius: 999px;
+    background: rgba(148,163,184,0.4);
+    transition: background 0.2s ease;
+}
+.sf-anim-toggle-input:checked + .sf-anim-toggle-track { background: #2563eb; }
+.sf-anim-toggle-thumb {
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 14px; height: 14px;
+    border-radius: 999px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    transition: transform 0.2s cubic-bezier(0.34,1.56,0.64,1);
+}
+.sf-anim-toggle-input:checked + .sf-anim-toggle-track .sf-anim-toggle-thumb { transform: translateX(14px); }
 
-      .animation-inspector .title {
-        font-weight: 600;
-        flex: 1;
-      }
+.sf-anim-controls { padding: 12px 14px; display: flex; flex-direction: column; gap: 14px; }
+.sf-anim-hidden { display: none !important; }
 
-      .animation-inspector .section-content {
-        padding: 12px;
-      }
+.sf-anim-section { display: flex; flex-direction: column; gap: 8px; }
+.sf-anim-section-label {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-sub, #64748b);
+    padding-bottom: 4px;
+    border-bottom: 1px solid rgba(148,163,184,0.18);
+}
+.sf-anim-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.sf-anim-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.sf-anim-field { display: flex; flex-direction: column; gap: 3px; }
+.sf-anim-field label {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-sub, #64748b);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.sf-anim-field input,
+.sf-anim-field select {
+    padding: 5px 7px;
+    border: 1px solid rgba(148,163,184,0.35);
+    border-radius: 7px;
+    font-size: 11px;
+    font-family: inherit;
+    background: var(--surface, #f8fafc);
+    color: var(--text-main, #0f172a);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    width: 100%;
+    box-sizing: border-box;
+}
+.sf-anim-field input:focus,
+.sf-anim-field select:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 2px rgba(37,99,235,0.12);
+}
+.sf-anim-input-unit { display: flex; align-items: center; gap: 4px; }
+.sf-anim-input-unit input { flex: 1; min-width: 0; }
+.sf-anim-input-unit span { font-size: 10px; color: var(--text-sub,#94a3b8); flex-shrink: 0; }
 
-      .animation-inspector .empty-state {
-        text-align: center;
-        padding: 20px 12px;
-        color: var(--text-muted, #6b7280);
-      }
+/* Timeline items */
+.sf-anim-timeline-list { display: flex; flex-direction: column; gap: 6px; }
+.sf-anim-item {
+    border: 1px solid rgba(148,163,184,0.22);
+    border-radius: 9px;
+    background: var(--surface-soft, #f8fafc);
+    overflow: hidden;
+    transition: border-color 0.15s;
+}
+.sf-anim-item:hover { border-color: rgba(37,99,235,0.3); }
+.sf-anim-item-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 10px;
+    background: rgba(255,255,255,0.7);
+    border-bottom: 1px solid rgba(148,163,184,0.12);
+    cursor: default;
+}
+.sf-anim-item-icon { font-size: 12px; width: 18px; text-align: center; flex-shrink: 0; }
+.sf-anim-item-type { font-size: 11px; font-weight: 700; color: var(--text-main,#0f172a); flex: 1; min-width: 0; }
+.sf-anim-item-meta { font-size: 10px; color: var(--text-sub,#94a3b8); }
+.sf-anim-item-actions { display: flex; gap: 3px; }
+.sf-anim-edit-btn, .sf-anim-del-btn {
+    width: 22px; height: 22px;
+    border: none; background: transparent;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-sub,#94a3b8);
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: background 0.14s, color 0.14s;
+}
+.sf-anim-edit-btn:hover { background: rgba(37,99,235,0.1); color: #2563eb; }
+.sf-anim-del-btn:hover { background: rgba(220,38,38,0.08); color: #dc2626; }
+.sf-anim-item-props { padding: 8px 10px; display: flex; flex-direction: column; gap: 5px; }
+.sf-anim-prop-row {
+    display: grid;
+    grid-template-columns: 54px 1fr auto;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+}
+.sf-anim-prop-row label { font-size: 10px; font-weight: 600; color: var(--text-sub,#64748b); }
+.sf-anim-prop-row input,
+.sf-anim-prop-row select {
+    padding: 3px 6px;
+    border: 1px solid rgba(148,163,184,0.3);
+    border-radius: 5px;
+    font-size: 11px; font-family: inherit;
+    background: var(--surface,#fff);
+    color: var(--text-main,#0f172a);
+}
+.sf-anim-prop-row input:focus,
+.sf-anim-prop-row select:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37,99,235,0.1); }
+.sf-anim-unit { font-size: 10px; color: var(--text-sub,#94a3b8); }
 
-      .animation-inspector .empty-state p {
-        margin: 0 0 12px 0;
-        font-size: 13px;
-      }
+.sf-anim-empty {
+    text-align: center;
+    padding: 12px 8px;
+    font-size: 11px;
+    color: var(--text-sub,#94a3b8);
+    background: rgba(148,163,184,0.06);
+    border-radius: 8px;
+    border: 1px dashed rgba(148,163,184,0.3);
+}
+.sf-anim-add-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    padding: 7px 12px;
+    border: 1px dashed rgba(37,99,235,0.3);
+    border-radius: 8px;
+    background: rgba(37,99,235,0.04);
+    color: #2563eb;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+.sf-anim-add-btn:hover { background: rgba(37,99,235,0.1); border-color: rgba(37,99,235,0.5); }
+/* prop / prop-row used by buildAnimationTypeSpecificProps */
+.sf-anim-item-props .prop { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+.sf-anim-item-props .prop label { flex: 0 0 68px; font-size: 10px; font-weight: 600; color: var(--text-sub,#64748b); }
+.sf-anim-item-props .prop input,
+.sf-anim-item-props .prop select { flex: 1; padding: 3px 6px; border: 1px solid rgba(148,163,184,0.3); border-radius: 5px; font-size: 11px; font-family: inherit; background: var(--surface,#fff); }
+.sf-anim-item-props .prop .unit { flex: 0 0 20px; font-size: 10px; color: var(--text-sub,#94a3b8); }
+.sf-anim-item-props .prop-row { display: flex; gap: 10px; }
+.sf-anim-item-props .prop-row .prop { flex: 1; }
+.sf-anim-item-props .prop-group-title { font-size: 10px; font-weight: 700; color: var(--text-sub,#64748b); text-transform: uppercase; margin: 6px 0 2px; padding-bottom: 3px; border-bottom: 1px solid rgba(148,163,184,0.2); }
+</style>`;
+}
 
-      .animation-list {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        margin-bottom: 12px;
-      }
+/**
+ * Bind all animation panel event listeners.
+ * Called by properties.js after the panel HTML is injected into the DOM.
+ */
+function bindAnimationPanelListeners(data) {
+    if (!data) return;
+    const enabled   = document.getElementById("prop-anim-enabled");
+    const controls  = document.getElementById("prop-anim-controls");
+    const effect    = document.getElementById("prop-anim-effect");
+    const trigger   = document.getElementById("prop-anim-trigger");
+    const orderWrap = document.getElementById("prop-anim-order-wrap");
+    const order     = document.getElementById("prop-anim-order");
+    const duration  = document.getElementById("prop-anim-duration");
+    const delay     = document.getElementById("prop-anim-delay");
+    const easing    = document.getElementById("prop-anim-easing");
 
-      .animation-item {
-        border: 1px solid var(--divider, #e5e7eb);
-        border-radius: 6px;
-        padding: 8px;
-        background: var(--bg-secondary, #f9fafb);
-      }
+    const currentAnimation = (typeof getElementAnimationConfig === "function") ? getElementAnimationConfig(data) : null;
 
-      .animation-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 8px;
-      }
+    const getNum = (input, fallback) => {
+        const p = parseInt(input?.value, 10);
+        return Number.isFinite(p) ? p : fallback;
+    };
 
-      .animation-type {
-        font-weight: 500;
-        font-size: 13px;
-        color: var(--text-primary, #172033);
-      }
+    const buildConfig = () => ({
+        effect:     effect?.value  || "fade-in",
+        trigger:    trigger?.value === "on-click" ? "on-click" : "on-slide",
+        order:      getNum(order, 0),
+        durationMs: getNum(duration, 800),
+        delayMs:    getNum(delay, 0),
+        easing:     easing?.value  || "ease-out",
+    });
 
-      .animation-controls {
-        display: flex;
-        gap: 4px;
-      }
+    const commit = () => {
+        if (!enabled?.checked) {
+            if (typeof setElementAnimationConfig === "function") setElementAnimationConfig(data.id, null);
+            return;
+        }
+        if (typeof setElementAnimationConfig === "function") setElementAnimationConfig(data.id, buildConfig());
+    };
 
-      .btn-icon {
-        width: 24px;
-        height: 24px;
-        border: none;
-        background: transparent;
-        cursor: pointer;
-        padding: 2px;
-        font-size: 12px;
-        color: var(--text-secondary, #6b7280);
-        border-radius: 3px;
-        transition: all 0.2s;
-      }
+    if (enabled) {
+        enabled.onchange = () => {
+            controls?.classList.toggle("sf-anim-hidden", !enabled.checked);
+            if (enabled.checked && trigger?.value === "on-click" && !currentAnimation && order) {
+                if (typeof getNextClickAnimationOrder === "function")
+                    order.value = String(getNextClickAnimationOrder(data.id));
+            }
+            commit();
+        };
+    }
 
-      .btn-icon:hover {
-        background: var(--bg-tertiary, #f3f4f6);
-        color: var(--text-primary, #172033);
-      }
+    if (trigger) {
+        trigger.onchange = () => {
+            const isClick = trigger.value === "on-click";
+            orderWrap?.classList.toggle("sf-anim-hidden", !isClick);
+            if (isClick && currentAnimation?.trigger !== "on-click" && order) {
+                if (typeof getNextClickAnimationOrder === "function")
+                    order.value = String(getNextClickAnimationOrder(data.id));
+            }
+            commit();
+        };
+    }
 
-      .btn-icon.danger:hover {
-        background: #fee2e2;
-        color: #dc2626;
-      }
-
-      .animation-props {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-      }
-
-      .animation-props .prop {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 12px;
-      }
-
-      .animation-props label {
-        flex: 0 0 60px;
-        font-weight: 500;
-        color: var(--text-secondary, #6b7280);
-      }
-
-      .animation-props input,
-      .animation-props select {
-        flex: 1;
-        padding: 4px 6px;
-        border: 1px solid var(--divider, #e5e7eb);
-        border-radius: 3px;
-        font-size: 12px;
-        font-family: inherit;
-      }
-
-      .animation-props input[type="color"] {
-        width: 40px;
-        height: 32px;
-        padding: 2px;
-        cursor: pointer;
-      }
-
-      .animation-props .unit {
-        flex: 0 0 20px;
-        color: var(--text-tertiary, #9ca3af);
-        font-size: 11px;
-      }
-
-      .prop-row {
-        display: flex;
-        gap: 12px;
-      }
-
-      .prop-row .prop {
-        flex: 1;
-      }
-
-      .prop-group-title {
-        font-size: 11px;
-        font-weight: 600;
-        color: var(--text-secondary, #6b7280);
-        margin: 8px 0 4px 0;
-        padding: 4px 0;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        border-bottom: 1px solid var(--divider, #e5e7eb);
-      }
-
-      .btn-primary, .btn-secondary {
-        width: 100%;
-        padding: 8px 12px;
-        border: none;
-        border-radius: 6px;
-        font-size: 13px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s;
-      }
-
-      .btn-primary {
-        background: var(--accent, #2563eb);
-        color: white;
-      }
-
-      .btn-primary:hover {
-        background: var(--accent-dark, #1d4ed8);
-      }
-
-      .btn-secondary {
-        background: var(--bg-secondary, #f9fafb);
-        color: var(--text-primary, #172033);
-        border: 1px solid var(--divider, #e5e7eb);
-      }
-
-      .btn-secondary:hover {
-        background: var(--bg-tertiary, #f3f4f6);
-      }
-
-      .btn-sm {
-        padding: 6px 10px;
-        font-size: 12px;
-      }
-    </style>
-  `;
-
-    return html;
+    [effect, order, duration, delay, easing].forEach(input => {
+        if (input) input.onchange = commit;
+    });
 }
 
 // Open animation preset selector

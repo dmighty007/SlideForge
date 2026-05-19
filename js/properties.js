@@ -1030,8 +1030,39 @@ function updateCurrentSlideNotes(value) {
 function _buildSlideWorkspacePanel(panel) {
     const createGroup = title => {
         const wrap = document.createElement("div");
-        wrap.className = "prop-group space-y-3";
-        wrap.innerHTML = `<h3 class="prop-group-title">${title}</h3>`;
+        wrap.className = "prop-group";
+
+        const header = document.createElement("div");
+        header.className = "flex items-center justify-between cursor-pointer py-2";
+
+        const titleEl = document.createElement("h3");
+        titleEl.className = "prop-group-title m-0";
+        titleEl.textContent = title;
+
+        const chevron = document.createElement("i");
+        chevron.className = "fa-solid fa-chevron-down text-[10px] text-slate-400 transition-transform duration-200";
+
+        header.appendChild(titleEl);
+        header.appendChild(chevron);
+        wrap.appendChild(header);
+
+        const content = document.createElement("div");
+        content.className = "space-y-3 pt-1 pb-2";
+        wrap.appendChild(content);
+
+        header.onclick = () => {
+            const isHidden = content.style.display === "none";
+            content.style.display = isHidden ? "block" : "none";
+            chevron.style.transform = isHidden ? "rotate(0deg)" : "rotate(-90deg)";
+        };
+
+        // Redirect innerHTML operations to the content div so backward-compatible append works flawlessly
+        Object.defineProperty(wrap, "innerHTML", {
+            get() { return content.innerHTML; },
+            set(val) { content.innerHTML = val; },
+            configurable: true
+        });
+
         return wrap;
     };
 
@@ -1369,6 +1400,10 @@ function positionFloatingToolbar(toolbar, targetRect) {
 
     const previousVisibility = toolbar.style.visibility;
     toolbar.classList.remove("hidden");
+    // Re-trigger the pop-in entry animation each time the toolbar is shown
+    toolbar.classList.remove("animate-popIn");
+    void toolbar.offsetWidth; // force reflow to reset animation
+    toolbar.classList.add("animate-popIn");
     toolbar.style.visibility = "hidden";
     toolbar.style.left = "0px";
     toolbar.style.top = "0px";
@@ -2516,66 +2551,10 @@ function buildPropertiesPanel() {
             panel.appendChild(eqGrp);
         }
 
-        {
-            const animation = getElementAnimationConfig(data);
-            const animGrp = createGroup("Animation");
-            animGrp.innerHTML += `
-                <div class="flex flex-col gap-2">
-                    <label class="flex items-center gap-2 cursor-pointer">
-                        <input id="prop-anim-enabled" type="checkbox" class="rounded" ${animation ? "checked" : ""}>
-                        <span class="text-xs text-slate-700 font-medium">Enable animation</span>
-                    </label>
-                    <div id="prop-anim-controls" class="space-y-2 ${animation ? "" : "hidden"}">
-                        <div class="flex flex-col gap-1">
-                            <label class="text-xs text-slate-600 uppercase font-semibold tracking-wider">Effect</label>
-                            <select id="prop-anim-effect" class="w-full text-xs">
-                                ${PRESENTATION_ANIMATION_EFFECTS.map(
-                                    effect => `
-                                    <option value="${effect}" ${(animation?.effect || "fade-in") === effect ? "selected" : ""}>${describeAnimationEffect(effect)}</option>
-                                `,
-                                ).join("")}
-                            </select>
-                        </div>
-                        <div class="flex flex-col gap-1">
-                            <label class="text-xs text-slate-600 uppercase font-semibold tracking-wider">Trigger</label>
-                            <select id="prop-anim-trigger" class="w-full text-xs">
-                                <option value="on-slide" ${(animation?.trigger || "on-slide") === "on-slide" ? "selected" : ""}>With Slide</option>
-                                <option value="on-click" ${animation?.trigger === "on-click" ? "selected" : ""}>On Click</option>
-                            </select>
-                        </div>
-                        <div id="prop-anim-order-wrap" class="flex flex-col gap-1 ${(animation?.trigger || "on-slide") === "on-click" ? "" : "hidden"}">
-                            <label class="text-xs text-slate-600 uppercase font-semibold tracking-wider">Click Order</label>
-                            <input type="number" id="prop-anim-order" class="w-full text-xs" min="0" max="99" value="${animation?.order ?? 0}">
-                        </div>
-                        <div class="grid grid-cols-2 gap-2">
-                            <div class="flex flex-col gap-1">
-                                <label class="text-xs text-slate-600 uppercase font-semibold tracking-wider">Duration</label>
-                                <input type="number" id="prop-anim-duration" class="w-full text-xs" min="100" step="50" value="${animation?.durationMs ?? 800}">
-                            </div>
-                            <div class="flex flex-col gap-1">
-                                <label class="text-xs text-slate-600 uppercase font-semibold tracking-wider">Delay</label>
-                                <input type="number" id="prop-anim-delay" class="w-full text-xs" min="0" step="50" value="${animation?.delayMs ?? 0}">
-                            </div>
-                        </div>
-                        <div class="flex flex-col gap-1">
-                            <label class="text-xs text-slate-600 uppercase font-semibold tracking-wider">Easing</label>
-                            <select id="prop-anim-easing" class="w-full text-xs">
-                                <option value="ease-out" ${(animation?.easing || "ease-out") === "ease-out" ? "selected" : ""}>Ease Out</option>
-                                <option value="ease-in-out" ${animation?.easing === "ease-in-out" ? "selected" : ""}>Ease In-Out</option>
-                                <option value="linear" ${animation?.easing === "linear" ? "selected" : ""}>Linear</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-            `;
-            panel.appendChild(animGrp);
-
-            // Modern animation inspector panel
-            if (typeof buildAnimationInspectorPanel === "function") {
-                const modernAnimPanel = document.createElement("div");
-                modernAnimPanel.innerHTML = buildAnimationInspectorPanel();
-                panel.appendChild(modernAnimPanel.firstElementChild);
-            }
+        if (typeof buildAnimationInspectorPanel === "function") {
+            const unifiedAnimDiv = document.createElement("div");
+            unifiedAnimDiv.innerHTML = buildAnimationInspectorPanel(data);
+            while (unifiedAnimDiv.firstChild) panel.appendChild(unifiedAnimDiv.firstChild);
         }
     }
 
@@ -3866,61 +3845,8 @@ function buildPropertiesPanel() {
                 }
             }
 
-            {
-                const enabled = document.getElementById("prop-anim-enabled");
-                const controls = document.getElementById("prop-anim-controls");
-                const effect = document.getElementById("prop-anim-effect");
-                const trigger = document.getElementById("prop-anim-trigger");
-                const orderWrap = document.getElementById("prop-anim-order-wrap");
-                const order = document.getElementById("prop-anim-order");
-                const duration = document.getElementById("prop-anim-duration");
-                const delay = document.getElementById("prop-anim-delay");
-                const easing = document.getElementById("prop-anim-easing");
-                const currentAnimation = getElementAnimationConfig(data);
-
-                const getNumberInputValue = (input, fallback) => {
-                    const parsed = parseInt(input?.value, 10);
-                    return Number.isFinite(parsed) ? parsed : fallback;
-                };
-
-                const buildConfig = () => ({
-                    effect: effect?.value || "fade-in",
-                    trigger: trigger?.value === "on-click" ? "on-click" : "on-slide",
-                    order: getNumberInputValue(order, 0),
-                    durationMs: getNumberInputValue(duration, 800),
-                    delayMs: getNumberInputValue(delay, 0),
-                    easing: easing?.value || "ease-out",
-                });
-
-                const commitAnimation = () => {
-                    if (!enabled?.checked) {
-                        setElementAnimationConfig(data.id, null);
-                        return;
-                    }
-                    setElementAnimationConfig(data.id, buildConfig());
-                };
-
-                enabled &&
-                    (enabled.onchange = () => {
-                        controls?.classList.toggle("hidden", !enabled.checked);
-                        if (enabled.checked && trigger?.value === "on-click" && !currentAnimation && order) {
-                            order.value = String(getNextClickAnimationOrder(data.id));
-                        }
-                        commitAnimation();
-                    });
-                trigger &&
-                    (trigger.onchange = () => {
-                        const isClickTriggered = trigger.value === "on-click";
-                        orderWrap?.classList.toggle("hidden", !isClickTriggered);
-                        if (isClickTriggered && currentAnimation?.trigger !== "on-click" && order) {
-                            order.value = String(getNextClickAnimationOrder(data.id));
-                        }
-                        commitAnimation();
-                    });
-                [effect, order, duration, delay, easing].forEach(input => {
-                    if (!input) return;
-                    input.onchange = commitAnimation;
-                });
+            if (typeof bindAnimationPanelListeners === "function") {
+                bindAnimationPanelListeners(data);
             }
 
             if (data.type === "video") {
