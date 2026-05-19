@@ -10,6 +10,13 @@ const ANIMATION_TRANSITION_TYPES = [
     "transform",
     "replacementTransform",
     "moveAlongPath",
+    "textMorph",
+    "animatedChart",
+    "uncreateAdvanced",
+    "emphasis",
+    "blur",
+    "flip3D",
+    "glow",
     "scaleInPlace",
     "rotate",
     "write",
@@ -60,49 +67,84 @@ function createKeyframe(time = 0, property = "opacity", value = 1, easing = "eas
 function createAnimation(type = "fadeIn", overrides = {}) {
     const isValidType = ANIMATION_TRANSITION_TYPES.includes(type);
     const safeType = isValidType ? type : "fadeIn";
+    const finiteNumber = (value, fallback) => {
+        const number = Number(value);
+        return Number.isFinite(number) ? number : fallback;
+    };
+    const clampedNumber = (value, fallback, min, max) => Math.max(min, Math.min(max, finiteNumber(value, fallback)));
 
     return {
         id: generateId("anim"),
         type: safeType,
-        duration: Math.max(100, Number(overrides.duration) || 600),
-        delay: Math.max(0, Number(overrides.delay) || 0),
+        duration: Math.max(100, finiteNumber(overrides.duration, 600)),
+        delay: Math.max(0, finiteNumber(overrides.delay, 0)),
         easing: ANIMATION_EASINGS.includes(overrides.easing) ? overrides.easing : "easeOut",
-        repeatCount: Math.max(0, Number(overrides.repeatCount) || 0),
-        repeatDelay: Math.max(0, Number(overrides.repeatDelay) || 0),
+        repeatCount: Math.max(0, finiteNumber(overrides.repeatCount, 0)),
+        repeatDelay: Math.max(0, finiteNumber(overrides.repeatDelay, 0)),
         autoReverse: Boolean(overrides.autoReverse),
         keyframes: [],
         // Type-specific properties
-        startScale: Number(overrides.startScale) || 0.8,
-        startOpacity: Math.max(0, Math.min(1, Number(overrides.startOpacity) || 0)),
-        endScale: Number(overrides.endScale) || 1,
-        endOpacity: Math.max(0, Math.min(1, Number(overrides.endOpacity) || 1)),
+        startScale: finiteNumber(overrides.startScale, 0.8),
+        startOpacity: clampedNumber(overrides.startOpacity, 0, 0, 1),
+        endScale: finiteNumber(overrides.endScale, 1),
+        endOpacity: clampedNumber(overrides.endOpacity, 1, 0, 1),
         startColor: String(overrides.startColor || "#000000"),
         endColor: String(overrides.endColor || "#000000"),
         path: String(overrides.path || ""),
-        strokeLength: Number(overrides.strokeLength) || 0,
+        strokeLength: finiteNumber(overrides.strokeLength, 0),
         direction: String(overrides.direction || "up"),
-        rotation: Number(overrides.rotation) || 0,
+        rotation: finiteNumber(overrides.rotation, 0),
         // NEW: Position animation properties
-        startX: Number(overrides.startX) || 0,
-        endX: Number(overrides.endX) || 0,
-        startY: Number(overrides.startY) || 0,
-        endY: Number(overrides.endY) || 0,
+        startX: finiteNumber(overrides.startX, 0),
+        endX: finiteNumber(overrides.endX, 0),
+        startY: finiteNumber(overrides.startY, 0),
+        endY: finiteNumber(overrides.endY, 0),
         // NEW: Separate X/Y scale properties
-        startScaleX: Number(overrides.startScaleX) || 1,
-        endScaleX: Number(overrides.endScaleX) || 1,
-        startScaleY: Number(overrides.startScaleY) || 1,
-        endScaleY: Number(overrides.endScaleY) || 1,
+        startScaleX: finiteNumber(overrides.startScaleX, 1),
+        endScaleX: finiteNumber(overrides.endScaleX, 1),
+        startScaleY: finiteNumber(overrides.startScaleY, 1),
+        endScaleY: finiteNumber(overrides.endScaleY, 1),
         // NEW: Color animation properties
         colorProperty: String(overrides.colorProperty || "fill"),
         // NEW: Stroke width properties
-        startStrokeWidth: Number(overrides.startStrokeWidth) || 0,
-        endStrokeWidth: Number(overrides.endStrokeWidth) || 2,
+        startStrokeWidth: finiteNumber(overrides.startStrokeWidth, 0),
+        endStrokeWidth: finiteNumber(overrides.endStrokeWidth, 2),
         // NEW: Z-index properties
-        startZIndex: Number(overrides.startZIndex) || 0,
-        endZIndex: Number(overrides.endZIndex) || 100,
+        startZIndex: finiteNumber(overrides.startZIndex, 0),
+        endZIndex: finiteNumber(overrides.endZIndex, 100),
         // NEW: Combined transform - rotation
-        startRotation: Number(overrides.startRotation) || 0,
-        endRotation: Number(overrides.endRotation) || 0,
+        startRotation: finiteNumber(overrides.startRotation, 0),
+        endRotation: finiteNumber(overrides.endRotation, 0),
+        // Advanced animation properties
+        startGeometry: overrides.startGeometry || { width: 100, height: 100, x: 0, y: 0 },
+        endGeometry: overrides.endGeometry || { width: 100, height: 100, x: 0, y: 0 },
+        pathType: String(overrides.pathType || "bezier"),
+        controlPoints: overrides.controlPoints || null,
+        svgPath: overrides.svgPath || null,
+        linearPoints: overrides.linearPoints || null,
+        followPath: Boolean(overrides.followPath),
+        startText: String(overrides.startText || ""),
+        endText: String(overrides.endText || ""),
+        morphMode: String(overrides.morphMode || "letter-by-letter"),
+        chartType: String(overrides.chartType || "bar"),
+        animationMode: String(overrides.animationMode || "staggered"),
+        staggerDelay: Math.max(0, finiteNumber(overrides.staggerDelay, 100)),
+        dataValues: Array.isArray(overrides.dataValues) ? overrides.dataValues : [100, 200, 300, 250],
+        maxValue: Math.max(1, finiteNumber(overrides.maxValue, 300)),
+        destructionMode: String(overrides.destructionMode || "fade"),
+        explosionVelocity: finiteNumber(overrides.explosionVelocity, 5),
+        fragmentCount: Math.max(1, finiteNumber(overrides.fragmentCount, 8)),
+        emphasisType: String(overrides.emphasisType || "pulse"),
+        cycles: Math.max(1, finiteNumber(overrides.cycles, 1)),
+        intensity: Math.max(0, finiteNumber(overrides.intensity, 0.2)),
+        amplitude: finiteNumber(overrides.amplitude, 5),
+        startBlur: Math.max(0, finiteNumber(overrides.startBlur, 0)),
+        endBlur: Math.max(0, finiteNumber(overrides.endBlur, 0)),
+        axis: String(overrides.axis || "y"),
+        perspective: Math.max(1, finiteNumber(overrides.perspective, 1000)),
+        glowColor: String(overrides.glowColor || "#ffff00"),
+        peakBlur: Math.max(0, finiteNumber(overrides.peakBlur, 20)),
+        pulses: Math.max(1, finiteNumber(overrides.pulses, 2)),
     };
 }
 
@@ -172,6 +214,16 @@ function normalizeElementAnimationConfig(el = {}) {
 
     if (!raw) return null;
 
+    // If it's the NEW format with timelines array, return directly
+    if (Array.isArray(raw.timelines)) {
+        return {
+            timelines: raw.timelines,
+            autoAnimate: Boolean(raw.autoAnimate),
+            laggedStart: Boolean(raw.laggedStart),
+            laggedStartDelay: Math.max(0, Number(raw.laggedStartDelay) || 50),
+        };
+    }
+
     // If it's the old format with 'effect', convert to new 'type'
     if (raw.effect && !raw.type) {
         raw.type = convertLegacyEffectToType(raw.effect);
@@ -182,7 +234,7 @@ function normalizeElementAnimationConfig(el = {}) {
     }
 
     return {
-        timelines: Array.isArray(raw.timelines) ? raw.timelines : [],
+        timelines: [],
         autoAnimate: Boolean(raw.autoAnimate),
         laggedStart: Boolean(raw.laggedStart),
         laggedStartDelay: Math.max(0, Number(raw.laggedStartDelay) || 50),

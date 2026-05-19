@@ -59,7 +59,7 @@ function _masterThemeParts(theme) {
     };
 }
 
-function _masterEl(type, x, y, width, height, styles = {}, content = "") {
+function _masterEl(type, x, y, width, height, styles = {}, content = "", role = "") {
     return {
         id: `master_${type}_${Math.round(x)}_${Math.round(y)}_${Math.round(width)}_${Math.round(height)}`,
         type,
@@ -69,17 +69,24 @@ function _masterEl(type, x, y, width, height, styles = {}, content = "") {
         height: `${height}px`,
         content,
         isMasterElement: true,
-        styles: { zIndex: -20, pointerEvents: "none", ...styles },
+        masterRole: role,
+        styles: { zIndex: -20, ...styles },
     };
 }
 
-function _masterText(x, y, width, content, styles = {}) {
+function _masterText(x, y, width, content, styles = {}, role = "") {
     return {
-        ..._masterEl("text", x, y, width, 28, styles, content),
+        ..._masterEl("text", x, y, width, 28, styles, content, role),
         autoHeight: true,
         textFitMode: "autoHeight",
     };
 }
+
+function _isEditableFooterMasterRole(role) {
+    return ["footer-rule", "logo", "footer", "slide-number-bg", "slide-number"].includes(role);
+}
+
+const EDITABLE_FOOTER_NUMBER_ALIGNMENT_VERSION = 1;
 
 function _scaleMasterElement(el, sx, sy) {
     const scalePx = (value, factor) => `${Math.max(1, Number.parseFloat(String(value || "0")) * factor)}px`;
@@ -96,7 +103,103 @@ function _scaleMasterElement(el, sx, sy) {
     };
 }
 
-function buildMasterSlideElements(slide, slideIndex, theme = getPresentationTheme()) {
+function _editableFooterElementZIndex(role, index = 0) {
+    if (role === "footer-rule") return 1 + index;
+    if (role === "slide-number-bg") return 2 + index;
+    return 3 + index;
+}
+
+function _toEditableFooterElement(el, index = 0) {
+    const role = el.masterRole || "footer";
+    const fixedFooterText = ["logo", "footer", "slide-number"].includes(role);
+    return {
+        ...el,
+        id: typeof generateId === "function" ? generateId("el") : `el_footer_${Date.now()}_${index}`,
+        isMasterElement: undefined,
+        masterRole: undefined,
+        editableMasterFooterElement: true,
+        footerRole: role,
+        sourceMasterId: el.masterId || "",
+        themeManaged: true,
+        shapeType: el.type === "shape" ? "rectangle" : el.shapeType,
+        autoHeight: el.type === "text" ? !fixedFooterText && el.autoHeight !== false : el.autoHeight,
+        textFitMode: el.type === "text" ? (fixedFooterText ? "fixed" : el.textFitMode || "autoHeight") : el.textFitMode,
+        styles: {
+            ...(el.styles || {}),
+            zIndex: _editableFooterElementZIndex(role, index),
+        },
+    };
+}
+
+function _alignEditableFooterSlideNumber(slide, slideIndex, theme = getPresentationTheme()) {
+    if (!slide || slide.editableFooterNumberAlignmentVersion === EDITABLE_FOOTER_NUMBER_ALIGNMENT_VERSION) return false;
+    const footerElements = (slide.elements || []).filter(el => el?.editableMasterFooterElement);
+    if (!footerElements.length) return false;
+
+    const template = buildMasterSlideElements(slide, slideIndex, theme, { includeEditableFooter: true });
+    const numberBgTemplate = template.find(el => el.masterRole === "slide-number-bg");
+    const numberTemplate = template.find(el => el.masterRole === "slide-number");
+    const numberBg = footerElements.find(el => el.footerRole === "slide-number-bg");
+    const number = footerElements.find(el => el.footerRole === "slide-number");
+    let changed = false;
+
+    if (numberBg && numberBgTemplate) {
+        numberBg.x = numberBgTemplate.x;
+        numberBg.y = numberBgTemplate.y;
+        numberBg.width = numberBgTemplate.width;
+        numberBg.height = numberBgTemplate.height;
+        numberBg.styles = { ...(numberBg.styles || {}), ...(numberBgTemplate.styles || {}), zIndex: numberBg.styles?.zIndex ?? 2 };
+        changed = true;
+    }
+
+    if (number && numberBgTemplate && numberTemplate) {
+        number.x = numberBgTemplate.x;
+        number.y = numberBgTemplate.y;
+        number.width = numberBgTemplate.width;
+        number.height = numberBgTemplate.height;
+        number.autoHeight = false;
+        number.textFitMode = "fixed";
+        number.content = numberTemplate.content;
+        number.styles = {
+            ...(number.styles || {}),
+            ...(numberTemplate.styles || {}),
+            zIndex: number.styles?.zIndex ?? 3,
+            textAlign: "center",
+        };
+        changed = true;
+    }
+
+    slide.editableFooterNumberAlignmentVersion = EDITABLE_FOOTER_NUMBER_ALIGNMENT_VERSION;
+    return changed;
+}
+
+function ensureEditableMasterFooterElements(slide, slideIndex, theme = getPresentationTheme()) {
+    if (!slide) return false;
+    if (slide.editableMasterFooter === true) {
+        return _alignEditableFooterSlideNumber(slide, slideIndex, theme);
+    }
+    const masterId = resolveSlideMasterId(slide);
+    const config = getMasterSlideConfig(masterId);
+    if (!config) return false;
+
+    slide.elements = Array.isArray(slide.elements) ? slide.elements : [];
+    if (slide.elements.some(el => el?.editableMasterFooterElement)) {
+        slide.editableMasterFooter = true;
+        return _alignEditableFooterSlideNumber(slide, slideIndex, theme);
+    }
+
+    const footerElements = buildMasterSlideElements(slide, slideIndex, theme, { includeEditableFooter: true })
+        .filter(el => _isEditableFooterMasterRole(el.masterRole))
+        .map(_toEditableFooterElement);
+
+    slide.editableMasterFooter = true;
+    slide.editableFooterNumberAlignmentVersion = EDITABLE_FOOTER_NUMBER_ALIGNMENT_VERSION;
+    if (!footerElements.length) return false;
+    slide.elements.push(...footerElements);
+    return true;
+}
+
+function buildMasterSlideElements(slide, slideIndex, theme = getPresentationTheme(), options = {}) {
     const masterId = resolveSlideMasterId(slide);
     const config = getMasterSlideConfig(masterId);
     if (!config) return [];
@@ -114,15 +217,16 @@ function buildMasterSlideElements(slide, slideIndex, theme = getPresentationThem
         if (config.showTopRule) elements.push(_masterEl("shape", 0, 0, 1024, 8, { backgroundColor: accent, borderRadius: "0px" }));
         elements.push(_masterEl("shape", 882, 48, 88, 88, { backgroundColor: accent2, opacity: "0.18", borderRadius: "22px" }));
         elements.push(_masterEl("shape", 930, 96, 40, 40, { backgroundColor: accent, opacity: "0.82", borderRadius: "999px" }));
+        elements.push(_masterEl("shape", 52, 714, 920, 1, { backgroundColor: border, borderRadius: "0px", opacity: "0.85" }, "", "footer-rule"));
         if (logoText) {
-            elements.push(_masterText(64, 702, 420, logoText, {
+            elements.push(_masterText(64, 724, 360, logoText, {
                 color: muted,
                 fontFamily: bodyFont,
-                fontSize: "12px",
+                fontSize: "11px",
                 fontWeight: "700",
-                letterSpacing: "0.12em",
+                letterSpacing: "0.08em",
                 textTransform: "uppercase",
-            }));
+            }, "logo"));
         }
     } else if (masterId === "section") {
         elements.push(_masterEl("shape", 0, 0, 10, 768, { backgroundColor: accent, borderRadius: "0px" }));
@@ -136,41 +240,51 @@ function buildMasterSlideElements(slide, slideIndex, theme = getPresentationThem
         }));
     } else {
         if (config.showTopRule) elements.push(_masterEl("shape", 0, 0, 1024, 5, { backgroundColor: accent, borderRadius: "0px" }));
-        elements.push(_masterEl("shape", 52, 712, 920, 1, { backgroundColor: border, borderRadius: "0px" }));
+        elements.push(_masterEl("shape", 52, 714, 920, 1, { backgroundColor: border, borderRadius: "0px", opacity: "0.85" }, "", "footer-rule"));
     }
 
     if (config.showFooter) {
         if (logoText) {
-            elements.push(_masterText(54, 724, 145, logoText, {
+            elements.push(_masterText(54, 724, 170, logoText, {
                 color: text,
                 fontFamily: bodyFont,
                 fontSize: "11px",
                 fontWeight: "800",
-                letterSpacing: "0.12em",
+                letterSpacing: "0.08em",
                 textTransform: "uppercase",
-            }));
+            }, "logo"));
         }
         if (footerText) {
-            elements.push(_masterText(224, 724, 520, footerText, {
+            elements.push(_masterText(244, 724, 500, footerText, {
                 color: muted,
                 fontFamily: bodyFont,
                 fontSize: "11px",
                 fontWeight: "600",
-            }));
+                textAlign: "center",
+            }, "footer"));
         }
     }
 
     if (config.showSlideNumber) {
-        elements.push(_masterText(918, 724, 54, slideNumber, {
-            color: muted,
+        elements.push(_masterEl("shape", 912, 718, 62, 28, {
+            backgroundColor: surface,
+            border: `1px solid ${border}`,
+            borderRadius: "999px",
+        }, "", "slide-number-bg"));
+        elements.push(_masterText(912, 718, 62, slideNumber, {
+            color: accent,
             fontFamily: bodyFont,
             fontSize: "11px",
             fontWeight: "800",
-            textAlign: "right",
-        }));
+            textAlign: "center",
+        }, "slide-number"));
     }
 
-    return elements.map(el => _scaleMasterElement(el, sx, sy));
+    const scaled = elements.map(el => ({ ..._scaleMasterElement(el, sx, sy), masterId }));
+    if (slide?.editableMasterFooter === true && options.includeEditableFooter !== true) {
+        return scaled.filter(el => !_isEditableFooterMasterRole(el.masterRole));
+    }
+    return scaled;
 }
 
 window.getMasterSlideOptions = getMasterSlideOptions;
@@ -178,4 +292,5 @@ window.inferMasterIdForLayout = inferMasterIdForLayout;
 window.getMasterSlideConfig = getMasterSlideConfig;
 window.setCurrentSlideMaster = setCurrentSlideMaster;
 window.updateMasterSlide = updateMasterSlide;
+window.ensureEditableMasterFooterElements = ensureEditableMasterFooterElements;
 window.buildMasterSlideElements = buildMasterSlideElements;

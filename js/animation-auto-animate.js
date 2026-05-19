@@ -26,9 +26,10 @@ function detectMatchingObjects(fromSlide, toSlide) {
     // Pass 1: Match by ID
     for (const fromEl of fromSlide.elements) {
         if (!fromEl.id) continue;
+        if (!_isAnimatableElement(fromEl)) continue;
 
         const toEl = toSlide.elements.find(el => el.id === fromEl.id);
-        if (toEl) {
+        if (toEl && _isAnimatableElement(toEl)) {
             matches.push({
                 fromEl,
                 toEl,
@@ -88,22 +89,26 @@ function detectMatchingObjects(fromSlide, toSlide) {
  * Considers: position, size, opacity, color
  */
 function _calculateSimilarityScore(el1, el2) {
+    const toNumber = (value, fallback = 0) => {
+        const number = Number.parseFloat(String(value ?? ""));
+        return Number.isFinite(number) ? number : fallback;
+    };
     let score = 0;
     let weightSum = 0;
 
     // Position similarity (40%)
-    const dx = Math.abs((el1.x || 0) - (el2.x || 0));
-    const dy = Math.abs((el1.y || 0) - (el2.y || 0));
+    const dx = Math.abs(toNumber(el1.x) - toNumber(el2.x));
+    const dy = Math.abs(toNumber(el1.y) - toNumber(el2.y));
     const maxDist = 500; // Max distance considered similar
     const positionScore = Math.max(0, 1 - Math.sqrt(dx * dx + dy * dy) / maxDist);
     score += positionScore * 0.4;
     weightSum += 0.4;
 
     // Size similarity (30%)
-    const w1 = (el1.width && typeof el1.width === 'number') ? el1.width : 100;
-    const w2 = (el2.width && typeof el2.width === 'number') ? el2.width : 100;
-    const h1 = (el1.height && typeof el1.height === 'number') ? el1.height : 100;
-    const h2 = (el2.height && typeof el2.height === 'number') ? el2.height : 100;
+    const w1 = Math.max(1, toNumber(el1.width, 100));
+    const w2 = Math.max(1, toNumber(el2.width, 100));
+    const h1 = Math.max(1, toNumber(el1.height, 100));
+    const h2 = Math.max(1, toNumber(el2.height, 100));
 
     const sizeRatio = Math.min(w1, w2) / Math.max(w1, w2);
     const aspectRatioDiff = Math.abs((h1 / w1) - (h2 / w2));
@@ -146,6 +151,7 @@ function _colorSimilarity(color1, color2) {
  */
 function _isAnimatableElement(el) {
     if (!el) return false;
+    if (el.editableMasterFooterElement) return false;
 
     const nonAnimatableTypes = ['master'];
     if (nonAnimatableTypes.includes(el.type)) return false;
@@ -201,15 +207,19 @@ function _captureElementState(el) {
     if (!el) return _getDefaultElementState();
 
     const styles = el.styles || {};
+    const toNumber = (value, fallback = 0) => {
+        const number = Number.parseFloat(String(value ?? ""));
+        return Number.isFinite(number) ? number : fallback;
+    };
 
     return {
-        x: el.x || 0,
-        y: el.y || 0,
-        width: (el.width && typeof el.width === 'number') ? el.width : 100,
-        height: (el.height && typeof el.height === 'number') ? el.height : 100,
-        scaleX: el.scaleX || 1,
-        scaleY: el.scaleY || 1,
-        rotation: el.rotation || 0,
+        x: toNumber(el.x, 0),
+        y: toNumber(el.y, 0),
+        width: Math.max(1, toNumber(el.width, 100)),
+        height: Math.max(1, toNumber(el.height, 100)),
+        scaleX: toNumber(el.scaleX, 1),
+        scaleY: toNumber(el.scaleY, 1),
+        rotation: toNumber(el.rotation, 0),
         opacity: (styles.opacity !== undefined) ? styles.opacity : 1,
         color: styles.color || '#000000',
     };

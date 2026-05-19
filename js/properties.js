@@ -1102,6 +1102,7 @@ function _buildSlideWorkspacePanel(panel) {
     masterGrp.innerHTML += `
         <div class="space-y-2">
             <select id="prop-slide-master" class="w-full text-xs">${masterOptions}</select>
+            <label class="prop-label">Footer</label>
             <div class="grid grid-cols-2 gap-2">
                 <input id="prop-master-logo" class="w-full text-xs" type="text" value="${escapeHtml(masterConfig.logoText || "")}" placeholder="Logo / label" ${masterId === "none" ? "disabled" : ""}>
                 <input id="prop-master-footer" class="w-full text-xs" type="text" value="${escapeHtml(masterConfig.footerText || "")}" placeholder="Footer text" ${masterId === "none" ? "disabled" : ""}>

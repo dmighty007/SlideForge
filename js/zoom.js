@@ -39,6 +39,7 @@ function initZoom() {
     const wrapper = document.getElementById("canvas-wrapper");
     if (!wrapper || wrapper.dataset.zoomInitialized === "true") return;
     wrapper.dataset.zoomInitialized = "true";
+    initZoomControlDisclosure();
 
     // --- Zoom Events ---
     wrapper.addEventListener("wheel", (e) => {
@@ -134,6 +135,7 @@ function applyZoom(options = {}) {
     const engine = document.getElementById("zoom-engine");
     const wrapper = document.getElementById("canvas-wrapper");
     const label = document.getElementById("zoom-label");
+    const lensLabel = document.getElementById("zoom-lens-label");
     const slider = document.getElementById("zoom-slider");
 
     const anchor = options.anchor || (options.preserveViewport ? getZoomAnchor(wrapper, options.anchorEvent) : null);
@@ -179,7 +181,9 @@ function applyZoom(options = {}) {
         engine.style.transform = "none";
     }
 
-    if (label) label.textContent = `${Math.round(stateZoom * 100)}%`;
+    const zoomText = `${Math.round(stateZoom * 100)}%`;
+    if (label) label.textContent = zoomText;
+    if (lensLabel) lensLabel.textContent = zoomText;
     if (slider) slider.value = stateZoom;
 
     if (typeof Reveal !== "undefined" && Reveal.layout) {
@@ -189,6 +193,38 @@ function applyZoom(options = {}) {
     if (anchor) {
         requestAnimationFrame(() => restoreZoomAnchor(wrapper, anchor));
     }
+}
+
+function setZoomControlExpanded(expanded) {
+    const control = document.getElementById("zoom-control");
+    const toggle = document.getElementById("zoom-lens-toggle");
+    if (!control) return;
+    control.dataset.expanded = expanded ? "true" : "false";
+    control.classList.toggle("is-open", Boolean(expanded));
+    toggle?.setAttribute("aria-expanded", expanded ? "true" : "false");
+}
+
+function toggleZoomControl() {
+    const control = document.getElementById("zoom-control");
+    setZoomControlExpanded(control?.dataset.expanded !== "true");
+}
+
+function initZoomControlDisclosure() {
+    const control = document.getElementById("zoom-control");
+    if (!control || control.dataset.disclosureInitialized === "true") return;
+    control.dataset.disclosureInitialized = "true";
+
+    document.addEventListener("pointerdown", event => {
+        if (!control.contains(event.target)) {
+            setZoomControlExpanded(false);
+        }
+    });
+
+    document.addEventListener("keydown", event => {
+        if (event.key === "Escape") {
+            setZoomControlExpanded(false);
+        }
+    });
 }
 
 function changeZoom(delta, options = {}) {
@@ -300,6 +336,8 @@ window.getCanvasScale = function() {
 // Global bindings
 window.changeZoom = changeZoom;
 window.handleZoomSlider = handleZoomSlider;
+window.toggleZoomControl = toggleZoomControl;
+window.setZoomControlExpanded = setZoomControlExpanded;
 window.applyZoom = applyZoom;
 window.resetZoom = resetZoom;
 window.centerSlide = centerSlide;

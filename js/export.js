@@ -5,9 +5,18 @@
 async function exportZip() {
     const zip = new JSZip();
     const theme = getPresentationTheme();
+
+    if (typeof syncMoleculeViewStatesFromDom === "function") {
+        await syncMoleculeViewStatesFromDom();
+    }
+    if (typeof ensureEditableMasterFooterElements === "function") {
+        const themeForMasters = theme;
+        (state.slides || []).forEach((slide, slideIndex) => ensureEditableMasterFooterElements(slide, slideIndex, themeForMasters));
+    }
     
-    // 1. Process State and Assets
-    const { processedState, assets } = await processStateAssets(state);
+    // 1. Process the same normalized snapshot used by save/PPTX exports.
+    const exportState = createZipViewerState(typeof getPersistableState === "function" ? getPersistableState() : JSON.parse(JSON.stringify(state)), theme);
+    const { processedState, assets } = await processStateAssets(exportState);
     const stateJson = JSON.stringify(processedState);
     
     // 2. Add Assets
@@ -21,16 +30,76 @@ async function exportZip() {
     zip.file("index.html", viewerHtml);
     
     // 4. Generate viewer.js
+    await addAnimationRuntimeScriptsToZip(zip);
     const viewerJs = generateViewerJs();
     zip.file("js/viewer.js", viewerJs);
 
     // 5. Generate viewer.css
-    const viewerCss = generateViewerCss(theme);
+    const viewerCss = generateViewerCss(theme, await getCurrentAppCssForZip());
     zip.file("css/viewer.css", viewerCss);
     
     // 6. Download Zip
     const content = await zip.generateAsync({ type: "blob" });
     saveAs(content, "presentation_framework.zip");
+}
+
+function createZipViewerState(snapshot, theme) {
+    const exportState = JSON.parse(JSON.stringify(snapshot || {}));
+    if (!Array.isArray(exportState.slides)) exportState.slides = [];
+    if (typeof buildMasterSlideElements !== "function") return exportState;
+
+    exportState.slides = exportState.slides.map((slide, slideIndex) => {
+        const sourceSlide = state.slides?.[slideIndex] || slide;
+        const masterElements = buildMasterSlideElements(sourceSlide, slideIndex, theme)
+            .filter(el => el && el.isMasterElement)
+            .map(el => ({
+                ...JSON.parse(JSON.stringify(el)),
+                id: `zip_${slideIndex}_${el.id}`,
+                locked: true,
+                hidden: false,
+            }));
+        if (!masterElements.length) return slide;
+        return {
+            ...slide,
+            elements: [...masterElements, ...(slide.elements || [])],
+        };
+    });
+    return exportState;
+}
+
+async function getCurrentAppCssForZip() {
+    const stylesheet =
+        document.querySelector('link[href^="css/styles.css"]') ||
+        document.querySelector('link[href*="/css/styles.css"]');
+    const href = stylesheet?.getAttribute("href") || "css/styles.css";
+    try {
+        const response = await fetch(new URL(href, window.location.href).toString(), { cache: "no-store" });
+        return response.ok ? await response.text() : "";
+    } catch (_err) {
+        return "";
+    }
+}
+
+async function getCurrentAppScriptForZip(path) {
+    try {
+        const response = await fetch(new URL(path, window.location.href).toString(), { cache: "no-store" });
+        return response.ok ? await response.text() : "";
+    } catch (_err) {
+        return "";
+    }
+}
+
+async function addAnimationRuntimeScriptsToZip(zip) {
+    const scripts = [
+        "js/animation-utils.js",
+        "js/animation-advanced.js",
+        "js/animation-state.js",
+        "js/animation-engine.js",
+    ];
+    for (const path of scripts) {
+        const source = await getCurrentAppScriptForZip(path);
+        if (source) zip.file(path, source);
+    }
 }
 
 /**
@@ -357,6 +426,10 @@ function generateViewerHtml(stateJson, theme) {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Presentation</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bangers&family=Caveat:wght@400;600;700&family=Comic+Neue:wght@400;700&family=DM+Sans:wght@400;500;700&family=Fredoka:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@300;400;500;600;700&family=Lora:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Merriweather:wght@400;700&family=Montserrat:wght@500;600;700;800&family=Newsreader:opsz,wght@6..72,500;6..72,700&family=Nunito:wght@400;600;700;800&family=Permanent+Marker&family=Playfair+Display:wght@500;600;700;800&family=Poppins:wght@400;500;600;700&family=Shrikhand&family=Space+Grotesk:wght@400;500;700&family=Work+Sans:wght@400;500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700&display=swap" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
     <link rel="stylesheet" href="css/viewer.css" />
     <script id="presentation-data" type="application/json">${safeStateJson}</script>
 </head>
@@ -409,6 +482,10 @@ function generateViewerHtml(stateJson, theme) {
         </div>
     </div>
 
+    <script src="js/animation-utils.js"></script>
+    <script src="js/animation-advanced.js"></script>
+    <script src="js/animation-state.js"></script>
+    <script src="js/animation-engine.js"></script>
     <script src="js/viewer.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
@@ -428,7 +505,7 @@ function generateViewerHtml(stateJson, theme) {
 </html>`;
 }
 
-function generateViewerCss(theme) {
+function generateViewerCss(theme, appCss = "") {
     let vars = "";
     if (theme.cssVars) {
         for (const [key, val] of Object.entries(theme.cssVars)) {
@@ -437,6 +514,8 @@ function generateViewerCss(theme) {
     }
     
     return `
+${appCss}
+
 :root {
     ${vars}
     --slide-width: 1024px;
@@ -866,6 +945,46 @@ body {
     position: absolute;
     box-sizing: border-box;
     z-index: 1;
+    cursor: default !important;
+    outline: none !important;
+    box-shadow: none;
+    -webkit-user-select: none !important;
+    user-select: none !important;
+    -webkit-user-drag: none;
+}
+
+.standalone-canvas .canvas-element,
+.standalone-canvas .canvas-element *,
+.standalone-canvas .text-element-content,
+.standalone-canvas .table-element-cell {
+    -webkit-user-select: none !important;
+    user-select: none !important;
+    caret-color: transparent !important;
+}
+
+.standalone-canvas .canvas-element::selection,
+.standalone-canvas .canvas-element *::selection {
+    background: transparent;
+    color: inherit;
+}
+
+.standalone-canvas .canvas-element.selected,
+.standalone-canvas .canvas-element.group-member-selected,
+.standalone-canvas .canvas-element:focus,
+.standalone-canvas .canvas-element:focus-visible,
+.standalone-canvas .text-element-content:focus,
+.standalone-canvas .table-element-cell:focus {
+    outline: none !important;
+    box-shadow: none !important;
+    border-color: inherit;
+}
+
+.standalone-canvas .resize-handle,
+.standalone-canvas .crop-handle,
+.standalone-canvas .connector-point-handle,
+.standalone-canvas .anim-badge,
+.standalone-canvas #group-bound {
+    display: none !important;
 }
 
 .connector-svg {
@@ -1152,6 +1271,7 @@ function normalizeImageCropTransform(crop) {
 function normalizeAnimation(el) {
     const legacyValue = typeof el.animation === 'string' ? el.animation.trim() : '';
     const raw = legacyValue ? { effect: legacyValue } : (el.animation && typeof el.animation === 'object' ? el.animation : null);
+    if (raw && Array.isArray(raw.timelines)) return null;
     if (!raw || !raw.effect || !animationEffects.includes(raw.effect)) return null;
     return {
         effect: raw.effect,
@@ -1166,6 +1286,7 @@ function normalizeAnimation(el) {
 }
 
 function initViewer(data) {
+    window.state = data;
     const container = document.getElementById('slides-container');
     const stage = document.getElementById('viewer-stage');
     const prevBtn = document.getElementById('btn-prev');
@@ -1319,6 +1440,7 @@ function initViewer(data) {
     }
 
     function prepareSlideAnimations(slideIndex) {
+        if (typeof stopSlideAnimations === 'function') stopSlideAnimations();
         runtime.slideIndex = slideIndex;
         const entries = getAnimatedEntries(slideIndex);
         entries.forEach(entry => hideAnimatedEntry(entry));
@@ -1331,6 +1453,9 @@ function initViewer(data) {
             else runtime.clickGroups.push({ order, entries: [entry] });
         });
         runtime.revealedGroups = 0;
+        if (typeof playConfiguredSlideAnimations === 'function') {
+            playConfiguredSlideAnimations(slideIndex);
+        }
     }
 
     function revealNextAnimationGroup() {
@@ -1467,8 +1592,6 @@ function initViewer(data) {
                 fragment.classList.toggle('current-fragment', slideIndex === activeSlideIndex && fragmentIndex === activeFragmentIndex);
             });
         });
-        const current = getSlideDom(activeSlideIndex);
-        if (current) playSlideAnimations(current);
         if (runtime.slideIndex !== activeSlideIndex) {
             prepareSlideAnimations(activeSlideIndex);
         }
@@ -1774,10 +1897,24 @@ function createViewerElement(elData, mediaOptions = {}) {
     };
     const el = document.createElement('div');
     const animation = normalizeAnimation(elData);
+    el.id = elData.id || '';
     el.className = 'canvas-element';
+    el.setAttribute('contenteditable', 'false');
+    el.setAttribute('draggable', 'false');
+    el.setAttribute('tabindex', '-1');
+    el.setAttribute('aria-readonly', 'true');
+    if (elData.id) el.setAttribute('data-id', elData.id);
+    if (elData.type) el.setAttribute('data-type', elData.type);
+    if (elData.footerRole) el.setAttribute('data-footer-role', elData.footerRole);
     el.style.transform = 'translate(' + elData.x + 'px, ' + elData.y + 'px)';
+    el.setAttribute('data-x', elData.x);
+    el.setAttribute('data-y', elData.y);
     if (elData.width) el.style.width = elData.width;
     if (elData.height) el.style.height = elData.height;
+    if (elData.type === 'text') {
+        el.dataset.autoHeight = elData.autoHeight === false ? 'false' : 'true';
+        el.dataset.textFitMode = elData.textFitMode || (elData.autoHeight === false ? 'fixed' : 'autoHeight');
+    }
     Object.entries(elData.styles || {}).forEach(([prop, value]) => {
         if (value === undefined || value === null) return;
         if (prop === 'textStrokeWidth') {
@@ -1805,10 +1942,18 @@ function createViewerElement(elData, mediaOptions = {}) {
     if (animation) {
         el.classList.add('has-structured-animation');
     }
+    if (elData.hidden) {
+        el.style.opacity = '0';
+        el.style.pointerEvents = 'none';
+    }
     
     if (elData.type === 'text') {
         const content = document.createElement('div');
         content.className = 'text-element-content';
+        content.setAttribute('contenteditable', 'false');
+        content.setAttribute('draggable', 'false');
+        content.setAttribute('tabindex', '-1');
+        content.setAttribute('aria-readonly', 'true');
         content.innerHTML = renderTextContent(elData);
         el.appendChild(content);
     } else if (elData.type === 'table') {
@@ -1841,6 +1986,10 @@ function createViewerElement(elData, mediaOptions = {}) {
                 const zebraFill = tableData.zebra && !isHeader && rowIndex % 2 === 1 ? tableData.altFill : tableData.bodyFill;
                 const styles = cellData.styles || {};
                 cell.className = 'table-element-cell';
+                cell.setAttribute('contenteditable', 'false');
+                cell.setAttribute('draggable', 'false');
+                cell.setAttribute('tabindex', '-1');
+                cell.setAttribute('aria-readonly', 'true');
                 cell.style.border = tableData.borderWidth + 'px solid ' + tableData.borderColor;
                 cell.style.padding = tableData.cellPadding + 'px';
                 cell.style.backgroundColor = styles.backgroundColor || (isHeader ? tableData.headerFill : zebraFill);
@@ -1948,7 +2097,7 @@ function createViewerElement(elData, mediaOptions = {}) {
         }
         el.appendChild(videoNode);
     } else if (elData.type === 'shape') {
-        applyShapeStyles(el, elData.shapeType);
+        applyShapeStyles(el, elData);
     } else if (elData.type === 'connector') {
         renderConnectorElement(el, elData);
     } else if (elData.type === 'html') {
@@ -2232,41 +2381,46 @@ function renderTextContent(elData) {
     return elData.content || '';
 }
 
-function applyShapeStyles(el, shapeType) {
+function getViewerShapeVisualStyle(elData) {
+    const shapeType = elData?.shapeType || 'rectangle';
+    const headSize = Math.max(12, Math.min(80, Number(elData?.arrowHeadSize) || 38));
+    const shaftSize = Math.max(12, Math.min(90, Number(elData?.arrowShaftSize) || 36));
+    const shaftStart = Math.max(0, Math.min(50, 50 - shaftSize / 2));
+    const shaftEnd = Math.max(50, Math.min(100, 50 + shaftSize / 2));
+    const headStart = Math.max(0, Math.min(92, 100 - headSize));
+    const headEnd = Math.max(8, Math.min(100, headSize));
     switch (shapeType) {
         case 'triangle':
-            el.style.clipPath = 'polygon(50% 0%, 0% 100%, 100% 100%)';
-            break;
+            return { clipPath: 'polygon(50% 0%, 0% 100%, 100% 100%)', borderRadius: '0px' };
         case 'diamond':
-            el.style.clipPath = 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)';
-            break;
+            return { clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', borderRadius: '0px' };
         case 'hexagon':
-            el.style.clipPath = 'polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)';
-            break;
+            return { clipPath: 'polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)', borderRadius: '0px' };
         case 'parallelogram':
-            el.style.clipPath = 'polygon(20% 0%, 100% 0%, 80% 100%, 0% 100%)';
-            break;
+            return { clipPath: 'polygon(20% 0%, 100% 0%, 80% 100%, 0% 100%)', borderRadius: '0px' };
         case 'arrow-right':
-            el.style.clipPath = 'polygon(0% 32%, 62% 32%, 62% 0%, 100% 50%, 62% 100%, 62% 68%, 0% 68%)';
-            break;
+            return { clipPath: 'polygon(0% ' + shaftStart + '%, ' + headStart + '% ' + shaftStart + '%, ' + headStart + '% 0%, 100% 50%, ' + headStart + '% 100%, ' + headStart + '% ' + shaftEnd + '%, 0% ' + shaftEnd + '%)', borderRadius: '0px' };
         case 'arrow-left':
-            el.style.clipPath = 'polygon(38% 0%, 38% 32%, 100% 32%, 100% 68%, 38% 68%, 38% 100%, 0% 50%)';
-            break;
+            return { clipPath: 'polygon(' + headEnd + '% 0%, ' + headEnd + '% ' + shaftStart + '%, 100% ' + shaftStart + '%, 100% ' + shaftEnd + '%, ' + headEnd + '% ' + shaftEnd + '%, ' + headEnd + '% 100%, 0% 50%)', borderRadius: '0px' };
         case 'arrow-up':
-            el.style.clipPath = 'polygon(50% 0%, 100% 40%, 68% 40%, 68% 100%, 32% 100%, 32% 40%, 0% 40%)';
-            break;
+            return { clipPath: 'polygon(50% 0%, 100% ' + headEnd + '%, ' + shaftEnd + '% ' + headEnd + '%, ' + shaftEnd + '% 100%, ' + shaftStart + '% 100%, ' + shaftStart + '% ' + headEnd + '%, 0% ' + headEnd + '%)', borderRadius: '0px' };
         case 'arrow-down':
-            el.style.clipPath = 'polygon(32% 0%, 68% 0%, 68% 60%, 100% 60%, 50% 100%, 0% 60%, 32% 60%)';
-            break;
+            return { clipPath: 'polygon(' + shaftStart + '% 0%, ' + shaftEnd + '% 0%, ' + shaftEnd + '% ' + headStart + '%, 100% ' + headStart + '%, 50% 100%, 0% ' + headStart + '%, ' + shaftStart + '% ' + headStart + '%)', borderRadius: '0px' };
         case 'circle':
-            el.style.borderRadius = '9999px';
-            break;
+            return { clipPath: 'none', borderRadius: '9999px' };
+        default:
+            return { clipPath: 'none', borderRadius: elData?.styles?.borderRadius || '0px' };
     }
 }
 
-function playSlideAnimations(slideDom) {
-    if (!slideDom) return;
+function applyShapeStyles(el, elData) {
+    const visual = getViewerShapeVisualStyle(elData);
+    el.style.clipPath = visual.clipPath;
+    if (!elData?.styles?.borderRadius) {
+        el.style.borderRadius = visual.borderRadius;
+    }
 }
+
 `;
 }
 

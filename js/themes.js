@@ -543,6 +543,60 @@ function resolveThemeColorRole(role, nextTheme, alpha = 1, target = "text") {
     return null;
 }
 
+function _canRefreshPresetThemeStyles(slide) {
+    if (!slide || !slide.layoutId || slide.layoutId === "blank-titled") return false;
+    if (typeof SLIDE_PRESETS === "undefined" || !SLIDE_PRESETS?.[slide.layoutId]) return false;
+    const elements = Array.isArray(slide.elements) ? slide.elements : [];
+    return elements.length > 0 && elements.every(element => element?.themeManaged !== false);
+}
+
+function _mergeTableTextIntoThemeTable(nextTableData, previousTableData) {
+    if (!nextTableData || !previousTableData) return nextTableData;
+    const merged = { ...nextTableData };
+    const nextCells = Array.isArray(nextTableData.cells) ? nextTableData.cells : [];
+    const previousCells = Array.isArray(previousTableData.cells) ? previousTableData.cells : [];
+    if (!nextCells.length || !previousCells.length) return merged;
+    merged.cells = nextCells.map((row, rowIndex) => {
+        const previousRow = previousCells[rowIndex] || [];
+        return (Array.isArray(row) ? row : []).map((cell, cellIndex) => {
+            const previousCell = previousRow[cellIndex];
+            if (!previousCell || typeof previousCell !== "object") return cell;
+            return { ...cell, text: previousCell.text ?? cell?.text ?? "" };
+        });
+    });
+    return merged;
+}
+
+function _applyPresetThemeStylesToSlide(slide, nextTheme) {
+    if (!_canRefreshPresetThemeStyles(slide) || typeof buildPresetSlideState !== "function") return false;
+    const themedSlide = buildPresetSlideState(slide.layoutId, nextTheme, {
+        slideId: slide.id,
+        notes: slide.notes || "",
+        background: slide.background || "",
+        masterId: slide.masterId || null,
+    });
+    const themedElements = Array.isArray(themedSlide?.elements) ? themedSlide.elements : [];
+    const currentElements = Array.isArray(slide.elements) ? slide.elements : [];
+    if (!themedElements.length || themedElements.length !== currentElements.length) return false;
+    if (currentElements.some((element, index) => themedElements[index]?.type !== element?.type)) return false;
+
+    slide.elements = currentElements.map((element, index) => {
+        const themed = themedElements[index];
+        const next = {
+            ...element,
+            styles: themed.styles ? { ...themed.styles } : element.styles,
+            themeManaged: element.themeManaged ?? true,
+        };
+        if (themed.shapeType) next.shapeType = themed.shapeType;
+        if (themed.bulletStyle && element.type === "text") next.bulletStyle = themed.bulletStyle;
+        if (element.type === "table" && themed.tableData) {
+            next.tableData = _mergeTableTextIntoThemeTable(themed.tableData, element.tableData);
+        }
+        return next;
+    });
+    return true;
+}
+
 function classifyColor(color, theme) {
     const normalized = String(color || "").trim().toLowerCase();
     if (!normalized) return "keep";
@@ -607,10 +661,22 @@ function getPresentationTheme(themeId = state.presentationTheme) {
     return PRESENTATION_THEMES[themeId] || PRESENTATION_THEMES.editorial;
 }
 
+function normalizePresentationThemeId(themeId) {
+    return PRESENTATION_THEMES[themeId] ? themeId : "editorial";
+}
 
+function syncPresentationThemeFromState({ persist = false } = {}) {
+    if (typeof state === "undefined" || !state) return "editorial";
+    const safeThemeId = normalizePresentationThemeId(state.presentationTheme);
+    if (state.presentationTheme !== safeThemeId) {
+        state.presentationTheme = safeThemeId;
+    }
+    applyPresentationTheme(safeThemeId, { persist });
+    return safeThemeId;
+}
 
 function applyPresentationTheme(themeId, { persist = true } = {}) {
-    const safeThemeId = PRESENTATION_THEMES[themeId] ? themeId : "editorial";
+    const safeThemeId = normalizePresentationThemeId(themeId);
     const theme = PRESENTATION_THEMES[safeThemeId];
     const root = document.documentElement;
 
@@ -624,6 +690,9 @@ function applyPresentationTheme(themeId, { persist = true } = {}) {
     const revealTheme = document.getElementById("reveal-theme");
     if (revealTheme) {
         revealTheme.href = `https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/theme/${theme.revealTheme}.min.css`;
+    }
+    if (typeof renderPresetSlidePalette === "function") {
+        renderPresetSlidePalette();
     }
 }
 
@@ -647,6 +716,7 @@ function retintPresentationTheme(previousThemeId, nextThemeId) {
     const nextTheme = getPresentationTheme(nextThemeId);
 
     state.slides.forEach(slide => {
+        if (_applyPresetThemeStylesToSlide(slide, nextTheme)) return;
         (slide.elements || []).forEach(el => {
             if (!el || !el.styles) return;
             if (el.themeManaged === false) return;
@@ -691,3 +761,4 @@ function retintPresentationTheme(previousThemeId, nextThemeId) {
 }
 
 window.changePresentationTheme = changePresentationTheme;
+window.syncPresentationThemeFromState = syncPresentationThemeFromState;

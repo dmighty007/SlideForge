@@ -32,18 +32,22 @@ function navigateSlidesWithArrow(direction) {
 
 function initKeyboard() {
     // Keyboard shortcuts
-    document.addEventListener("keydown", e => {
+    document.addEventListener("keydown", event => {
+        const e = event || window.event || {};
+        const rawKey = typeof e.key === "string" ? e.key : "";
+        const key = rawKey.toLowerCase();
+        const target = e.target || document.activeElement || null;
+
         // Do not trigger shortcuts in play mode
         if (document.body.classList.contains("play-mode-active")) return;
 
-        const key = e.key.toLowerCase();
         const isUndoShortcut = (e.ctrlKey || e.metaKey) && !e.shiftKey && key === "z";
         const isRedoShortcut =
             ((e.ctrlKey || e.metaKey) && e.shiftKey && key === "z") || ((e.ctrlKey || e.metaKey) && key === "y");
         const isEditingField =
-            e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.isContentEditable;
+            target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
         const isInlineEditor =
-            e.target.closest?.(".text-element-content, .table-element-cell") && e.target.isContentEditable;
+            target?.closest?.(".text-element-content, .table-element-cell") && target?.isContentEditable;
 
         // Ctrl/Cmd+S: Save current project
         if ((e.ctrlKey || e.metaKey) && key === "s") {
@@ -90,7 +94,7 @@ function initKeyboard() {
         }
         
         // Delete / Backspace: Delete selected elements
-        if ((e.key === "Delete" || e.key === "Backspace") && state.selectedIds.length) {
+        if ((rawKey === "Delete" || rawKey === "Backspace") && state.selectedIds.length) {
             e.preventDefault();
             deleteSelectedElements();
         }
@@ -159,32 +163,32 @@ function initKeyboard() {
 
         // Arrow keys: Nudge elements
         const step = e.shiftKey ? 10 : 1;
-        if (e.key === "ArrowLeft" && state.selectedIds.length) {
+        if (rawKey === "ArrowLeft" && state.selectedIds.length) {
             e.preventDefault();
             nudgeSelectedElements(-step, 0);
         }
-        if (e.key === "ArrowRight" && state.selectedIds.length) {
+        if (rawKey === "ArrowRight" && state.selectedIds.length) {
             e.preventDefault();
             nudgeSelectedElements(step, 0);
         }
-        if (e.key === "ArrowUp" && state.selectedIds.length) {
+        if (rawKey === "ArrowUp" && state.selectedIds.length) {
             e.preventDefault();
             nudgeSelectedElements(0, -step);
         }
-        if (e.key === "ArrowDown" && state.selectedIds.length) {
+        if (rawKey === "ArrowDown" && state.selectedIds.length) {
             e.preventDefault();
             nudgeSelectedElements(0, step);
         }
         if (
             !state.selectedIds.length &&
-            ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key) &&
-            navigateSlidesWithArrow(e.key)
+            ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(rawKey) &&
+            navigateSlidesWithArrow(rawKey)
         ) {
             e.preventDefault();
         }
 
         // Tab: Cycle selection
-        if (e.key === "Tab" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (rawKey === "Tab" && !e.ctrlKey && !e.metaKey && !e.altKey) {
             e.preventDefault();
             if (typeof cycleSelection === "function") {
                 cycleSelection(e.shiftKey ? -1 : 1);
@@ -192,7 +196,7 @@ function initKeyboard() {
         }
 
         // Escape: Clear selection or close modal
-        if (e.key === "Escape") {
+        if (rawKey === "Escape") {
             const shortcutsModal = document.getElementById("shortcuts-modal");
             if (shortcutsModal && !shortcutsModal.classList.contains("hidden")) {
                 closeShortcutsModal();
@@ -210,7 +214,7 @@ function initKeyboard() {
         }
 
         // F1: Show shortcuts modal
-        if (e.key === "F1") {
+        if (rawKey === "F1") {
             e.preventDefault();
             openShortcutsModal();
         }
@@ -218,7 +222,7 @@ function initKeyboard() {
 
     document.addEventListener("copy", e => {
         if (document.body.classList.contains("play-mode-active")) return;
-        if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.isContentEditable) return;
+        if (e.target?.tagName === "INPUT" || e.target?.tagName === "TEXTAREA" || e.target?.isContentEditable) return;
         if (!state.selectedIds.length) return;
         copyElement(e);
     });

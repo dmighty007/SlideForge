@@ -166,15 +166,232 @@ function buildAnimationTypeSpecificProps(anim, elementId, timelineIdx, animIdx) 
             html += `
               <div class="prop-row">
                 <div class="prop">
-                  <label>Start Z-Index:</label>
+                  <label>Start Z:</label>
                   <input type="number" value="${anim.startZIndex || 0}" step="1"
                     onchange="updateAnimationProperty('${elementId}', ${timelineIdx}, ${animIdx}, 'startZIndex', this.value)">
                 </div>
                 <div class="prop">
-                  <label>End Z-Index:</label>
+                  <label>End Z:</label>
                   <input type="number" value="${anim.endZIndex || 100}" step="1"
                     onchange="updateAnimationProperty('${elementId}', ${timelineIdx}, ${animIdx}, 'endZIndex', this.value)">
                 </div>
+              </div>
+            `;
+            break;
+
+        case "emphasis":
+            html += `
+              <div class="prop">
+                <label>Type:</label>
+                <select onchange="updateAnimationProperty('${elementId}', ${timelineIdx}, ${animIdx}, 'emphasisType', this.value)">
+                  ${["pulse","wiggle","bounce","heartbeat","flash","shake"].map(t =>
+                    `<option value="${t}" ${(anim.emphasisType||'pulse')===t?'selected':''}>${t}</option>`
+                  ).join('')}
+                </select>
+              </div>
+              <div class="prop-row">
+                <div class="prop">
+                  <label>Cycles:</label>
+                  <input type="number" value="${anim.cycles || 2}" min="1" max="10" step="1"
+                    onchange="updateAnimationProperty('${elementId}', ${timelineIdx}, ${animIdx}, 'cycles', this.value)">
+                </div>
+                <div class="prop">
+                  <label>Intensity:</label>
+                  <input type="number" value="${anim.intensity || 0.2}" min="0" max="1" step="0.05"
+                    onchange="updateAnimationProperty('${elementId}', ${timelineIdx}, ${animIdx}, 'intensity', this.value)">
+                </div>
+              </div>
+            `;
+            break;
+
+        case "blur":
+            html += `
+              <div class="prop-row">
+                <div class="prop">
+                  <label>Start Blur:</label>
+                  <input type="number" value="${anim.startBlur || 0}" min="0" max="50" step="1"
+                    onchange="updateAnimationProperty('${elementId}', ${timelineIdx}, ${animIdx}, 'startBlur', this.value)">
+                  <span class="unit">px</span>
+                </div>
+                <div class="prop">
+                  <label>End Blur:</label>
+                  <input type="number" value="${anim.endBlur || 15}" min="0" max="50" step="1"
+                    onchange="updateAnimationProperty('${elementId}', ${timelineIdx}, ${animIdx}, 'endBlur', this.value)">
+                  <span class="unit">px</span>
+                </div>
+              </div>
+            `;
+            break;
+
+        case "flip3D":
+            html += `
+              <div class="prop">
+                <label>Axis:</label>
+                <select onchange="updateAnimationProperty('${elementId}', ${timelineIdx}, ${animIdx}, 'axis', this.value)">
+                  <option value="y" ${(anim.axis||'y')==='y'?'selected':''}>Horizontal (Y)</option>
+                  <option value="x" ${anim.axis==='x'?'selected':''}>Vertical (X)</option>
+                </select>
+              </div>
+              <div class="prop-row">
+                <div class="prop">
+                  <label>Rotation:</label>
+                  <input type="number" value="${anim.rotation || 180}" step="90"
+                    onchange="updateAnimationProperty('${elementId}', ${timelineIdx}, ${animIdx}, 'rotation', this.value)">
+                  <span class="unit">°</span>
+                </div>
+                <div class="prop">
+                  <label>Perspective:</label>
+                  <input type="number" value="${anim.perspective || 1000}" step="100" min="200"
+                    onchange="updateAnimationProperty('${elementId}', ${timelineIdx}, ${animIdx}, 'perspective', this.value)">
+                  <span class="unit">px</span>
+                </div>
+              </div>
+            `;
+            break;
+
+        case "glow":
+            html += `
+              <div class="prop">
+                <label>Glow Color:</label>
+                <input type="color" value="${anim.glowColor || '#ffff00'}"
+                  onchange="updateAnimationProperty('${elementId}', ${timelineIdx}, ${animIdx}, 'glowColor', this.value)">
+              </div>
+              <div class="prop-row">
+                <div class="prop">
+                  <label>Start Blur:</label>
+                  <input type="number" value="${anim.startBlur || 5}" min="0" max="50" step="1"
+                    onchange="updateAnimationProperty('${elementId}', ${timelineIdx}, ${animIdx}, 'startBlur', this.value)">
+                  <span class="unit">px</span>
+                </div>
+                <div class="prop">
+                  <label>Peak Blur:</label>
+                  <input type="number" value="${anim.peakBlur || 25}" min="0" max="80" step="1"
+                    onchange="updateAnimationProperty('${elementId}', ${timelineIdx}, ${animIdx}, 'peakBlur', this.value)">
+                  <span class="unit">px</span>
+                </div>
+              </div>
+              <div class="prop">
+                <label>Pulses:</label>
+                <input type="number" value="${anim.pulses || 2}" min="1" max="10" step="1"
+                  onchange="updateAnimationProperty('${elementId}', ${timelineIdx}, ${animIdx}, 'pulses', this.value)">
+              </div>
+            `;
+            break;
+
+        case "replacementTransform":
+            html += `
+              <div class="prop-row">
+                <div class="prop">
+                  <label>Start Color:</label>
+                  <input type="color" value="${anim.startColor || '#4488ff'}"
+                    onchange="updateAnimationProperty('${elementId}', ${timelineIdx}, ${animIdx}, 'startColor', this.value)">
+                </div>
+                <div class="prop">
+                  <label>End Color:</label>
+                  <input type="color" value="${anim.endColor || '#ff4488'}"
+                    onchange="updateAnimationProperty('${elementId}', ${timelineIdx}, ${animIdx}, 'endColor', this.value)">
+                </div>
+              </div>
+              <div class="prop-row">
+                <div class="prop">
+                  <label>Start Scale:</label>
+                  <input type="number" value="${anim.startScale || 1}" min="0" step="0.1"
+                    onchange="updateAnimationProperty('${elementId}', ${timelineIdx}, ${animIdx}, 'startScale', this.value)">
+                </div>
+                <div class="prop">
+                  <label>End Scale:</label>
+                  <input type="number" value="${anim.endScale || 1.2}" min="0" step="0.1"
+                    onchange="updateAnimationProperty('${elementId}', ${timelineIdx}, ${animIdx}, 'endScale', this.value)">
+                </div>
+              </div>
+            `;
+            break;
+
+        case "moveAlongPath":
+            html += `
+              <div class="prop">
+                <label>Path Type:</label>
+                <select onchange="updateAnimationProperty('${elementId}', ${timelineIdx}, ${animIdx}, 'pathType', this.value)">
+                  <option value="bezier" ${(anim.pathType||'bezier')==='bezier'?'selected':''}>Bezier Curve</option>
+                  <option value="svgPath" ${anim.pathType==='svgPath'?'selected':''}>SVG Path</option>
+                </select>
+              </div>
+              <div class="prop">
+                <label>Follow Path:</label>
+                <select onchange="updateAnimationProperty('${elementId}', ${timelineIdx}, ${animIdx}, 'followPath', this.value==='true')">
+                  <option value="true" ${anim.followPath?'selected':''}>Yes (rotate to tangent)</option>
+                  <option value="false" ${!anim.followPath?'selected':''}>No</option>
+                </select>
+              </div>
+            `;
+            break;
+
+        case "textMorph":
+            html += `
+              <div class="prop">
+                <label>Mode:</label>
+                <select onchange="updateAnimationProperty('${elementId}', ${timelineIdx}, ${animIdx}, 'morphMode', this.value)">
+                  ${["letter-by-letter","word-by-word","fade","typewriter"].map(m =>
+                    `<option value="${m}" ${(anim.morphMode||'letter-by-letter')===m?'selected':''}>${m}</option>`
+                  ).join('')}
+                </select>
+              </div>
+              <div class="prop-row">
+                <div class="prop">
+                  <label>Start Opacity:</label>
+                  <input type="number" value="${anim.startOpacity ?? 0}" min="0" max="1" step="0.1"
+                    onchange="updateAnimationProperty('${elementId}', ${timelineIdx}, ${animIdx}, 'startOpacity', this.value)">
+                </div>
+                <div class="prop">
+                  <label>End Opacity:</label>
+                  <input type="number" value="${anim.endOpacity ?? 1}" min="0" max="1" step="0.1"
+                    onchange="updateAnimationProperty('${elementId}', ${timelineIdx}, ${animIdx}, 'endOpacity', this.value)">
+                </div>
+              </div>
+            `;
+            break;
+
+        case "animatedChart":
+            html += `
+              <div class="prop">
+                <label>Chart Type:</label>
+                <select onchange="updateAnimationProperty('${elementId}', ${timelineIdx}, ${animIdx}, 'chartType', this.value)">
+                  ${["bar","line","scatter","pie"].map(t =>
+                    `<option value="${t}" ${(anim.chartType||'bar')===t?'selected':''}>${t}</option>`
+                  ).join('')}
+                </select>
+              </div>
+              <div class="prop">
+                <label>Mode:</label>
+                <select onchange="updateAnimationProperty('${elementId}', ${timelineIdx}, ${animIdx}, 'animationMode', this.value)">
+                  ${["staggered","progressive","simultaneous"].map(m =>
+                    `<option value="${m}" ${(anim.animationMode||'staggered')===m?'selected':''}>${m}</option>`
+                  ).join('')}
+                </select>
+              </div>
+              <div class="prop">
+                <label>Stagger Delay:</label>
+                <input type="number" value="${anim.staggerDelay || 150}" min="0" max="500" step="25"
+                  onchange="updateAnimationProperty('${elementId}', ${timelineIdx}, ${animIdx}, 'staggerDelay', this.value)">
+                <span class="unit">ms</span>
+              </div>
+            `;
+            break;
+
+        case "uncreateAdvanced":
+            html += `
+              <div class="prop">
+                <label>Mode:</label>
+                <select onchange="updateAnimationProperty('${elementId}', ${timelineIdx}, ${animIdx}, 'destructionMode', this.value)">
+                  ${["fade","shrink","explode","disintegrate"].map(m =>
+                    `<option value="${m}" ${(anim.destructionMode||'explode')===m?'selected':''}>${m}</option>`
+                  ).join('')}
+                </select>
+              </div>
+              <div class="prop">
+                <label>Fragment Count:</label>
+                <input type="number" value="${anim.fragmentCount || 12}" min="4" max="64" step="4"
+                  onchange="updateAnimationProperty('${elementId}', ${timelineIdx}, ${animIdx}, 'fragmentCount', this.value)">
               </div>
             `;
             break;
@@ -497,7 +714,7 @@ function openAnimationPresetSelector(elementId) {
 
         categoryPresets.forEach(preset => {
             html += `
-        <button class="preset-card" onclick="applyAnimationPreset('${elementId}', '${preset.name}')">
+        <button class="preset-card" onclick="applyAnimationPreset('${elementId}', '${preset.id}')">
           <span class="preset-name">${preset.name}</span>
           <span class="preset-duration">${preset.duration}ms</span>
         </button>
@@ -669,6 +886,12 @@ function applyAnimationPreset(elementId, presetName) {
     // Update UI
     renderSlidesFromState();
     buildPropertiesPanel();
+    if (typeof getTimelineEditor === "function" && typeof _timelineEditor !== "undefined" && _timelineEditor?.isVisible) {
+        getTimelineEditor().updateFromSelection();
+    }
+    if (typeof playConfiguredSlideAnimations === "function" && typeof currentSlideIndex !== "undefined") {
+        requestAnimationFrame(() => playConfiguredSlideAnimations(currentSlideIndex, { restoreOnComplete: true }));
+    }
 
     // Show success feedback
     showNotification(`Added animation: ${preset.name}`, "success");
@@ -686,8 +909,9 @@ function updateAnimationProperty(elementId, timelineIdx, animIdx, property, valu
 
     saveStateToUndo();
 
-    // Update property
+    // Update property - handle all supported types
     switch (property) {
+        // Base properties
         case "duration":
             animation.duration = Math.max(100, Number(value) || 600);
             break;
@@ -696,6 +920,85 @@ function updateAnimationProperty(elementId, timelineIdx, animIdx, property, valu
             break;
         case "easing":
             animation.easing = String(value);
+            break;
+        // colorShift properties
+        case "colorProperty":
+            animation.colorProperty = String(value);
+            break;
+        case "startColor":
+        case "endColor":
+            animation[property] = String(value);
+            break;
+        // moveInPlace / combinedTransform position properties
+        case "startX":
+        case "endX":
+        case "startY":
+        case "endY":
+            animation[property] = Number(value) || 0;
+            break;
+        // scaleXY / combinedTransform scale properties
+        case "startScaleX":
+        case "endScaleX":
+        case "startScaleY":
+        case "endScaleY":
+            animation[property] = Math.max(0, Number(value) || 1);
+            break;
+        // combinedTransform rotation properties
+        case "startRotation":
+        case "endRotation":
+            animation[property] = Number(value) || 0;
+            break;
+        // strokeAnimate properties
+        case "startStrokeWidth":
+        case "endStrokeWidth":
+            animation[property] = Math.max(0, Number(value) || 0);
+            break;
+        // zIndex properties
+        case "startZIndex":
+        case "endZIndex":
+            animation[property] = Math.round(Number(value) || 0);
+            break;
+        // replacementTransform / textMorph scale
+        case "startScale":
+        case "endScale":
+            animation[property] = Math.max(0, Number(value) || 1);
+            break;
+        // blur properties
+        case "startBlur":
+        case "endBlur":
+            animation[property] = Math.max(0, Number(value) || 0);
+            break;
+        // opacity
+        case "startOpacity":
+        case "endOpacity":
+            animation[property] = Math.max(0, Math.min(1, Number(value) || 0));
+            break;
+        // emphasis properties
+        case "emphasisType":
+        case "destructionMode":
+        case "morphMode":
+        case "colorProperty":
+        case "pathType":
+        case "chartType":
+        case "animationMode":
+            animation[property] = String(value);
+            break;
+        case "cycles":
+        case "pulses":
+        case "fragmentCount":
+            animation[property] = Math.max(1, Number(value) || 1);
+            break;
+        case "intensity":
+        case "amplitude":
+        case "staggerDelay":
+        case "explosionVelocity":
+        case "perspective":
+        case "rotation":
+            animation[property] = Number(value) || 0;
+            break;
+        default:
+            // Fallback: store raw value
+            animation[property] = value;
             break;
     }
 
@@ -724,6 +1027,14 @@ function removeAnimation(elementId, timelineIdx, animIdx) {
 
     renderSlidesFromState();
     buildPropertiesPanel();
+}
+
+// editAnimation - currently a no-op since props are always shown inline
+// (UI calls this, but inline editing is the primary workflow)
+function editAnimation(elementId, timelineIdx, animIdx) {
+    // Future: could open a dedicated modal for complex animation types.
+    // For now, properties are already editable inline in the animation list.
+    console.log('[Animation] editAnimation called:', elementId, timelineIdx, animIdx);
 }
 
 function showNotification(message, type = "info") {

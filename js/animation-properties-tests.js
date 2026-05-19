@@ -253,7 +253,7 @@ function testPositionInterpolation() {
 
     const testCases = [
         { from: 0, to: 100, progress: 0.5, expected: 50, name: "0 to 100 at 50%" },
-        { from: -50, to: 50, progress: 0.75, expected: 37.5, name: "-50 to 50 at 75%" },
+        { from: -50, to: 50, progress: 0.75, expected: 25, name: "-50 to 50 at 75%" },
         { from: 100, to: 200, progress: 0, expected: 100, name: "100 to 200 at 0%" },
         { from: 0, to: 100, progress: 1, expected: 100, name: "0 to 100 at 100%" },
     ];

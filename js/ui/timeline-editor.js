@@ -471,35 +471,40 @@ class TimelineEditor {
         if (!tracksList) return;
 
         tracksList.innerHTML = "";
-        let maxDuration = 0;
 
         // Get current slide
         const slide = state.slides[currentSlideIndex];
         if (!slide) return;
 
-        // Add track for each selected element
-        state.selectedIds.forEach(elementId => {
-            const element = slide.elements.find(el => el.id === elementId);
-            if (!element) return;
+        const selectedAnimatedElements = state.selectedIds
+            .map(elementId => {
+                const element = slide.elements.find(el => el.id === elementId);
+                if (!element) return null;
+                const config = normalizeElementAnimationConfig(element);
+                if (!config || !config.timelines || config.timelines.length === 0) return null;
+                return { elementId, element, config };
+            })
+            .filter(Boolean);
 
-            const config = normalizeElementAnimationConfig(element);
-            if (!config || !config.timelines || config.timelines.length === 0) {
-                return;
-            }
-
-            const trackEl = this._createTrack(elementId, element, config);
-            tracksList.appendChild(trackEl);
-
-            // Update max duration
+        let maxDuration = 0;
+        selectedAnimatedElements.forEach(({ config }) => {
             config.timelines.forEach(timeline => {
-                timeline.animations.forEach(anim => {
-                    const endTime = (anim.startTime || 0) + anim.duration;
-                    maxDuration = Math.max(maxDuration, endTime);
+                (timeline.animations || []).forEach(anim => {
+                    const duration = Math.max(0, Number(anim.duration) || 0);
+                    const startTime = Math.max(0, Number(anim.startTime ?? anim.delay) || 0);
+                    maxDuration = Math.max(maxDuration, startTime + duration);
                 });
             });
         });
 
-        this.totalDuration = maxDuration;
+        this.totalDuration = Math.max(100, maxDuration);
+
+        // Add track for each selected element after duration is known.
+        selectedAnimatedElements.forEach(({ elementId, element, config }) => {
+            const trackEl = this._createTrack(elementId, element, config);
+            tracksList.appendChild(trackEl);
+        });
+
         this._updateScrubberRange();
         this._updateRuler();
     }
@@ -539,8 +544,11 @@ class TimelineEditor {
     _createAnimationBlock(elementId, animation, timelineIdx, animIdx) {
         const block = document.createElement("div");
         block.className = "animation-block";
-        block.style.left = `${((animation.startTime || 0) / this.totalDuration) * 100}%`;
-        block.style.width = `${(animation.duration / this.totalDuration) * 100}%`;
+        const startTime = Math.max(0, Number(animation.startTime ?? animation.delay) || 0);
+        const duration = Math.max(100, Number(animation.duration) || 100);
+        const totalDuration = Math.max(100, Number(this.totalDuration) || 100);
+        block.style.left = `${(startTime / totalDuration) * 100}%`;
+        block.style.width = `${(duration / totalDuration) * 100}%`;
         block.style.background = this._getAnimationColor(animation.type);
 
         const label = document.createElement("div");
@@ -720,6 +728,11 @@ class TimelineEditor {
     // Playback controls
     play() {
         const engine = getAnimationEngine();
+        if (typeof state !== "undefined" && typeof currentSlideIndex !== "undefined") {
+            engine.restoreElements();
+            engine.loadSlide(state.slides?.[currentSlideIndex]);
+            engine.seek(this.playheadTime || 0);
+        }
         engine.play();
         this._updatePlayButton();
     }
@@ -741,6 +754,9 @@ class TimelineEditor {
 
     seek(time) {
         const engine = getAnimationEngine();
+        if (typeof state !== "undefined" && typeof currentSlideIndex !== "undefined") {
+            engine.loadSlide(state.slides?.[currentSlideIndex]);
+        }
         engine.seek(time);
         this.playheadTime = time;
         const scrubber = document.getElementById("timeline-scrubber");

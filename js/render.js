@@ -978,12 +978,19 @@ function getShapeStyle(shape = "rectangle") {
 
 // ─── Slide Rendering ────────────────────────────────────────────────────────
 
-function renderSlidesFromState() {
+function renderSlidesFromState(options = {}) {
+    const preserveState = Boolean(options.preserveState);
     const container = document.getElementById("slides-container");
+    if (typeof syncPresentationThemeFromState === "function") {
+        syncPresentationThemeFromState({ persist: false });
+    }
     const theme = getPresentationTheme();
     const slideConfig = getPresentationPageSetupConfig();
     const slideWidth = Number(slideConfig.width) || 1024;
     const slideHeight = Number(slideConfig.height) || 768;
+    if (!preserveState && typeof ensureEditableMasterFooterElements === "function") {
+        state.slides.forEach((slide, slideIndex) => ensureEditableMasterFooterElements(slide, slideIndex, theme));
+    }
     container.innerHTML = "";
     state.slides.forEach((slide, slideIndex) => {
         const section = document.createElement("section");
@@ -999,7 +1006,7 @@ function renderSlidesFromState() {
         if (typeof buildMasterSlideElements === "function") {
             buildMasterSlideElements(slide, slideIndex, theme).forEach(elData => section.appendChild(_createStaticNode(elData, { master: true })));
         }
-        slide.elements.forEach(elData => section.appendChild(createElementNode(elData, { slideIndex })));
+        slide.elements.forEach(elData => section.appendChild(createElementNode(elData, { slideIndex, preserveState })));
         container.appendChild(section);
     });
     if (Reveal.isReady()) {
@@ -1018,7 +1025,7 @@ function renderSlidesFromState() {
     } else {
         renderSlidePreviews(null, { preserveScroll: true });
     }
-    if (typeof schedulePresentationAutosave === "function") {
+    if (!preserveState && typeof schedulePresentationAutosave === "function") {
         schedulePresentationAutosave();
     }
     if (typeof renderLayersList === "function") {
@@ -1050,7 +1057,7 @@ function renderSlidePreviews(targetIndex = null, options = {}) {
         const previewBgNode = createSlideBackgroundNode(slide.background, { forPreview: true });
         if (previewBgNode) previewSlide.appendChild(previewBgNode);
         if (typeof buildMasterSlideElements === "function") {
-            buildMasterSlideElements(slide, targetIndex, theme).forEach(elData => previewSlide.appendChild(_createStaticNode(elData, { master: true })));
+            buildMasterSlideElements(slide, targetIndex, theme).forEach(elData => previewSlide.appendChild(_createStaticNode(elData, { master: true, forPreview: true })));
         }
         slide.elements.forEach(elData => previewSlide.appendChild(_createStaticNode(elData)));
         
@@ -1141,14 +1148,14 @@ function renderSlidePreviews(targetIndex = null, options = {}) {
         const previewBgNode = createSlideBackgroundNode(slide.background, { forPreview: true });
         if (previewBgNode) previewSlide.appendChild(previewBgNode);
         if (typeof buildMasterSlideElements === "function") {
-            buildMasterSlideElements(slide, index, theme).forEach(elData => previewSlide.appendChild(_createStaticNode(elData, { master: true })));
+            buildMasterSlideElements(slide, index, theme).forEach(elData => previewSlide.appendChild(_createStaticNode(elData, { master: true, forPreview: true })));
         }
         slide.elements.forEach(elData => previewSlide.appendChild(_createStaticNode(elData)));
         thumbnail.appendChild(previewSlide);
         card.appendChild(thumbnail);
 
         const num = document.createElement("div");
-        num.className = "slide-number";
+        num.className = "slide-preview-number";
         num.innerText = index + 1;
         card.appendChild(num);
 
@@ -1622,14 +1629,102 @@ function _createImageContentNode(elData, { interactive = false } = {}) {
     return img;
 }
 
+function _getEditableMasterUpdate(elData, value) {
+    if (elData.masterRole === "footer") return { footerText: value };
+    if (elData.masterRole === "logo") return { logoText: value };
+    return null;
+}
+
+function _setMasterEditorSelection(host, atEnd = false) {
+    if (!host) return;
+    const selection = window.getSelection();
+    if (!selection) return;
+    const range = document.createRange();
+    range.selectNodeContents(host);
+    range.collapse(atEnd);
+    selection.removeAllRanges();
+    selection.addRange(range);
+}
+
+function _bindEditableMasterText(el, contentHost, elData) {
+    if (!el || !contentHost || !elData) return;
+    const roleLabel = elData.masterRole === "logo" ? "logo" : "footer";
+    el.classList.add("editable-master-element");
+    el.setAttribute("role", "button");
+    el.setAttribute("aria-label", `Edit slide ${roleLabel}`);
+    el.tabIndex = 0;
+    el.title = `Double-click to edit slide ${roleLabel}`;
+
+    const beginEdit = event => {
+        event?.preventDefault?.();
+        event?.stopPropagation?.();
+        if (document.body.classList.contains("play-mode-active")) return;
+        contentHost.dataset.originalText = contentHost.textContent || "";
+        contentHost.contentEditable = "true";
+        contentHost.spellcheck = true;
+        el.classList.add("editing-master-text");
+        contentHost.focus();
+        _setMasterEditorSelection(contentHost, false);
+    };
+
+    contentHost.addEventListener("blur", () => {
+        if (contentHost.contentEditable !== "true") return;
+        const previousText = contentHost.dataset.originalText || "";
+        const nextText = (contentHost.textContent || "").replace(/\s+/g, " ").trim();
+        contentHost.contentEditable = "false";
+        contentHost.removeAttribute("spellcheck");
+        el.classList.remove("editing-master-text");
+        if (contentHost.dataset.cancelEdit === "true") {
+            contentHost.dataset.cancelEdit = "false";
+            contentHost.textContent = previousText;
+            return;
+        }
+        if (nextText === previousText) return;
+        const updates = _getEditableMasterUpdate(elData, nextText);
+        const masterId = elData.masterId || state.slides?.[currentSlideIndex]?.masterId || "content";
+        if (updates && typeof updateMasterSlide === "function") {
+            updateMasterSlide(masterId, updates);
+            buildPropertiesPanel?.();
+        }
+    });
+
+    contentHost.addEventListener("keydown", event => {
+        if (contentHost.contentEditable !== "true") return;
+        if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            contentHost.blur();
+        } else if (event.key === "Escape") {
+            event.preventDefault();
+            contentHost.dataset.cancelEdit = "true";
+            contentHost.blur();
+        }
+    });
+
+    el.addEventListener("dblclick", beginEdit);
+    el.addEventListener("keydown", event => {
+        if ((event.key === "Enter" || event.key === " ") && contentHost.contentEditable !== "true") {
+            beginEdit(event);
+        }
+    });
+}
+
 function _createStaticNode(elData, options = {}) {
     const el = document.createElement("div");
     el.className = `canvas-element${options.master ? " master-slide-element" : ""}`;
     el.setAttribute("data-type", elData.type);
+    const editableMaster = Boolean(
+        options.master && !options.forPreview && elData.type === "text" && ["footer", "logo"].includes(elData.masterRole),
+    );
     if (options.master) {
         el.setAttribute("data-master-element", "true");
-        el.style.pointerEvents = "none";
-        el.setAttribute("aria-hidden", "true");
+        if (elData.masterRole) el.setAttribute("data-master-role", elData.masterRole);
+        if (elData.masterId) el.setAttribute("data-master-id", elData.masterId);
+        if (editableMaster) {
+            el.style.pointerEvents = "auto";
+        } else {
+            el.style.pointerEvents = "none";
+            el.setAttribute("aria-hidden", "true");
+        }
     }
     el.style.position = "absolute";
     el.style.transform = `translate(${elData.x}px, ${elData.y}px)`;
@@ -1643,6 +1738,9 @@ function _createStaticNode(elData, options = {}) {
         contentHost.className = "text-element-content";
         contentHost.innerHTML = renderTextContent(elData);
         el.appendChild(contentHost);
+        if (editableMaster) {
+            _bindEditableMasterText(el, contentHost, elData);
+        }
         requestAnimationFrame(() => syncTextBoxLayout(el, elData));
     } else if (elData.type === "connector") {
         renderConnectorContent(el, elData, { interactive: false });
@@ -1678,12 +1776,19 @@ function _createStaticNode(elData, options = {}) {
 // ─── Interactive Element Node ────────────────────────────────────────────────
 
 function createElementNode(elData, options = {}) {
+    const preserveState = Boolean(options.preserveState);
     const el = document.createElement("div");
     const animation = normalizeElementAnimation(elData);
+    const timelineAnimationConfig =
+        typeof normalizeElementAnimationConfig === "function" ? normalizeElementAnimationConfig(elData) : null;
+    const hasTimelineAnimations = Boolean(
+        timelineAnimationConfig?.timelines?.some(timeline => (timeline.animations || []).length > 0),
+    );
     el.id = elData.id;
     el.className = "canvas-element";
     el.setAttribute("data-id", elData.id);
     el.setAttribute("data-type", elData.type);
+    if (elData.footerRole) el.setAttribute("data-footer-role", elData.footerRole);
     el.style.transform = `translate(${elData.x}px, ${elData.y}px)`;
     el.setAttribute("data-x", elData.x);
     el.setAttribute("data-y", elData.y);
@@ -1703,29 +1808,35 @@ function createElementNode(elData, options = {}) {
     // ── Fragment animations (Reveal.js) ──────────────────────────────────
     const isPlayMode = document.body.classList.contains("play-mode-active");
 
-    if (elData.fragmentAnimation && elData.fragmentAnimation !== "none") {
-        if (!RENDER_REVEAL_FRAGMENT_CLASSES.includes(elData.fragmentAnimation)) {
+    let fragmentAnimation = elData.fragmentAnimation;
+    let fragmentIndex = elData.fragmentIndex;
+    if (fragmentAnimation && fragmentAnimation !== "none") {
+        if (!RENDER_REVEAL_FRAGMENT_CLASSES.includes(fragmentAnimation)) {
+            fragmentAnimation = "none";
+            fragmentIndex = null;
+        }
+        if (!preserveState && fragmentAnimation !== elData.fragmentAnimation) {
             elData.fragmentAnimation = "none";
             elData.fragmentIndex = null;
         }
     }
 
-    if (isPlayMode && elData.fragmentAnimation && elData.fragmentAnimation !== "none" && !_shouldAnimateBulletsIndividually(elData)) {
-        el.classList.add("fragment", elData.fragmentAnimation);
-        if (elData.fragmentIndex != null) {
-            el.setAttribute("data-fragment-index", elData.fragmentIndex);
+    if (isPlayMode && fragmentAnimation && fragmentAnimation !== "none" && !_shouldAnimateBulletsIndividually(elData)) {
+        el.classList.add("fragment", fragmentAnimation);
+        if (fragmentIndex != null) {
+            el.setAttribute("data-fragment-index", fragmentIndex);
         }
     }
 
-    if (elData.fragmentAnimation && elData.fragmentAnimation !== "none") {
+    if (fragmentAnimation && fragmentAnimation !== "none") {
         const badge = document.createElement("div");
         badge.className = "anim-badge";
-        badge.innerHTML = `<i class="fa-solid fa-wand-sparkles"></i> ${elData.fragmentIndex ?? 0}`;
+        badge.innerHTML = `<i class="fa-solid fa-wand-sparkles"></i> ${fragmentIndex ?? 0}`;
         el.appendChild(badge);
-    } else if (animation) {
+    } else if (animation || hasTimelineAnimations) {
         const badge = document.createElement("div");
         badge.className = "anim-badge";
-        badge.innerHTML = `<i class="fa-solid fa-bolt"></i> ${animation.trigger === "on-click" ? `#${animation.order}` : "Slide"}`;
+        badge.innerHTML = `<i class="fa-solid fa-bolt"></i> ${animation?.trigger === "on-click" ? `#${animation.order}` : "Slide"}`;
         el.appendChild(badge);
     }
 
@@ -1769,7 +1880,7 @@ function _applyTypeContent(el, elData, options = {}) {
         el.appendChild(contentHost);
         requestAnimationFrame(() => {
             const layout = syncTextBoxLayout(el, elData);
-            if (layout?.autoHeight && Number.isFinite(layout.height)) {
+            if (!options.preserveState && layout?.autoHeight && Number.isFinite(layout.height)) {
                 updateElementState(el.id, { height: `${layout.height}px` });
                 elData.height = `${layout.height}px`;
             }

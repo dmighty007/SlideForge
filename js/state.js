@@ -299,7 +299,11 @@ function createDefaultAnimation(effect = "fade-in", overrides = {}) {
 function normalizeElementAnimation(el = {}) {
     const legacyValue = typeof el.animation === "string" ? el.animation.trim() : "";
     const raw = legacyValue ? { effect: legacyValue } : el.animation && typeof el.animation === "object" ? el.animation : null;
-    if (!raw || !raw.effect || !isStructuredAnimationEffect(raw.effect)) {
+    if (!raw) return null;
+    // Preserve advanced animation configs (timelines-based or advanced type)
+    if (Array.isArray(raw.timelines)) return raw;
+    if (raw.type && typeof ANIMATION_TRANSITION_TYPES !== "undefined" && Array.isArray(ANIMATION_TRANSITION_TYPES) && ANIMATION_TRANSITION_TYPES.includes(raw.type)) return raw;
+    if (!raw.effect || !isStructuredAnimationEffect(raw.effect)) {
         return null;
     }
     const normalized = createDefaultAnimation(raw.effect, {
@@ -814,11 +818,15 @@ function normalizeStateIds() {
             };
 
             const normalizedAnimation = normalizeElementAnimation(safeEl);
+            // Preserve the original animation object if normalizeElementAnimation couldn't
+            // process it but the raw data exists (e.g. advanced animation-engine configs)
+            const preservedAnimation = normalizedAnimation
+                ?? (safeEl.animation && typeof safeEl.animation === "object" ? safeEl.animation : null);
             return {
                 ...safeEl,
                 id: nextElId,
                 type: fallbackType,
-                animation: normalizedAnimation,
+                animation: preservedAnimation,
                 animDuration: undefined,
                 animDelay: undefined,
                 ...(fallbackType === "video"
@@ -1335,6 +1343,7 @@ async function loadPresentationRecord(presentationId) {
         loaded.state.slides.length > 0;
     if (hasSlides) {
         state = loaded.state;
+        state.presentationTheme = state.presentationTheme || loaded.presentationTheme || "editorial";
     } else if (
         loaded.bridgeResult &&
         typeof _looksLikeBridgeExport === "function" &&
@@ -1342,8 +1351,10 @@ async function loadPresentationRecord(presentationId) {
         typeof _convertBridgeExportToEditorState === "function"
     ) {
         state = _convertBridgeExportToEditorState(loaded.bridgeResult);
+        state.presentationTheme = state.presentationTheme || loaded.presentationTheme || "editorial";
     }
     normalizeStateIds();
+    syncPresentationThemeFromState?.({ persist: false });
     localStorage.setItem(PRESENTATION_STORAGE_KEY, currentPresentationId);
     _lastPersistedFingerprint = JSON.stringify(hasSlides ? loaded.state : getPersistableState());
     setProjectSaveHint("All changes saved", "success");
@@ -1465,6 +1476,7 @@ async function createNewProject() {
         clearTimeout(_autosaveTimer);
         state = buildDefaultPresentationState();
         normalizeStateIds();
+        syncPresentationThemeFromState?.({ persist: false });
         syncPresentationPageSetup?.();
         currentSlideIndex = 0;
         setCurrentPresentationTitle("Untitled Presentation");
@@ -1481,6 +1493,7 @@ async function createNewProject() {
     clearTimeout(_autosaveTimer);
     state = buildDefaultPresentationState();
     normalizeStateIds();
+    syncPresentationThemeFromState?.({ persist: false });
     syncPresentationPageSetup?.();
     currentSlideIndex = 0;
     currentPresentationId = null;

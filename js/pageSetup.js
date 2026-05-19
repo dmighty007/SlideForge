@@ -53,11 +53,11 @@ function _scaleElementStylesForPageSetup(styles, scale) {
     return next;
 }
 
-function scaleSlideElementsForPageSetup(slide, fromConfig, toConfig) {
+function scaleSlideElementsForPageSetup(slide, fromConfig, toConfig, options = {}) {
     if (!slide || !Array.isArray(slide.elements)) return slide;
     const scaleX = toConfig.width / fromConfig.width;
     const scaleY = toConfig.height / fromConfig.height;
-    const scaleText = Math.min(scaleX, scaleY);
+    const scaleText = options.preserveTextSize ? 1 : Math.min(scaleX, scaleY);
     const nextSlide = JSON.parse(JSON.stringify(slide));
     nextSlide.elements = nextSlide.elements.map(element => {
         const next = { ...element };

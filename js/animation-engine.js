@@ -14,6 +14,7 @@ class AnimationEngine {
         this.speed = 1;
         this.onUpdate = null;
         this.onComplete = null;
+        this.elementSnapshots = new Map();
     }
 
     /**
@@ -44,6 +45,30 @@ class AnimationEngine {
         });
 
         timeline.animations.sort((a, b) => a.startTime - b.startTime);
+    }
+
+    /**
+     * Load timeline animations stored on a slide's element state.
+     */
+    loadSlide(slide) {
+        this.pause();
+        this.playheadTime = 0;
+        this.clearAnimations();
+
+        (slide?.elements || []).forEach(elementState => {
+            const config =
+                typeof normalizeElementAnimationConfig === "function"
+                    ? normalizeElementAnimationConfig(elementState)
+                    : elementState.animation;
+            if (!config || !Array.isArray(config.timelines)) return;
+
+            config.timelines.forEach(timeline => {
+                (timeline.animations || []).forEach(animation => {
+                    const startTime = Number(animation.startTime ?? animation.delay) || 0;
+                    this.addAnimation(elementState.id, animation, startTime);
+                });
+            });
+        });
     }
 
     /**
@@ -95,12 +120,27 @@ class AnimationEngine {
         }
     }
 
+    restoreElements() {
+        for (const [elementId, snapshot] of this.elementSnapshots) {
+            const element = this._resolveElement(elementId);
+            if (!element) continue;
+            this._restoreElementSnapshot(element, snapshot);
+        }
+        this.elementSnapshots.clear();
+    }
+
     /**
      * Seek to specific time (ms)
      */
     seek(time) {
         this.playheadTime = Math.max(0, Number(time) || 0);
-        this._updateFrame();
+        this._updateAnimations();
+        if (this.onUpdate) {
+            this.onUpdate({
+                time: this.playheadTime,
+                isPlaying: this.isPlaying,
+            });
+        }
     }
 
     /**
@@ -138,22 +178,35 @@ class AnimationEngine {
      */
     _updateAnimations() {
         for (const [elementId, timeline] of this.timelines) {
-            const element = document.getElementById(elementId);
+            const element = this._resolveElement(elementId);
             if (!element) continue;
+            this._captureElementSnapshot(element);
+            const currentTime = this.playheadTime;
+            const animations = [...(timeline.animations || [])].sort((a, b) => {
+                const startDelta = (Number(a.startTime) || 0) - (Number(b.startTime) || 0);
+                if (startDelta !== 0) return startDelta;
+                return (Number(a.duration) || 0) - (Number(b.duration) || 0);
+            });
+            let appliedAny = false;
 
-            for (const animation of timeline.animations) {
-                const { startTime, duration, type } = animation;
-                const currentTime = this.playheadTime;
+            for (const animation of animations) {
+                const startTime = Math.max(0, Number(animation.startTime) || 0);
+                const duration = Math.max(1, Number(animation.duration) || 1);
+                const endTime = startTime + duration;
 
-                if (currentTime >= startTime && currentTime <= startTime + duration) {
+                if (currentTime >= startTime && currentTime <= endTime) {
                     const progress = (currentTime - startTime) / duration;
                     this._applyAnimation(element, animation, progress);
-                } else if (currentTime < startTime) {
-                    // Animation hasn't started, apply initial state
-                    this._applyAnimationInitial(element, animation);
-                } else if (currentTime > startTime + duration) {
-                    // Animation finished, apply final state
+                    appliedAny = true;
+                } else if (currentTime > endTime) {
                     this._applyAnimationFinal(element, animation);
+                    appliedAny = true;
+                } else if (!appliedAny) {
+                    this._applyAnimationInitial(element, animation);
+                    appliedAny = true;
+                    break;
+                } else {
+                    break;
                 }
             }
         }
@@ -164,7 +217,7 @@ class AnimationEngine {
      */
     _applyAnimation(element, animation, progress) {
         const easing = getEasingFunction(animation.easing);
-        const easedProgress = easing(progress);
+        const easedProgress = Math.max(0, Math.min(1, easing(Math.max(0, Math.min(1, progress)))));
 
         switch (animation.type) {
             case "fadeIn":
@@ -206,9 +259,116 @@ class AnimationEngine {
             case "combinedTransform":
                 this._applyCombinedTransform(element, animation, easedProgress);
                 break;
+            case "zIndex":
+                this._applyZIndex(element, animation, easedProgress);
+                break;
+            // Advanced animation types
+            case "replacementTransform":
+                this._applyReplacementTransform(element, animation, easedProgress);
+                break;
+            case "moveAlongPath":
+                this._applyMoveAlongPath(element, animation, easedProgress);
+                break;
+            case "textMorph":
+                this._applyTextMorph(element, animation, easedProgress);
+                break;
+            case "animatedChart":
+                this._applyAnimatedChart(element, animation, easedProgress);
+                break;
+            case "uncreateAdvanced":
+                this._applyUncreateAdvanced(element, animation, easedProgress);
+                break;
+            case "emphasis":
+                this._applyEmphasis(element, animation, easedProgress);
+                break;
+            case "blur":
+                this._applyBlur(element, animation, easedProgress);
+                break;
+            case "flip3D":
+                this._applyFlip3D(element, animation, easedProgress);
+                break;
+            case "glow":
+                this._applyGlow(element, animation, easedProgress);
+                break;
             default:
                 break;
         }
+    }
+
+    _getBaseTransform(element) {
+        if (!element) return "";
+        if (!element.dataset.sfAnimationBaseTransform) {
+            const dataX = Number(element.dataset.x);
+            const dataY = Number(element.dataset.y);
+            element.dataset.sfAnimationBaseTransform =
+                Number.isFinite(dataX) && Number.isFinite(dataY)
+                    ? `translate(${dataX}px, ${dataY}px)`
+                    : element.style.transform || "";
+        }
+        return element.dataset.sfAnimationBaseTransform;
+    }
+
+    _resolveElement(elementId) {
+        if (!elementId) return null;
+        const byId = document.getElementById(elementId);
+        if (byId) return byId;
+        const safeId =
+            typeof CSS !== "undefined" && typeof CSS.escape === "function"
+                ? CSS.escape(String(elementId))
+                : String(elementId).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+        return document.querySelector(`.canvas-element[data-id="${safeId}"]`);
+    }
+
+    _setTransform(element, localTransform = "") {
+        const baseTransform = this._getBaseTransform(element);
+        element.style.transform = [baseTransform, localTransform].filter(Boolean).join(" ");
+    }
+
+    _captureElementSnapshot(element) {
+        const snapshotKey = this._getElementSnapshotKey(element);
+        if (!snapshotKey || this.elementSnapshots.has(snapshotKey)) return;
+        const textHost = element.querySelector(".text-element-content");
+        this.elementSnapshots.set(snapshotKey, {
+            transform: element.style.transform,
+            opacity: element.style.opacity,
+            filter: element.style.filter,
+            width: element.style.width,
+            height: element.style.height,
+            color: element.style.color,
+            backgroundColor: element.style.backgroundColor,
+            fill: element.style.fill,
+            stroke: element.style.stroke,
+            borderWidth: element.style.borderWidth,
+            zIndex: element.style.zIndex,
+            parentPerspective: element.parentElement?.style.perspective || "",
+            textHost,
+            textHtml: textHost ? textHost.innerHTML : null,
+        });
+    }
+
+    _getElementSnapshotKey(element) {
+        return element?.id || element?.dataset?.id || "";
+    }
+
+    _restoreElementSnapshot(element, snapshot) {
+        element.style.transform = snapshot.transform;
+        element.style.opacity = snapshot.opacity;
+        element.style.filter = snapshot.filter;
+        element.style.width = snapshot.width;
+        element.style.height = snapshot.height;
+        element.style.color = snapshot.color;
+        element.style.backgroundColor = snapshot.backgroundColor;
+        element.style.fill = snapshot.fill;
+        element.style.stroke = snapshot.stroke;
+        element.style.borderWidth = snapshot.borderWidth;
+        element.style.zIndex = snapshot.zIndex;
+        if (element.parentElement) {
+            element.parentElement.style.perspective = snapshot.parentPerspective;
+        }
+        if (snapshot.textHost?.isConnected && snapshot.textHtml !== null) {
+            snapshot.textHost.innerHTML = snapshot.textHtml;
+        }
+        delete element.dataset.sfAnimationBaseTransform;
     }
 
     /**
@@ -223,12 +383,12 @@ class AnimationEngine {
                 element.style.opacity = "1";
                 break;
             case "scaleInPlace":
-                element.style.transform = `scale3d(${animation.startScale}, ${animation.startScale}, 1)`;
+                this._setTransform(element, `scale3d(${animation.startScale}, ${animation.startScale}, 1)`);
                 break;
             case "moveInPlace":
                 const startX = animation.startX ?? 0;
                 const startY = animation.startY ?? 0;
-                element.style.transform = `translate3d(${startX}px, ${startY}px, 0)`;
+                this._setTransform(element, `translate3d(${startX}px, ${startY}px, 0)`);
                 break;
             case "colorShift":
                 const startColor = animation.startColor ?? "#000000";
@@ -249,13 +409,26 @@ class AnimationEngine {
                 element.style.strokeWidth = String(animation.startStrokeWidth ?? 0);
                 break;
             case "scaleXY":
-                element.style.transform = `scale3d(${animation.startScaleX ?? 1}, ${animation.startScaleY ?? 1}, 1)`;
+                this._setTransform(element, `scale3d(${animation.startScaleX ?? 1}, ${animation.startScaleY ?? 1}, 1)`);
                 break;
             case "combinedTransform":
-                element.style.transform = `translate3d(${animation.startX ?? 0}px, ${animation.startY ?? 0}px, 0) scale3d(${animation.startScaleX ?? 1}, ${animation.startScaleY ?? 1}, 1) rotate(${animation.startRotation ?? 0}deg)`;
+                this._setTransform(element, `translate3d(${animation.startX ?? 0}px, ${animation.startY ?? 0}px, 0) scale3d(${animation.startScaleX ?? 1}, ${animation.startScaleY ?? 1}, 1) rotate(${animation.startRotation ?? 0}deg)`);
                 break;
             case "zIndex":
                 element.style.zIndex = String(animation.startZIndex ?? 0);
+                break;
+            case "transform":
+            case "rotate":
+            case "replacementTransform":
+            case "moveAlongPath":
+            case "textMorph":
+            case "animatedChart":
+            case "uncreateAdvanced":
+            case "emphasis":
+            case "blur":
+            case "flip3D":
+            case "glow":
+                this._applyAnimation(element, animation, 0);
                 break;
             default:
                 break;
@@ -274,12 +447,12 @@ class AnimationEngine {
                 element.style.opacity = "0";
                 break;
             case "scaleInPlace":
-                element.style.transform = `scale3d(${animation.endScale}, ${animation.endScale}, 1)`;
+                this._setTransform(element, `scale3d(${animation.endScale}, ${animation.endScale}, 1)`);
                 break;
             case "moveInPlace":
                 const endX = animation.endX ?? 0;
                 const endY = animation.endY ?? 0;
-                element.style.transform = `translate3d(${endX}px, ${endY}px, 0)`;
+                this._setTransform(element, `translate3d(${endX}px, ${endY}px, 0)`);
                 break;
             case "colorShift":
                 const endColor = animation.endColor ?? "#ffffff";
@@ -300,13 +473,26 @@ class AnimationEngine {
                 element.style.strokeWidth = String(animation.endStrokeWidth ?? 2);
                 break;
             case "scaleXY":
-                element.style.transform = `scale3d(${animation.endScaleX ?? 1}, ${animation.endScaleY ?? 1}, 1)`;
+                this._setTransform(element, `scale3d(${animation.endScaleX ?? 1}, ${animation.endScaleY ?? 1}, 1)`);
                 break;
             case "combinedTransform":
-                element.style.transform = `translate3d(${animation.endX ?? 0}px, ${animation.endY ?? 0}px, 0) scale3d(${animation.endScaleX ?? 1}, ${animation.endScaleY ?? 1}, 1) rotate(${animation.endRotation ?? 0}deg)`;
+                this._setTransform(element, `translate3d(${animation.endX ?? 0}px, ${animation.endY ?? 0}px, 0) scale3d(${animation.endScaleX ?? 1}, ${animation.endScaleY ?? 1}, 1) rotate(${animation.endRotation ?? 0}deg)`);
                 break;
             case "zIndex":
                 element.style.zIndex = String(animation.endZIndex ?? 100);
+                break;
+            case "transform":
+            case "rotate":
+            case "replacementTransform":
+            case "moveAlongPath":
+            case "textMorph":
+            case "animatedChart":
+            case "uncreateAdvanced":
+            case "emphasis":
+            case "blur":
+            case "flip3D":
+            case "glow":
+                this._applyAnimation(element, animation, 1);
                 break;
             default:
                 break;
@@ -322,7 +508,7 @@ class AnimationEngine {
     }
 
     _applyFadeOut(element, animation, progress) {
-        const opacity = interpolate(1, 0, progress);
+        const opacity = interpolate(animation.startOpacity ?? 1, animation.endOpacity ?? 0, progress);
         element.style.opacity = String(Math.max(0, Math.min(1, opacity)));
     }
 
@@ -332,38 +518,42 @@ class AnimationEngine {
             y = 0;
         const distance = 50;
 
+        const startOpacity = animation.startOpacity ?? 0;
+        const endOpacity = animation.endOpacity ?? 1;
+        const isExit = startOpacity > endOpacity;
+
         switch (direction) {
             case "up":
-                y = interpolate(distance, 0, progress);
+                y = isExit ? interpolate(0, -distance, progress) : interpolate(distance, 0, progress);
                 break;
             case "down":
-                y = interpolate(-distance, 0, progress);
+                y = isExit ? interpolate(0, distance, progress) : interpolate(-distance, 0, progress);
                 break;
             case "left":
-                x = interpolate(distance, 0, progress);
+                x = isExit ? interpolate(0, -distance, progress) : interpolate(distance, 0, progress);
                 break;
             case "right":
-                x = interpolate(-distance, 0, progress);
+                x = isExit ? interpolate(0, distance, progress) : interpolate(-distance, 0, progress);
                 break;
         }
 
-        element.style.transform = `translate3d(${x}px, ${y}px, 0)`;
-        element.style.opacity = String(interpolate(0, 1, progress));
+        this._setTransform(element, `translate3d(${x}px, ${y}px, 0)`);
+        element.style.opacity = String(interpolate(startOpacity, endOpacity, progress));
     }
 
     _applyScaleInPlace(element, animation, progress) {
         const startScale = animation.startScale ?? 0.8;
         const endScale = animation.endScale ?? 1;
         const scale = interpolate(startScale, endScale, progress);
-        const opacity = interpolate(0, 1, progress);
+        const opacity = interpolate(animation.startOpacity ?? 0, animation.endOpacity ?? 1, progress);
 
-        element.style.transform = `scale3d(${scale}, ${scale}, 1)`;
+        this._setTransform(element, `scale3d(${scale}, ${scale}, 1)`);
         element.style.opacity = String(Math.max(0, Math.min(1, opacity)));
     }
 
     _applyRotate(element, animation, progress) {
         const rotation = interpolate(0, animation.rotation ?? 360, progress);
-        element.style.transform = `rotate(${rotation}deg)`;
+        this._setTransform(element, `rotate(${rotation}deg)`);
     }
 
     _applyWrite(element, animation, progress) {
@@ -412,7 +602,7 @@ class AnimationEngine {
         const x = interpolate(startX, endX, progress);
         const y = interpolate(startY, endY, progress);
 
-        element.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+        this._setTransform(element, `translate3d(${x}px, ${y}px, 0)`);
     }
 
     // NEW: Color animation (fill/stroke color interpolation)
@@ -428,6 +618,9 @@ class AnimationEngine {
                 element.style.backgroundColor = interpolatedColor;
             } else {
                 element.style.fill = interpolatedColor;
+                if (element.dataset.type === "shape") {
+                    element.style.backgroundColor = interpolatedColor;
+                }
             }
         } else if (colorProperty === "stroke") {
             element.style.stroke = interpolatedColor;
@@ -464,8 +657,14 @@ class AnimationEngine {
 
         const scaleX = interpolate(startScaleX, endScaleX, progress);
         const scaleY = interpolate(startScaleY, endScaleY, progress);
+        const type = element.dataset.type || "";
+        if (!["shape", "connector"].includes(type) && Math.abs(scaleX - scaleY) > 0.001) {
+            const uniformScale = (scaleX + scaleY) / 2;
+            this._setTransform(element, `scale3d(${uniformScale}, ${uniformScale}, 1)`);
+            return;
+        }
 
-        element.style.transform = `scale3d(${scaleX}, ${scaleY}, 1)`;
+        this._setTransform(element, `scale3d(${scaleX}, ${scaleY}, 1)`);
     }
 
     // NEW: Combined transform (position + scale + rotation simultaneously)
@@ -486,8 +685,11 @@ class AnimationEngine {
         const scaleX = interpolate(startScaleX, endScaleX, progress);
         const scaleY = interpolate(startScaleY, endScaleY, progress);
         const rotation = interpolate(startRotation, endRotation, progress);
+        const type = element.dataset.type || "";
+        const safeScaleX = !["shape", "connector"].includes(type) && Math.abs(scaleX - scaleY) > 0.001 ? (scaleX + scaleY) / 2 : scaleX;
+        const safeScaleY = !["shape", "connector"].includes(type) && Math.abs(scaleX - scaleY) > 0.001 ? safeScaleX : scaleY;
 
-        element.style.transform = `translate3d(${x}px, ${y}px, 0) scale3d(${scaleX}, ${scaleY}, 1) rotate(${rotation}deg)`;
+        this._setTransform(element, `translate3d(${x}px, ${y}px, 0) scale3d(${safeScaleX}, ${safeScaleY}, 1) rotate(${rotation}deg)`);
     }
 
     // NEW: Z-index animation
@@ -497,6 +699,313 @@ class AnimationEngine {
 
         const zIndex = Math.round(interpolate(startZIndex, endZIndex, progress));
         element.style.zIndex = String(zIndex);
+    }
+
+    // ADVANCED: ReplacementTransform - smooth morphing between object states
+    _applyReplacementTransform(element, animation, progress) {
+        // Interpolate geometry
+        const startGeo = animation.startGeometry || { width: 100, height: 100, x: 0, y: 0 };
+        const endGeo = animation.endGeometry || { width: 100, height: 100, x: 0, y: 0 };
+
+        const width = interpolate(startGeo.width, endGeo.width, progress);
+        const height = interpolate(startGeo.height, endGeo.height, progress);
+        const x = interpolate(startGeo.x, endGeo.x, progress);
+        const y = interpolate(startGeo.y, endGeo.y, progress);
+
+        // Interpolate visual properties
+        const color = interpolateColor(
+            animation.startColor || '#000000',
+            animation.endColor || '#000000',
+            progress
+        );
+        const scale = interpolate(animation.startScale || 1, animation.endScale || 1, progress);
+        const rotation = interpolate(animation.startRotation || 0, animation.endRotation || 0, progress);
+        const opacity = interpolate(animation.startOpacity ?? 1, animation.endOpacity ?? 1, progress);
+
+        element.style.opacity = String(opacity);
+        if (animation.resizeGeometry === true) {
+            element.style.width = width + 'px';
+            element.style.height = height + 'px';
+        }
+        element.style.fill = color;
+        element.style.color = color;
+        if (element.dataset.type === "shape") {
+            element.style.backgroundColor = color;
+        }
+        this._setTransform(element, `translate3d(${x}px, ${y}px, 0) scale3d(${scale}, ${scale}, 1) rotate(${rotation}deg)`);
+    }
+
+    // ADVANCED: MoveAlongPath - animate object along Bézier or SVG path
+    _applyMoveAlongPath(element, animation, progress) {
+        let position = { x: 0, y: 0 };
+        let rotation = 0;
+
+        // Calculate position based on path type
+        if (animation.pathType === 'bezier' && animation.controlPoints) {
+            position = interpolateBezierCurve(animation.controlPoints, progress);
+            if (animation.followPath) {
+                rotation = calculateBezierTangent(animation.controlPoints, progress);
+            }
+        } else if (animation.pathType === 'svgPath' && animation.svgPath) {
+            const pathPoints = parseSVGPath(animation.svgPath);
+            position = interpolateAlongPath(pathPoints, progress);
+            if (animation.followPath && pathPoints.length > 1) {
+                const nextIdx = Math.min(Math.floor(progress * (pathPoints.length - 1)) + 1, pathPoints.length - 1);
+                const p1 = interpolateAlongPath(pathPoints, progress);
+                const p2 = pathPoints[nextIdx] || pathPoints[pathPoints.length - 1];
+                rotation = (Math.atan2(p2.y - p1.y, p2.x - p1.x) * 180) / Math.PI;
+            }
+        } else if (animation.pathType === 'linearPoints' && animation.linearPoints) {
+            position = interpolateAlongPath(animation.linearPoints, progress);
+        }
+
+        // Apply rotation if not following path
+        if (!animation.followPath) {
+            rotation = interpolate(animation.startRotation || 0, animation.endRotation || 0, progress);
+        }
+
+        this._setTransform(element, `translate3d(${position.x}px, ${position.y}px, 0) rotate(${rotation}deg)`);
+    }
+
+    // ADVANCED: TextMorph - transform text content with animation
+    _applyTextMorph(element, animation, progress) {
+        const textHost = element.querySelector(".text-element-content") || element;
+        const originalText = textHost.textContent || '';
+        const startText = animation.startText || originalText;
+        const endText = animation.endText || '';
+        const morphMode = animation.morphMode || 'letter-by-letter';
+
+        let displayText = '';
+
+        if (morphMode === 'full' || morphMode === 'fade') {
+            // Crossfade: show end text as progress increases
+            displayText = progress >= 0.5 ? endText : startText;
+        } else if (morphMode === 'letter-by-letter') {
+            // Progressive reveal of letters
+            const maxLength = Math.max(startText.length, endText.length);
+            const letterIndex = Math.floor(progress * maxLength);
+            displayText = endText.slice(0, letterIndex);
+        } else if (morphMode === 'word-by-word') {
+            const words = endText.split(/\s+/);
+            const wordCount = Math.ceil(progress * words.length);
+            displayText = words.slice(0, wordCount).join(" ");
+        } else if (morphMode === 'typewriter') {
+            const letterIndex = Math.ceil(progress * endText.length);
+            displayText = endText.slice(0, letterIndex);
+        } else {
+            // 'crossfade' default
+            displayText = progress >= 0.5 ? endText : startText;
+        }
+
+        // Update text content
+        textHost.textContent = displayText;
+
+        // Interpolate color and scale
+        const color = interpolateColor(
+            animation.startColor || '#000000',
+            animation.endColor || '#000000',
+            progress
+        );
+        const scale = interpolate(animation.startScale || 1, animation.endScale || 1, progress);
+        const opacity = interpolate(animation.startOpacity ?? 1, animation.endOpacity ?? 1, progress);
+
+        element.style.color = color;
+        this._setTransform(element, `scale3d(${scale}, ${scale}, 1)`);
+        element.style.opacity = String(opacity);
+    }
+
+    // ADVANCED: AnimatedChart - progressive reveal of chart data
+    _applyAnimatedChart(element, animation, progress) {
+        const dataValues = animation.dataValues || [100, 200, 300, 250];
+        const maxValue = animation.maxValue || 300;
+        const staggerDelay = animation.staggerDelay || 100;
+        const animationMode = animation.animationMode || 'staggered';
+        const chartType = animation.chartType || 'bar';
+
+        // Calculate which data points should be visible
+        let visibleCount = dataValues.length;
+        if (animationMode === 'staggered') {
+            const totalStaggerTime = dataValues.length * staggerDelay;
+            const effectiveProgress = progress * (animation.duration + totalStaggerTime) / animation.duration;
+            visibleCount = Math.floor(effectiveProgress * dataValues.length);
+        } else if (animationMode === 'progressive') {
+            visibleCount = Math.ceil(progress * dataValues.length);
+        } else if (animationMode === 'simultaneous' || animationMode === 'all-at-once') {
+            visibleCount = progress > 0 ? dataValues.length : 0;
+        }
+
+        // Update SVG bars/lines
+        const bars = element.querySelectorAll('[data-chart-bar], .chart-bar, rect[role="bar"]');
+        const lines = element.querySelectorAll('[data-chart-line], .chart-line, path[role="line"]');
+
+        bars.forEach((bar, i) => {
+            if (i < visibleCount) {
+                const value = dataValues[i];
+                const height = (value / maxValue) * 100;
+                bar.style.height = height + '%';
+                bar.style.opacity = '1';
+            } else {
+                bar.style.height = '0%';
+                bar.style.opacity = '0.1';
+            }
+        });
+
+        lines.forEach((line, i) => {
+            if (i < visibleCount) {
+                line.style.opacity = '1';
+                line.style.strokeDashoffset = '0';
+            } else {
+                line.style.opacity = '0';
+                line.style.strokeDashoffset = line.getTotalLength?.();
+            }
+        });
+    }
+
+    // ADVANCED: UncreateAdvanced - sophisticated destruction effects
+    _applyUncreateAdvanced(element, animation, easedProgress) {
+        const destructionMode = animation.destructionMode || 'fade';
+        const reverseProgress = 1 - easedProgress;
+
+        switch (destructionMode) {
+            case 'fade':
+                element.style.opacity = String(reverseProgress);
+                break;
+            case 'shrink':
+                this._setTransform(element, `scale3d(${reverseProgress}, ${reverseProgress}, 1)`);
+                element.style.opacity = String(reverseProgress);
+                break;
+            case 'explode': {
+                const velocity = animation.explosionVelocity || 5;
+                const seed = String(animation.id || element.id || "explode")
+                    .split("")
+                    .reduce((acc, char) => acc + char.charCodeAt(0), 0);
+                const angle = ((seed % 360) * Math.PI) / 180;
+                const distance = (1 - reverseProgress) * velocity * 100;
+                const x = Math.cos(angle) * distance;
+                const y = Math.sin(angle) * distance;
+                this._setTransform(element, `translate3d(${x}px, ${y}px, 0) scale3d(${reverseProgress}, ${reverseProgress}, 1)`);
+                element.style.opacity = String(reverseProgress);
+                break;
+            }
+            case 'disintegrate': {
+                const fragmentCount = animation.fragmentCount || 8;
+                element.style.opacity = String(reverseProgress);
+                if (easedProgress < 0.5) {
+                    element.style.filter = `blur(${easedProgress * 10}px)`;
+                } else {
+                    element.style.filter = `blur(${(1 - easedProgress) * 10}px)`;
+                }
+                break;
+            }
+        }
+    }
+
+    // ADVANCED: Emphasis - Pulse, Wiggle, Bounce, Heartbeat effects
+    _applyEmphasis(element, animation, progress) {
+        const emphasisType = animation.emphasisType || 'pulse';
+        const cycles = animation.cycles || 1;
+        const intensity = animation.intensity || 0.2;
+        const amplitude = animation.amplitude || 5;
+        if (progress >= 1) {
+            element.style.opacity = String(animation.endOpacity ?? 1);
+            this._setTransform(element, "");
+            return;
+        }
+
+        // Map progress to cycle
+        const cycleProgress = (progress * cycles) % 1;
+
+        let scale = 1;
+        let translateX = 0;
+        let rotation = 0;
+
+        switch (emphasisType) {
+            case 'pulse': {
+                // Scale up and down
+                const t = Math.sin(cycleProgress * Math.PI * 2) * 0.5 + 0.5;
+                scale = 1 + t * intensity;
+                break;
+            }
+            case 'wiggle': {
+                // Oscillate left/right
+                translateX = Math.sin(cycleProgress * Math.PI * 2) * amplitude;
+                break;
+            }
+            case 'bounce': {
+                // Bounce down and back up
+                const t = cycleProgress < 0.5 ? cycleProgress * 2 : 2 - cycleProgress * 2;
+                const bounceHeight = Math.sin(t * Math.PI) * intensity * 100;
+                this._setTransform(element, `translate3d(0, ${bounceHeight}px, 0)`);
+                return;
+            }
+            case 'heartbeat': {
+                // Two quick pulses
+                const t = cycleProgress < 0.3 ? (cycleProgress / 0.3) : cycleProgress > 0.5 ? ((cycleProgress - 0.5) / 0.3) : 1;
+                scale = 1 + Math.sin(t * Math.PI * 2) * intensity * 0.5;
+                break;
+            }
+            case 'shake': {
+                translateX = Math.sin(cycleProgress * Math.PI * 8) * amplitude;
+                rotation = Math.sin(cycleProgress * Math.PI * 8) * intensity * 8;
+                break;
+            }
+            case 'flash': {
+                element.style.opacity = String(progress >= 1 ? 1 : 0.35 + Math.abs(Math.sin(cycleProgress * Math.PI * 2)) * 0.65);
+                break;
+            }
+        }
+
+        this._setTransform(element, `translate3d(${translateX}px, 0, 0) scale3d(${scale}, ${scale}, 1) rotate(${rotation}deg)`);
+    }
+
+    // ADVANCED: Blur - Progressive blur in/out
+    _applyBlur(element, animation, progress) {
+        const direction = animation.direction || 'in';
+        const startBlur = animation.startBlur || 10;
+        const endBlur = animation.endBlur || 0;
+
+        let blurAmount;
+        blurAmount = interpolate(startBlur, endBlur, progress);
+
+        const opacity = interpolate(animation.startOpacity ?? 1, animation.endOpacity ?? 1, progress);
+
+        element.style.filter = `blur(${blurAmount}px)`;
+        element.style.opacity = String(opacity);
+    }
+
+    // ADVANCED: 3D Flip - Rotate in 3D space
+    _applyFlip3D(element, animation, progress) {
+        const axis = animation.axis || 'y';
+        const totalRotation = animation.rotation || 180;
+        const perspective = animation.perspective || 1000;
+
+        const rotation = progress * totalRotation;
+
+        // Apply perspective to parent
+        if (element.parentElement) {
+            element.parentElement.style.perspective = perspective + 'px';
+        }
+
+        const transformValue = axis === 'x'
+            ? `rotateX(${rotation}deg)`
+            : `rotateY(${rotation}deg)`;
+
+        this._setTransform(element, transformValue);
+    }
+
+    // ADVANCED: Glow - Pulsing glow effect
+    _applyGlow(element, animation, progress) {
+        const glowColor = animation.glowColor || '#ffff00';
+        const startBlur = animation.startBlur || 5;
+        const peakBlur = animation.peakBlur || 20;
+        const pulses = animation.pulses || 2;
+
+        // Create pulsing effect
+        const cycleProgress = (progress * pulses) % 1;
+        const t = Math.sin(cycleProgress * Math.PI) * 0.5 + 0.5;
+        const blurAmount = startBlur + (peakBlur - startBlur) * t;
+
+        element.style.filter = `drop-shadow(0 0 ${blurAmount}px ${glowColor})`;
     }
 }
 
@@ -524,11 +1033,46 @@ function playSlideAnimations(slideSelector = ".slide") {
     engine.play();
 }
 
+function playConfiguredSlideAnimations(slideIndex = 0, options = {}) {
+    if (typeof state === "undefined" || !Array.isArray(state.slides)) return null;
+    const slide = state.slides[slideIndex];
+    if (!slide) return null;
+
+    const engine = getAnimationEngine();
+    if (options.restoreBeforePlay !== false) {
+        engine.restoreElements();
+    }
+    engine.loadSlide(slide);
+    engine.seek(0);
+
+    let totalDuration = 0;
+    for (const timeline of engine.timelines.values()) {
+        for (const animation of timeline.animations) {
+            totalDuration = Math.max(totalDuration, (Number(animation.startTime) || 0) + (Number(animation.duration) || 0));
+        }
+    }
+
+    if (totalDuration > 0) {
+        engine.play();
+        window.clearTimeout(engine._autoStopTimeout);
+        engine._autoStopTimeout = window.setTimeout(() => {
+            if (engine.isPlaying) engine.pause();
+            if (options.restoreOnComplete) {
+                engine.restoreElements();
+            }
+        }, totalDuration + 80);
+    }
+
+    return engine;
+}
+
 // Helper to stop all animations
 function stopSlideAnimations() {
     const engine = getAnimationEngine();
+    window.clearTimeout(engine._autoStopTimeout);
     engine.pause();
     engine.seek(0);
+    engine.restoreElements();
 }
 
 // Export
@@ -538,6 +1082,7 @@ if (typeof module !== "undefined" && module.exports) {
         getAnimationEngine,
         applyAnimationToElement,
         playSlideAnimations,
+        playConfiguredSlideAnimations,
         stopSlideAnimations,
     };
 }

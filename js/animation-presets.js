@@ -425,6 +425,270 @@ const ANIMATION_PRESETS = {
         startRotation: 0,
         endRotation: 360,
     },
+
+    // ADVANCED: Morphing and transformation
+    replacementTransformSmooth: {
+        name: "Smooth Morph",
+        category: "advanced",
+        type: "replacementTransform",
+        duration: 800,
+        delay: 0,
+        easing: "easeInOut",
+        startGeometry: { width: 100, height: 100, x: 0, y: 0 },
+        endGeometry: { width: 100, height: 100, x: 0, y: 0 },
+        startColor: "#4488ff",
+        endColor: "#ff4488",
+        startOpacity: 1,
+        endOpacity: 1,
+        startScale: 1,
+        endScale: 1.2,
+        startRotation: 0,
+        endRotation: 360,
+    },
+
+    // ADVANCED: Path animations
+    trajectorySmooth: {
+        name: "Smooth Trajectory",
+        category: "scientific",
+        type: "moveAlongPath",
+        duration: 2000,
+        delay: 0,
+        easing: "easeInOut",
+        pathType: "bezier",
+        controlPoints: {
+            start: { x: 0, y: 0 },
+            cp1: { x: 100, y: -100 },
+            cp2: { x: 200, y: -100 },
+            end: { x: 300, y: 0 },
+        },
+        followPath: true,
+    },
+
+    // ADVANCED: Text morphing
+    textReveal: {
+        name: "Text Reveal",
+        category: "scientific",
+        type: "textMorph",
+        duration: 1000,
+        delay: 0,
+        easing: "easeOut",
+        startText: "",
+        endText: "Text",
+        morphMode: "letter-by-letter",
+        startColor: "#000000",
+        endColor: "#000000",
+        startOpacity: 0,
+        endOpacity: 1,
+        startScale: 1,
+        endScale: 1,
+    },
+
+    // ADVANCED: Emphasis effects
+    pulseEmphasis: {
+        name: "Pulse Emphasis",
+        category: "emphasis",
+        type: "emphasis",
+        duration: 600,
+        delay: 0,
+        easing: "easeInOut",
+        emphasisType: "pulse",
+        cycles: 2,
+        intensity: 0.2,
+    },
+
+    wiggleEmphasis: {
+        name: "Wiggle Emphasis",
+        category: "emphasis",
+        type: "emphasis",
+        duration: 600,
+        delay: 0,
+        easing: "easeInOut",
+        emphasisType: "wiggle",
+        cycles: 1,
+        amplitude: 10,
+    },
+
+    bounceEmphasis: {
+        name: "Bounce Emphasis",
+        category: "emphasis",
+        type: "emphasis",
+        duration: 600,
+        delay: 0,
+        easing: "easeOut",
+        emphasisType: "bounce",
+        cycles: 1,
+        intensity: 0.3,
+    },
+
+    heartbeatEmphasis: {
+        name: "Heartbeat Emphasis",
+        category: "emphasis",
+        type: "emphasis",
+        duration: 600,
+        delay: 0,
+        easing: "easeInOut",
+        emphasisType: "heartbeat",
+        cycles: 2,
+        intensity: 0.15,
+    },
+
+    // ADVANCED: Blur animations
+    blurInFocus: {
+        name: "Blur In Focus",
+        category: "advanced",
+        type: "blur",
+        duration: 800,
+        delay: 0,
+        easing: "easeOut",
+        direction: "in",
+        startBlur: 15,
+        endBlur: 0,
+        startOpacity: 0.5,
+        endOpacity: 1,
+    },
+
+    blurOutOfFocus: {
+        name: "Blur Out of Focus",
+        category: "advanced",
+        type: "blur",
+        duration: 800,
+        delay: 0,
+        easing: "easeIn",
+        direction: "out",
+        startBlur: 0,
+        endBlur: 15,
+        startOpacity: 1,
+        endOpacity: 0.5,
+    },
+
+    // ADVANCED: 3D effects
+    flip3DHorizontal: {
+        name: "3D Flip (Horizontal)",
+        category: "advanced",
+        type: "flip3D",
+        duration: 800,
+        delay: 0,
+        easing: "easeInOut",
+        axis: "y",
+        rotation: 180,
+        perspective: 1000,
+    },
+
+    flip3DVertical: {
+        name: "3D Flip (Vertical)",
+        category: "advanced",
+        type: "flip3D",
+        duration: 800,
+        delay: 0,
+        easing: "easeInOut",
+        axis: "x",
+        rotation: 180,
+        perspective: 1000,
+    },
+
+    // ADVANCED: Glow effects
+    glowHighlight: {
+        name: "Glow Highlight",
+        category: "emphasis",
+        type: "glow",
+        duration: 1000,
+        delay: 0,
+        easing: "easeInOut",
+        glowColor: "#ffff00",
+        startBlur: 5,
+        peakBlur: 25,
+        pulses: 2,
+    },
+
+    energyGlow: {
+        name: "Energy Glow",
+        category: "scientific",
+        type: "glow",
+        duration: 1500,
+        delay: 0,
+        easing: "easeInOut",
+        glowColor: "#44ff44",
+        startBlur: 3,
+        peakBlur: 30,
+        pulses: 3,
+    },
+
+    // ADVANCED: Advanced uncreate
+    uncreateExplode: {
+        name: "Explode Out",
+        category: "exit",
+        type: "uncreateAdvanced",
+        duration: 800,
+        delay: 0,
+        easing: "easeOut",
+        destructionMode: "explode",
+        startOpacity: 1,
+        endOpacity: 0,
+        explosionVelocity: 10,
+    },
+
+    uncreateShrink: {
+        name: "Shrink Out",
+        category: "exit",
+        type: "uncreateAdvanced",
+        duration: 600,
+        delay: 0,
+        easing: "easeIn",
+        destructionMode: "shrink",
+        startOpacity: 1,
+        endOpacity: 0,
+    },
+
+    // Backward-compatible alias for existing saved references/tests.
+    uncreaeShrink: {
+        name: "Shrink Out",
+        category: "exit",
+        type: "uncreateAdvanced",
+        duration: 600,
+        delay: 0,
+        easing: "easeIn",
+        destructionMode: "shrink",
+        startOpacity: 1,
+        endOpacity: 0,
+    },
+
+    // ANIMATED CHARTS
+    chartBarsReveal: {
+        name: "Chart Bars Reveal",
+        category: "scientific",
+        type: "animatedChart",
+        duration: 1500,
+        delay: 0,
+        easing: "easeOut",
+        chartType: "bar",
+        animationMode: "staggered",
+        staggerDelay: 150,
+        direction: "from-zero",
+    },
+
+    chartLinesDraw: {
+        name: "Chart Lines Draw",
+        category: "scientific",
+        type: "animatedChart",
+        duration: 2000,
+        delay: 0,
+        easing: "easeInOut",
+        chartType: "line",
+        animationMode: "progressive",
+        lineDrawMode: "stroke-dash",
+    },
+
+    scatterPointsReveal: {
+        name: "Scatter Points Appear",
+        category: "scientific",
+        type: "animatedChart",
+        duration: 1200,
+        delay: 0,
+        easing: "easeOut",
+        chartType: "scatter",
+        animationMode: "staggered",
+        staggerDelay: 100,
+    },
 };
 
 const PRESET_CATEGORIES = {
@@ -458,6 +722,31 @@ const PRESET_CATEGORIES = {
         icon: "minimize-2",
         description: "Subtle, refined animations",
     },
+    color: {
+        name: "Color",
+        icon: "palette",
+        description: "Color shift and transition animations",
+    },
+    position: {
+        name: "Position",
+        icon: "move",
+        description: "Movement and position animations",
+    },
+    scale: {
+        name: "Scale",
+        icon: "maximize-2",
+        description: "Scale and stretch animations",
+    },
+    svg: {
+        name: "SVG / Stroke",
+        icon: "pen-tool",
+        description: "SVG path and stroke animations",
+    },
+    advanced: {
+        name: "Advanced",
+        icon: "cpu",
+        description: "Advanced morphing, blur, and 3D effects",
+    },
 };
 
 function getPreset(presetName) {
@@ -467,11 +756,11 @@ function getPreset(presetName) {
 function getPresetsByCategory(category) {
     return Object.entries(ANIMATION_PRESETS)
         .filter(([_, preset]) => preset.category === category)
-        .map(([name, preset]) => ({ name, ...preset }));
+        .map(([id, preset]) => ({ id, ...preset }));
 }
 
 function getAllPresets() {
-    return Object.entries(ANIMATION_PRESETS).map(([name, preset]) => ({ name, ...preset }));
+    return Object.entries(ANIMATION_PRESETS).map(([id, preset]) => ({ id, ...preset }));
 }
 
 function createPresetAnimation(presetName, overrides = {}) {

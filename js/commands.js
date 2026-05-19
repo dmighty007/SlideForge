@@ -3050,10 +3050,11 @@ function undo() {
         return;
     }
     if (restoreUndoState()) {
-        renderSlidesFromState();
+        renderSlidesFromState({ preserveState: true });
         clearSelection();
         Reveal.slide(Math.min(currentSlideIndex, state.slides.length - 1));
         updateSlideCounter();
+        schedulePresentationAutosave?.(150);
         if (typeof setProjectSaveHint === "function") {
             setProjectSaveHint("Action undone", "success");
         }
@@ -3068,10 +3069,11 @@ function redo() {
         return;
     }
     if (restoreRedoState()) {
-        renderSlidesFromState();
+        renderSlidesFromState({ preserveState: true });
         clearSelection();
         Reveal.slide(Math.min(currentSlideIndex, state.slides.length - 1));
         updateSlideCounter();
+        schedulePresentationAutosave?.(150);
         if (typeof setProjectSaveHint === "function") {
             setProjectSaveHint("Action redone", "success");
         }
@@ -3081,7 +3083,7 @@ function redo() {
 // ─── Play Mode ───────────────────────────────────────────────────────────────
 
 async function _syncBrowserFullscreen(shouldEnter) {
-    const target = document.getElementById("canvas-wrapper") || document.documentElement;
+    const target = _getPresentationFullscreenTarget();
     const isFullscreen = !!document.fullscreenElement;
 
     if (shouldEnter && !isFullscreen && target?.requestFullscreen) {
@@ -3100,6 +3102,69 @@ async function _syncBrowserFullscreen(shouldEnter) {
         }
     }
     return false;
+}
+
+function _getPresentationFullscreenTarget() {
+    return document.getElementById("canvas-wrapper") || document.documentElement;
+}
+
+function _clearPresentationViewportLayout() {
+    document.documentElement.style.removeProperty("--presentation-scale");
+    document.documentElement.style.removeProperty("--presentation-viewport-width");
+    document.documentElement.style.removeProperty("--presentation-viewport-height");
+    document.documentElement.style.removeProperty("--presentation-stage-bg");
+    const { wrapper } = _presentationToolsElements();
+    if (wrapper) {
+        wrapper.style.removeProperty("width");
+        wrapper.style.removeProperty("height");
+        wrapper.style.removeProperty("min-height");
+    }
+}
+
+function _getPresentationViewportSize() {
+    const viewport = window.visualViewport;
+    const browserWidth = Math.round(viewport?.width || window.innerWidth || document.documentElement.clientWidth || 1);
+    const browserHeight = Math.round(viewport?.height || window.innerHeight || document.documentElement.clientHeight || 1);
+    const fullscreenRect = document.fullscreenElement?.getBoundingClientRect?.();
+    const fullscreenWidth = Math.round(fullscreenRect?.width || document.fullscreenElement?.clientWidth || 0);
+    const fullscreenHeight = Math.round(fullscreenRect?.height || document.fullscreenElement?.clientHeight || 0);
+    const screenWidth = document.fullscreenElement ? Math.round(window.screen?.width || 0) : 0;
+    const screenHeight = document.fullscreenElement ? Math.round(window.screen?.height || 0) : 0;
+    return {
+        width: Math.max(1, browserWidth, fullscreenWidth, screenWidth),
+        height: Math.max(1, browserHeight, fullscreenHeight, screenHeight),
+    };
+}
+
+function _syncPresentationViewportLayout() {
+    if (!document.body.classList.contains("play-mode-active")) return;
+    const { wrapper } = _presentationToolsElements();
+    const { width, height } = _getPresentationViewportSize();
+    const activeSlide =
+        document.querySelector(".presentation-slide.present") ||
+        document.querySelector(`.presentation-slide[data-slide-index="${currentSlideIndex}"]`) ||
+        document.querySelector(".presentation-slide");
+    const slideBg = activeSlide ? window.getComputedStyle(activeSlide).backgroundColor : "";
+    const fallbackBg =
+        getComputedStyle(document.documentElement).getPropertyValue("--slide-bg").trim() ||
+        getPresentationTheme?.()?.cssVars?.["--slide-bg"] ||
+        "#000";
+    const stageBg = slideBg && slideBg !== "rgba(0, 0, 0, 0)" && slideBg !== "transparent" ? slideBg : fallbackBg;
+    document.documentElement.style.setProperty("--presentation-viewport-width", `${width}px`);
+    document.documentElement.style.setProperty("--presentation-viewport-height", `${height}px`);
+    document.documentElement.style.setProperty("--presentation-stage-bg", stageBg);
+    if (wrapper) {
+        wrapper.style.setProperty("width", `${width}px`, "important");
+        wrapper.style.setProperty("height", `${height}px`, "important");
+        wrapper.style.setProperty("min-height", `${height}px`, "important");
+        wrapper.scrollLeft = 0;
+        wrapper.scrollTop = 0;
+    }
+    if (typeof Reveal !== "undefined") {
+        Reveal.layout?.();
+        Reveal.sync?.();
+    }
+    _resizePresentationChalkboard();
 }
 
 const _presentationToolsState = {
@@ -3198,18 +3263,22 @@ function _resizePresentationChalkboard() {
     const slideConfig = getPresentationPageSetupConfig();
     const width = Number(slideConfig.width) || 1024;
     const height = Number(slideConfig.height) || 768;
-    const scale = Math.max(0.1, Math.min(wrapper.clientWidth / width, wrapper.clientHeight / height));
+    const viewport = document.body.classList.contains("play-mode-active")
+        ? _getPresentationViewportSize()
+        : { width: wrapper.clientWidth, height: wrapper.clientHeight };
+    const scale = Math.max(0.1, Math.min(viewport.width / width, viewport.height / height));
     document.documentElement.style.setProperty("--presentation-scale", String(scale));
+    const snapshotCtx = chalkboard.getContext("2d", { willReadFrequently: true });
     const snapshot =
         chalkboard.width > 0 && chalkboard.height > 0
-            ? chalkboard.getContext("2d")?.getImageData(0, 0, chalkboard.width, chalkboard.height)
+            ? snapshotCtx?.getImageData(0, 0, chalkboard.width, chalkboard.height)
             : null;
 
     chalkboard.width = width;
     chalkboard.height = height;
     chalkboard.style.transform = `scale(${scale})`;
 
-    const ctx = chalkboard.getContext("2d");
+    const ctx = chalkboard.getContext("2d", { willReadFrequently: true });
     if (!ctx) return;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
@@ -3437,7 +3506,11 @@ function initPresentationTools() {
     document.addEventListener("keydown", event => {
         if (!document.body.classList.contains("play-mode-active")) return;
         const key = String(event.key || "").toLowerCase();
-        if (key === "b") {
+        if (key === "escape") {
+            event.preventDefault();
+            closePresentationMenus();
+            togglePlayMode();
+        } else if (key === "b") {
             event.preventDefault();
             setPresentationChalkActive(!_presentationToolsState.chalkEnabled);
         } else if (key === "l") {
@@ -3449,6 +3522,14 @@ function initPresentationTools() {
         } else if (key === "m") {
             event.preventDefault();
             togglePresentationMenu();
+        } else if (key === "f") {
+            event.preventDefault();
+            if (document.fullscreenElement) {
+                _syncBrowserFullscreen(false);
+            } else {
+                _syncBrowserFullscreen(true);
+            }
+            _updatePresentationToolButtons();
         } else if (key === "p") {
             event.preventDefault();
             openPresenterView();
@@ -3479,7 +3560,17 @@ function _getAnimatedSlideEntries(slideIndex) {
     const slide = state.slides?.[slideIndex];
     if (!slide) return [];
     return (slide.elements || [])
-        .map(el => ({ el, animation: normalizeElementAnimation(el) }))
+        .map(el => {
+            const rawAnimation = el?.animation && typeof el.animation === "object" ? el.animation : null;
+            if (rawAnimation && Array.isArray(rawAnimation.timelines)) {
+                return { el, animation: null };
+            }
+            const animation = normalizeElementAnimation(el);
+            return {
+                el,
+                animation: animation?.effect ? animation : null,
+            };
+        })
         .filter(entry => entry.animation)
         .sort((a, b) => {
             const triggerDelta =
@@ -3777,6 +3868,9 @@ function openPresenterView() {
 
 function _preparePresentationSlideAnimations(slideIndex) {
     _presentationRuntimeState.slideIndex = slideIndex;
+    if (typeof stopSlideAnimations === "function") {
+        stopSlideAnimations();
+    }
     const entries = _getAnimatedSlideEntries(slideIndex);
     entries.forEach(entry => _hideAnimatedEntry(entry));
     entries
@@ -3789,11 +3883,28 @@ function _preparePresentationSlideAnimations(slideIndex) {
         _presentationRuntimeState.clickGroups.forEach(group => group.entries.forEach(entry => _showAnimatedEntry(entry, { animate: false })));
         _presentationRuntimeState.restorePreviousSlideFully = false;
     }
+    if (typeof playConfiguredSlideAnimations === "function") {
+        playConfiguredSlideAnimations(slideIndex);
+    }
     _syncPresenterPayload();
 }
 
 function _runPresentationSlideAnimations(slideIndex) {
     _preparePresentationSlideAnimations(slideIndex);
+}
+
+function _schedulePresentationSlideAnimations(slideIndex) {
+    window.requestAnimationFrame(() => {
+        if (!document.body.classList.contains("play-mode-active")) return;
+        const safeIndex = Math.max(0, Math.min(Number(slideIndex) || 0, Math.max(0, (state.slides?.length || 1) - 1)));
+        if (typeof Reveal !== "undefined" && typeof Reveal.slide === "function") {
+            Reveal.slide(safeIndex, 0, 0);
+        }
+        window.requestAnimationFrame(() => {
+            if (!document.body.classList.contains("play-mode-active")) return;
+            _preparePresentationSlideAnimations(safeIndex);
+        });
+    });
 }
 
 function _revealNextAnimationGroup() {
@@ -3860,18 +3971,55 @@ function presentationPrevStep() {
     return true;
 }
 
-async function togglePlayMode() {
-    const willPlay = !document.body.classList.contains("play-mode-active");
-    if (willPlay) {
-        if (typeof suspendEditorZoom === "function") suspendEditorZoom();
-        await _syncBrowserFullscreen(true);
-    }
+let _playModeExiting = false;
 
-    const isPlaying = document.body.classList.toggle("play-mode-active");
+async function togglePlayMode() {
+    if (_playModeExiting) return;
+    const willPlay = !document.body.classList.contains("play-mode-active");
     const indices = Reveal.getIndices?.() || {};
     const targetH = Number.isInteger(indices.h) ? indices.h : currentSlideIndex;
     const targetV = Number.isInteger(indices.v) ? indices.v : 0;
     const targetF = Number.isInteger(indices.f) ? indices.f : 0;
+
+    // CRITICAL: requestFullscreen() must be called SYNCHRONOUSLY within the
+    // user gesture call stack. Any await/microtask before it will invalidate
+    // the browser's user activation token, causing "not granted" rejection.
+    // Fire the fullscreen request immediately, then do setup work after.
+    let fullscreenPromise = null;
+    if (willPlay) {
+        const target = _getPresentationFullscreenTarget();
+        if (!document.fullscreenElement && target?.requestFullscreen) {
+            try {
+                fullscreenPromise = target.requestFullscreen();
+            } catch (err) {
+                console.warn("Entering fullscreen failed (sync):", err);
+            }
+        }
+    }
+
+    if (willPlay) {
+        if (typeof suspendEditorZoom === "function") suspendEditorZoom();
+        document.body.classList.add("play-mode-active");
+        _syncPresentationViewportLayout();
+        // Now await the already-initiated fullscreen promise
+        if (fullscreenPromise) {
+            try {
+                await fullscreenPromise;
+            } catch (err) {
+                console.warn("Entering fullscreen failed:", err);
+            }
+        }
+        _syncPresentationViewportLayout();
+        requestAnimationFrame(() => {
+            _syncPresentationViewportLayout();
+            requestAnimationFrame(() => _syncPresentationViewportLayout());
+        });
+    } else {
+        _playModeExiting = true;
+        document.body.classList.remove("play-mode-active");
+    }
+
+    const isPlaying = willPlay;
 
     if (window.renderSlidesFromState) {
         window.renderSlidesFromState();
@@ -3891,55 +4039,32 @@ async function togglePlayMode() {
         Reveal.layout?.();
         Reveal.slide?.(targetH, targetV, targetF);
         if (isPlaying && typeof _resizePresentationChalkboard === "function") {
-            requestAnimationFrame(() => _resizePresentationChalkboard());
+            _syncPresentationViewportLayout();
+            requestAnimationFrame(() => _syncPresentationViewportLayout());
+        }
+        if (isPlaying) {
+            _schedulePresentationSlideAnimations(targetH);
         }
         
         updatePresentButtonState(isPlaying);
     });
     if (isPlaying) {
         clearSelection();
-        _resizePresentationChalkboard();
+        _syncPresentationViewportLayout();
         _ensurePresenterMessaging();
         _presentationRuntimeState.presenterStartTs = Date.now();
-        _preparePresentationSlideAnimations(currentSlideIndex);
     } else {
         _resetAnimations();
         resetPresentationTools();
-        document.documentElement.style.removeProperty("--presentation-scale");
-        await _syncBrowserFullscreen(false);
-        requestAnimationFrame(() => {
-            if (typeof restoreEditorZoom === "function") restoreEditorZoom();
-        });
-    }
-}
-
-function handlePresentationFullscreenChange() {
-    const isFullscreen = !!document.fullscreenElement;
-    const isPlaying = document.body.classList.contains("play-mode-active");
-    if (!isFullscreen && isPlaying) {
-        document.body.classList.remove("play-mode-active");
-        if (window.renderSlidesFromState) {
-            window.renderSlidesFromState();
-        }
-        if (typeof Reveal !== "undefined" && typeof Reveal.configure === "function") {
-            Reveal.configure({
-                controls: false,
-                progress: false,
-                keyboard: false,
-                disableLayout: false,
-            });
-            Reveal.sync?.();
+        _clearPresentationViewportLayout();
+        // Only request fullscreen exit if we're still in fullscreen
+        if (document.fullscreenElement) {
+            await _syncBrowserFullscreen(false);
         }
         requestAnimationFrame(() => {
-            Reveal.layout?.();
-            Reveal.slide?.(currentSlideIndex, 0, 0);
-            updatePresentButtonState(false);
-        });
-        _resetAnimations();
-        resetPresentationTools();
-        document.documentElement.style.removeProperty("--presentation-scale");
-        requestAnimationFrame(() => {
             if (typeof restoreEditorZoom === "function") restoreEditorZoom();
+            // Allow re-entry after layout has settled
+            requestAnimationFrame(() => { _playModeExiting = false; });
         });
         try {
             _presentationRuntimeState.presenterWindow?.close?.();
@@ -3948,6 +4073,31 @@ function handlePresentationFullscreenChange() {
         }
         _presentationRuntimeState.presenterWindow = null;
     }
+}
+
+function handlePresentationFullscreenChange() {
+    const isFullscreen = !!document.fullscreenElement;
+    const isPlaying = document.body.classList.contains("play-mode-active");
+    if (!isPlaying || _playModeExiting) return;
+
+    if (!isFullscreen) {
+        togglePlayMode();
+        return;
+    }
+
+    // Re-sync viewport layout whenever fullscreen state changes
+    // (entering or leaving fullscreen while still in play mode)
+    _updatePresentationToolButtons();
+    requestAnimationFrame(() => {
+        // Guard again — togglePlayMode may have started during the rAF delay
+        if (!document.body.classList.contains("play-mode-active")) return;
+        _syncPresentationViewportLayout();
+        requestAnimationFrame(() => {
+            if (document.body.classList.contains("play-mode-active")) {
+                _syncPresentationViewportLayout();
+            }
+        });
+    });
 }
 
 function updatePresentButtonState(isPlaying) {
@@ -3966,6 +4116,9 @@ function _playSlideAnimations(slideIndex) {
 
 function _resetAnimations() {
     document.querySelectorAll(".canvas-element").forEach(el => _clearAnimationClasses(el));
+    if (typeof stopSlideAnimations === "function") {
+        stopSlideAnimations();
+    }
     _presentationRuntimeState.slideIndex = -1;
     _presentationRuntimeState.clickGroups = [];
     _presentationRuntimeState.revealedGroups = 0;

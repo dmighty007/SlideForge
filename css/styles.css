@@ -1604,14 +1604,24 @@ body.entry-gate-active .entry-hero {
 }
 .slide-preview-number {
     position: absolute;
-    bottom: 4px;
-    left: 6px;
-    font-size: 9px;
-    font-weight: 600;
-    color: rgba(0,0,0,0.35);
-    background: rgba(255,255,255,0.8);
-    padding: 1px 5px;
-    border-radius: 4px;
+    bottom: 6px;
+    left: 7px;
+    min-width: 20px;
+    height: 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 6px;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1;
+    color: #334155;
+    background: rgba(255,255,255,0.92);
+    border: 1px solid rgba(148, 163, 184, 0.38);
+    border-radius: 999px;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12);
+    z-index: 9;
+    pointer-events: none;
 }
 
 /* Disable all animations/transitions in preview thumbnails to prevent "reset" flicker */
@@ -1816,6 +1826,59 @@ body.entry-gate-active .entry-hero {
     width: 100%;
     white-space: pre-wrap !important;
     text-align: left !important;
+}
+.master-slide-element.editable-master-element {
+    cursor: text;
+}
+.master-slide-element.editable-master-element .text-element-content {
+    border-radius: 4px;
+    transition:
+        background-color 140ms ease,
+        box-shadow 140ms ease,
+        outline-color 140ms ease;
+}
+.master-slide-element.editable-master-element:hover .text-element-content,
+.master-slide-element.editable-master-element:focus-visible .text-element-content {
+    background-color: rgba(59, 130, 246, 0.08);
+    outline: 1px dashed rgba(37, 99, 235, 0.48);
+    outline-offset: 3px;
+}
+.master-slide-element.editing-master-text .text-element-content,
+.master-slide-element.editable-master-element .text-element-content[contenteditable="true"] {
+    background-color: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25), 0 8px 22px rgba(15, 23, 42, 0.12);
+    outline: none;
+}
+.canvas-element[data-footer-role="slide-number"] .text-element-content {
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+.canvas-element[data-footer-role="slide-number"] {
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+.canvas-element[data-footer-role="logo"] .text-element-content,
+.canvas-element[data-footer-role="footer"] .text-element-content {
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    line-height: 1.15;
+}
+.canvas-element[data-footer-role="logo"],
+.canvas-element[data-footer-role="footer"] {
+    min-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+.canvas-element[data-footer-role="footer"] .text-element-content {
+    justify-content: center;
 }
 .ppt-bullet-edit-list {
     margin: 0;
@@ -2481,6 +2544,21 @@ body.entry-gate-active .entry-hero {
     overflow: hidden !important;
 }
 
+html:fullscreen,
+html:fullscreen body,
+#canvas-wrapper:fullscreen,
+body.play-mode-active {
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    min-height: 100vh !important;
+    min-height: 100dvh !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: var(--presentation-stage-bg, #000) !important;
+    overflow: hidden !important;
+}
+
 .play-mode-active #app-toolbar,
 .play-mode-active aside,
 .play-mode-active #properties-panel,
@@ -2492,28 +2570,33 @@ body.entry-gate-active .entry-hero {
 .play-mode-active main {
     width: 100vw !important;
     height: 100vh !important;
+    height: 100dvh !important;
+    min-height: 100vh !important;
+    min-height: 100dvh !important;
     padding: 0 !important;
     margin: 0 !important;
-    background: #000 !important;
+    background: var(--presentation-stage-bg, #000) !important;
 }
 
 .play-mode-active #canvas-wrapper {
-    width: 100vw !important;
-    height: 100vh !important;
+    width: var(--presentation-viewport-width, 100vw) !important;
+    height: var(--presentation-viewport-height, 100vh) !important;
+    min-height: var(--presentation-viewport-height, 100vh) !important;
     position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
+    inset: 0 !important;
     z-index: 9999 !important;
-    background: #000 !important;
+    background: var(--presentation-stage-bg, #000) !important;
     border: none !important;
     overflow: hidden !important;
+    transform: none !important;
 }
 
 .play-mode-active #zoom-engine {
     position: absolute !important;
     inset: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 100% !important;
     margin: 0 !important;
     transform: none !important;
 }
@@ -2521,26 +2604,21 @@ body.entry-gate-active .entry-hero {
 .play-mode-active .reveal {
     width: 100% !important;
     height: 100% !important;
-    display: grid !important;
-    place-items: center !important;
+    display: block !important;
+    position: relative !important;
     overflow: hidden !important;
 }
 
 .play-mode-active .reveal .slides {
-    position: relative !important;
-    left: auto !important;
-    top: auto !important;
+    position: absolute !important;
+    left: 50% !important;
+    top: 50% !important;
     width: var(--slide-width, 1024px) !important;
     height: var(--slide-height, 768px) !important;
-    transform: none !important;
+    margin: 0 !important;
+    transform: translate(-50%, -50%) scale(var(--presentation-scale, 1)) !important;
     transform-origin: center center !important;
-    zoom: var(--presentation-scale, 1);
-}
-
-@supports not (zoom: 1) {
-    .play-mode-active .reveal .slides {
-        transform: scale(var(--presentation-scale, 1)) !important;
-    }
+    zoom: 1 !important;
 }
 
 .presentation-overlay {
@@ -3612,15 +3690,136 @@ aside,
     border-radius: 10px;
 }
 
-#zoom-control .zoom-fit-btn {
-    min-width: 44px;
-    height: 32px;
+#zoom-control {
+    position: absolute;
+    right: 22px;
+    bottom: 22px;
+    z-index: 200;
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 !important;
+    overflow: visible;
+    border-radius: 999px !important;
+}
+
+.zoom-lens-toggle {
+    position: relative;
+    z-index: 2;
+    width: 48px;
+    height: 48px;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    border: 0;
+    border-radius: 999px !important;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+    color: var(--primary-hover) !important;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.16);
+    cursor: pointer;
+}
+
+.zoom-lens-toggle i {
+    font-size: 14px;
+    line-height: 1;
+}
+
+.zoom-lens-label {
+    font-size: 9px;
+    font-weight: 900;
+    letter-spacing: 0;
+    line-height: 1;
+    color: var(--text-main);
+}
+
+.zoom-lens-panel {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    height: 48px;
+    max-width: min(360px, calc(100vw - 36px));
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 54px 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 14px 38px rgba(15, 23, 42, 0.18);
+    transform: scaleX(0.14);
+    transform-origin: right center;
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 0.18s ease, opacity 0.14s ease;
+}
+
+#zoom-control:hover .zoom-lens-panel,
+#zoom-control:focus-within .zoom-lens-panel,
+#zoom-control.is-open .zoom-lens-panel,
+#zoom-control[data-expanded="true"] .zoom-lens-panel {
+    transform: scaleX(1);
+    opacity: 1;
+    pointer-events: auto;
+}
+
+#zoom-control:hover .zoom-lens-toggle,
+#zoom-control:focus-within .zoom-lens-toggle,
+#zoom-control.is-open .zoom-lens-toggle {
+    background: var(--primary) !important;
+    color: #ffffff !important;
+}
+
+#zoom-control:hover .zoom-lens-label,
+#zoom-control:focus-within .zoom-lens-label,
+#zoom-control.is-open .zoom-lens-label {
+    color: #ffffff;
+}
+
+.zoom-icon-btn {
+    width: 34px;
+    height: 34px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 0 12px;
+    border: 1px solid rgba(148, 163, 184, 0.38);
+    background: var(--surface) !important;
+    color: var(--text-main) !important;
+    font-size: 12px;
+    flex: 0 0 auto;
+}
+
+.zoom-meter {
+    width: 132px;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    gap: 1px;
+}
+
+.zoom-meter-label {
+    display: block;
+    text-align: center;
+    font-size: 10px;
+    font-weight: 900;
+    line-height: 1;
+    color: var(--text-main);
+}
+
+#zoom-control .zoom-fit-btn {
+    min-width: 58px;
+    height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 10px;
     border: 1px solid rgba(79, 70, 229, 0.18);
-    border-radius: 10px;
+    border-radius: 999px !important;
     background: rgba(79, 70, 229, 0.10) !important;
     color: var(--primary-hover) !important;
     font-size: 12px;
@@ -3642,8 +3841,8 @@ aside,
 }
 
 #zoom-slider {
-    width: 112px;
-    height: 24px;
+    width: 132px;
+    height: 18px;
     margin: 0;
     appearance: none;
     -webkit-appearance: none;

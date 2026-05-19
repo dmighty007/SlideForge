@@ -15,7 +15,11 @@ window.onload = async () => {
             console.warn("Inline video migration failed:", err);
         }
     }
-    applyPresentationTheme(state.presentationTheme, { persist: false });
+    if (typeof syncPresentationThemeFromState === "function") {
+        syncPresentationThemeFromState({ persist: false });
+    } else {
+        applyPresentationTheme(state.presentationTheme, { persist: false });
+    }
     syncPresentationPageSetup();
     if (typeof initZoom === "function") initZoom();
     if (typeof initContextMenu === "function") initContextMenu();
@@ -65,6 +69,7 @@ window.onload = async () => {
 
     Reveal.on("slidechanged", event => {
         setCurrentSlideIndex(event.indexh);
+        syncPresentationThemeFromState?.({ persist: false });
         updateSlideCounter();
         clearSelection();
         if (typeof syncActiveSlideMedia === "function") {
@@ -106,9 +111,7 @@ window.onload = async () => {
     });
 
 
-    if (!PRESENTATION_THEMES[state.presentationTheme]) {
-        state.presentationTheme = "editorial";
-    }
+    syncPresentationThemeFromState?.({ persist: false });
 
     syncPresentationPageSetup();
     const shapePickerModal = document.getElementById("shape-picker-modal");
@@ -131,7 +134,13 @@ window.onload = async () => {
             handlePresentationFullscreenChange();
         }
         if (typeof _resizePresentationChalkboard === "function") {
-            requestAnimationFrame(() => _resizePresentationChalkboard());
+            requestAnimationFrame(() => {
+                if (typeof _syncPresentationViewportLayout === "function" && document.body.classList.contains("play-mode-active")) {
+                    _syncPresentationViewportLayout();
+                } else {
+                    _resizePresentationChalkboard();
+                }
+            });
         }
     });
 
