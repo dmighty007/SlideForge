@@ -3546,7 +3546,9 @@ function initPresentationTools() {
 const _presentationRuntimeState = {
     slideIndex: -1,
     clickGroups: [],
+    advancedClickGroups: [],
     revealedGroups: 0,
+    revealedAdvancedGroups: 0,
     restorePreviousSlideFully: false,
     channel: null,
     presenterWindow: null,
@@ -3595,6 +3597,50 @@ function _groupAnimatedEntries(entries) {
         }
     });
     return groups;
+}
+
+function _getAdvancedAnimationClickGroups(slideIndex) {
+    const slide = state.slides?.[slideIndex];
+    if (!slide) return [];
+    const groups = [];
+    (slide.elements || []).forEach(el => {
+        const config = typeof normalizeElementAnimationConfig === "function" ? normalizeElementAnimationConfig(el) : null;
+        if (!config || !Array.isArray(config.timelines)) return;
+        config.timelines.forEach((timeline, timelineIndex) => {
+            (timeline.animations || []).forEach((animation, animationIndex) => {
+                if ((animation?.trigger || "on-slide") !== "on-click") return;
+                if (!animation.id) animation.id = `anim_${el.id || "el"}_${timelineIndex}_${animationIndex}`;
+                groups.push({
+                    order: groups.length,
+                    animationIds: [String(animation.id)],
+                    entries: [{ el, animation }],
+                });
+            });
+        });
+    });
+    return groups;
+}
+
+function _applyAdvancedAnimationInitial(group) {
+    if (!group || typeof getAnimationEngine !== "function") return;
+    const engine = getAnimationEngine();
+    (group.entries || []).forEach(entry => {
+        const dom = document.getElementById(entry.el?.id || "");
+        if (!dom || !entry.animation) return;
+        if (typeof engine._captureElementSnapshot === "function") engine._captureElementSnapshot(dom);
+        if (typeof engine._applyAnimationInitial === "function") engine._applyAnimationInitial(dom, entry.animation);
+    });
+}
+
+function _applyAdvancedAnimationFinal(group) {
+    if (!group || typeof getAnimationEngine !== "function") return;
+    const engine = getAnimationEngine();
+    (group.entries || []).forEach(entry => {
+        const dom = document.getElementById(entry.el?.id || "");
+        if (!dom || !entry.animation) return;
+        if (typeof engine._captureElementSnapshot === "function") engine._captureElementSnapshot(dom);
+        if (typeof engine._applyAnimationFinal === "function") engine._applyAnimationFinal(dom, entry.animation);
+    });
 }
 
 function _clearAnimationClasses(dom) {
@@ -3877,14 +3923,24 @@ function _preparePresentationSlideAnimations(slideIndex) {
         .filter(entry => entry.animation.trigger === "on-slide")
         .forEach(entry => _showAnimatedEntry(entry, { animate: true }));
     _presentationRuntimeState.clickGroups = _groupAnimatedEntries(entries);
+    _presentationRuntimeState.advancedClickGroups = _getAdvancedAnimationClickGroups(slideIndex);
     _presentationRuntimeState.revealedGroups = 0;
-    if (_presentationRuntimeState.restorePreviousSlideFully) {
+    _presentationRuntimeState.revealedAdvancedGroups = 0;
+    const restoreFully = _presentationRuntimeState.restorePreviousSlideFully;
+    if (restoreFully) {
         _presentationRuntimeState.revealedGroups = _presentationRuntimeState.clickGroups.length;
         _presentationRuntimeState.clickGroups.forEach(group => group.entries.forEach(entry => _showAnimatedEntry(entry, { animate: false })));
+        _presentationRuntimeState.revealedAdvancedGroups = _presentationRuntimeState.advancedClickGroups.length;
+        _presentationRuntimeState.advancedClickGroups.forEach(group => _applyAdvancedAnimationFinal(group));
         _presentationRuntimeState.restorePreviousSlideFully = false;
     }
     if (typeof playConfiguredSlideAnimations === "function") {
-        playConfiguredSlideAnimations(slideIndex);
+        playConfiguredSlideAnimations(slideIndex, { trigger: "on-slide" });
+    }
+    if (!restoreFully) {
+        _presentationRuntimeState.advancedClickGroups
+            .slice(_presentationRuntimeState.revealedAdvancedGroups)
+            .forEach(group => _applyAdvancedAnimationInitial(group));
     }
     _syncPresenterPayload();
 }
@@ -3916,6 +3972,23 @@ function _revealNextAnimationGroup() {
     return true;
 }
 
+function _revealNextAdvancedAnimationGroup() {
+    const group = _presentationRuntimeState.advancedClickGroups[_presentationRuntimeState.revealedAdvancedGroups];
+    if (!group) return false;
+    if (typeof playConfiguredSlideAnimations === "function") {
+        playConfiguredSlideAnimations(currentSlideIndex, {
+            trigger: "on-click",
+            animationIds: group.animationIds,
+            restoreBeforePlay: false,
+        });
+    } else {
+        _applyAdvancedAnimationFinal(group);
+    }
+    _presentationRuntimeState.revealedAdvancedGroups += 1;
+    _syncPresenterPayload();
+    return true;
+}
+
 function _hidePreviousAnimationGroup() {
     const previousIndex = _presentationRuntimeState.revealedGroups - 1;
     if (previousIndex < 0) return false;
@@ -3923,6 +3996,17 @@ function _hidePreviousAnimationGroup() {
     if (!group) return false;
     group.entries.forEach(entry => _hideAnimatedEntry(entry));
     _presentationRuntimeState.revealedGroups = previousIndex;
+    _syncPresenterPayload();
+    return true;
+}
+
+function _hidePreviousAdvancedAnimationGroup() {
+    const previousIndex = _presentationRuntimeState.revealedAdvancedGroups - 1;
+    if (previousIndex < 0) return false;
+    const group = _presentationRuntimeState.advancedClickGroups[previousIndex];
+    if (!group) return false;
+    _applyAdvancedAnimationInitial(group);
+    _presentationRuntimeState.revealedAdvancedGroups = previousIndex;
     _syncPresenterPayload();
     return true;
 }
@@ -3947,6 +4031,7 @@ function presentationGoToSlide(index) {
 function presentationNextStep() {
     if (!document.body.classList.contains("play-mode-active")) return false;
     if (_revealNextAnimationGroup()) return true;
+    if (_revealNextAdvancedAnimationGroup()) return true;
     if (_hasRevealFragmentAdvance(false)) {
         _syncPresenterPayload();
         return true;
@@ -3959,6 +4044,7 @@ function presentationNextStep() {
 
 function presentationPrevStep() {
     if (!document.body.classList.contains("play-mode-active")) return false;
+    if (_hidePreviousAdvancedAnimationGroup()) return true;
     if (_hidePreviousAnimationGroup()) return true;
     if (_hasRevealFragmentAdvance(true)) {
         _syncPresenterPayload();
@@ -4030,6 +4116,8 @@ async function togglePlayMode() {
             controls: false,
             progress: false,
             keyboard: false,
+            transition: "none",
+            backgroundTransition: "none",
             disableLayout: isPlaying,
         });
         Reveal.sync?.();
@@ -4121,7 +4209,9 @@ function _resetAnimations() {
     }
     _presentationRuntimeState.slideIndex = -1;
     _presentationRuntimeState.clickGroups = [];
+    _presentationRuntimeState.advancedClickGroups = [];
     _presentationRuntimeState.revealedGroups = 0;
+    _presentationRuntimeState.revealedAdvancedGroups = 0;
     _presentationRuntimeState.restorePreviousSlideFully = false;
 }
 

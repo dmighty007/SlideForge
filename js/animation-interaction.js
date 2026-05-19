@@ -9,7 +9,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 const AutoAnimateInteraction = {
-    enabled: true,
+    enabled: false,
     engine: null,
     lastSlideIndex: -1,
     lastAutoAnimateSequence: null,

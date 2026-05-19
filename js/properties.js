@@ -1231,6 +1231,13 @@ function _buildSlideWorkspacePanel(panel) {
             globalSize.onchange = e => applyPresentationPageSetup(e.target.value);
         }
 
+        if (layoutSelect) {
+            layoutSelect.onchange = e => {
+                const layoutId = e.target.value || "blank-titled";
+                applyPresetLayoutToCurrentSlide?.(layoutId);
+            };
+        }
+
         if (applyBtn) {
             applyBtn.onclick = () => {
                 const layoutId = layoutSelect?.value || "blank-titled";

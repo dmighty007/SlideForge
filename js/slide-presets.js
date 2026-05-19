@@ -2269,7 +2269,102 @@ function _sciencePalette(theme) {
     const { a, a2, aText, a2Text, fg, mu, sf, sb, hf, bf } = _t(theme);
     const meta = _presetMeta(theme);
     const isLight = meta.isLightCanvas;
+    const themeId = Object.entries(PRESENTATION_THEMES || {}).find(([, candidate]) => candidate === theme)?.[0] || "";
+    const softAccent = _alpha(a, isLight ? 0.105 : 0.18);
+    const softAccent2 = _alpha(a2, isLight ? 0.095 : 0.16);
+    const elevatedFill = isLight ? "rgba(255,255,255,0.90)" : "rgba(255,255,255,0.088)";
+    const themeMoods = {
+        editorial: {
+            panelRadius: "18px",
+            headerTone: "rgba(255,255,255,0.70)",
+            paperFill: "rgba(255,255,255,0.76)",
+        },
+        blueprint: {
+            panelRadius: "14px",
+            headerTone: "rgba(255,255,255,0.62)",
+            gridLine: "rgba(37,99,235,0.13)",
+        },
+        fieldnotes: {
+            panelRadius: "16px",
+            headerTone: "rgba(255,249,238,0.66)",
+            paperFill: "rgba(255,249,238,0.78)",
+        },
+        monograph: {
+            panelRadius: "10px",
+            headerTone: "rgba(255,255,255,0.74)",
+            paperFill: "rgba(255,255,255,0.84)",
+        },
+        graphite: {
+            panelRadius: "16px",
+            headerTone: "rgba(255,255,255,0.045)",
+            paperFill: "rgba(255,255,255,0.070)",
+        },
+        horizon: {
+            panelRadius: "18px",
+            headerTone: "rgba(238,244,255,0.052)",
+            paperFill: "rgba(238,244,255,0.075)",
+        },
+        chalkboard: {
+            panelRadius: "13px",
+            headerTone: "rgba(248,243,231,0.045)",
+            paperFill: "rgba(248,243,231,0.070)",
+        },
+        circuit: {
+            panelRadius: "12px",
+            headerTone: "rgba(99,230,216,0.055)",
+            paperFill: "rgba(236,247,245,0.062)",
+            gridLine: "rgba(99,230,216,0.11)",
+        },
+        afterglow: {
+            panelRadius: "20px",
+            headerTone: "rgba(245,247,255,0.055)",
+            paperFill: "rgba(245,247,255,0.082)",
+        },
+        sage: {
+            panelRadius: "18px",
+            headerTone: "rgba(247,250,244,0.68)",
+            paperFill: "rgba(247,250,244,0.82)",
+        },
+        porcelain: {
+            panelRadius: "20px",
+            headerTone: "rgba(255,255,255,0.66)",
+            paperFill: "rgba(255,255,255,0.80)",
+        },
+        rosewater: {
+            panelRadius: "20px",
+            headerTone: "rgba(255,247,247,0.68)",
+            paperFill: "rgba(255,247,247,0.82)",
+        },
+        buttercup: {
+            panelRadius: "22px",
+            headerTone: "rgba(255,252,238,0.70)",
+            paperFill: "rgba(255,252,238,0.82)",
+        },
+        tidepool: {
+            panelRadius: "16px",
+            headerTone: "rgba(243,252,251,0.68)",
+            paperFill: "rgba(243,252,251,0.80)",
+        },
+        lavender: {
+            panelRadius: "20px",
+            headerTone: "rgba(250,248,255,0.68)",
+            paperFill: "rgba(250,248,255,0.82)",
+        },
+        midnightGarden: {
+            panelRadius: "20px",
+            headerTone: "rgba(239,247,237,0.052)",
+            paperFill: "rgba(239,247,237,0.078)",
+        },
+        retroPop: {
+            panelRadius: "18px",
+            headerTone: "rgba(255,250,240,0.74)",
+            paperFill: "rgba(255,250,240,0.86)",
+            shadow: "0 12px 0 rgba(239,71,111,0.13)",
+        },
+    };
+    const mood = themeMoods[themeId] || {};
     return {
+        themeId,
         a,
         a2,
         aText,
@@ -2281,13 +2376,17 @@ function _sciencePalette(theme) {
         hf,
         bf,
         isLight,
-        panel: meta.card,
-        raisedPanel: isLight ? "rgba(255,255,255,0.84)" : "rgba(255,255,255,0.095)",
+        panel: mood.paperFill || meta.card,
+        raisedPanel: mood.paperFill || elevatedFill,
         wash: meta.wash,
-        line: meta.line,
-        panelBorder: isLight ? _alpha(a, 0.18) : _alpha(a, 0.34),
-        accentWash: isLight ? _alpha(a2, 0.1) : _alpha(a2, 0.16),
-        shadow: isLight ? "0 14px 34px rgba(15,23,42,0.08)" : "0 16px 40px rgba(0,0,0,0.28)",
+        line: mood.gridLine || meta.line,
+        panelBorder: isLight ? _alpha(a, 0.20) : _alpha(a, 0.36),
+        accentWash: softAccent2,
+        accentWashStrong: softAccent,
+        headerTone: mood.headerTone || (isLight ? "rgba(255,255,255,0.66)" : "rgba(255,255,255,0.052)"),
+        panelRadius: mood.panelRadius || "16px",
+        shadow: mood.shadow || (isLight ? "0 16px 38px rgba(15,23,42,0.085)" : "0 18px 44px rgba(0,0,0,0.30)"),
+        softShadow: isLight ? "0 8px 22px rgba(15,23,42,0.065)" : "0 10px 28px rgba(0,0,0,0.24)",
     };
 }
 
@@ -2295,7 +2394,12 @@ function _scienceHeader(theme, title, subtitle = "", label = "") {
     const p = _sciencePalette(theme);
     return [
         _bar(0, 0, 1024, 7, p.a, undefined, undefined),
-        _box(0, 0, 1024, 104, p.sf, undefined, undefined),
+        _box(0, 0, 1024, 104, p.headerTone, undefined, undefined),
+        _bar(0, 104, 1024, 1, p.line, undefined, undefined),
+        _bar(790, 22, 150, 16, p.accentWash, undefined, "999px"),
+        _bar(836, 52, 104, 6, p.a2, 0.38, "999px"),
+        _bar(716, 52, 94, 6, p.a, 0.30, "999px"),
+        _bar(908, 72, 32, 32, p.accentWashStrong, undefined, "999px"),
         _bar(56, 24, 5, 56, p.a, undefined, "3px"),
         ...(label
             ? [
@@ -2330,7 +2434,9 @@ function _scienceHeader(theme, title, subtitle = "", label = "") {
 
 function _sciencePanel(theme, x, y, w, h) {
     const p = _sciencePalette(theme);
-    return _box(x, y, w, h, p.panel, `1px solid ${p.panelBorder}`, "14px");
+    return _mBox(x, y, w, h, p.panel, `1px solid ${p.panelBorder}`, p.panelRadius, {
+        boxShadow: p.softShadow,
+    });
 }
 
 function _scienceLabel(x, y, w, text, color, theme) {
@@ -2351,7 +2457,9 @@ function _scienceFigureFrame(theme, x, y, w, h, label = "Drop figure, chart, or 
     const plotW = Math.round(w * 0.62);
     const plotH = Math.round(h * 0.34);
     return [
-        _box(x, y, w, h, p.accentWash, `1px dashed ${_alpha(p.a, 0.52)}`, "16px"),
+        _mBox(x, y, w, h, p.accentWash, `1px dashed ${_alpha(p.a, 0.52)}`, p.panelRadius, {
+            boxShadow: p.softShadow,
+        }),
         _box(plotX, plotY, plotW, plotH, p.raisedPanel, `1px solid ${p.line}`, "12px"),
         _bar(plotX + 22, plotY + plotH - 34, Math.round(plotW * 0.18), 30, p.a, 0.72, "8px 8px 0 0"),
         _bar(plotX + 78, plotY + plotH - 62, Math.round(plotW * 0.18), 58, p.a2, 0.72, "8px 8px 0 0"),
@@ -2374,7 +2482,8 @@ function _scienceMetric(theme, x, y, w, h, label, value, note, accent) {
     const p = _sciencePalette(theme);
     const color = accent || p.a;
     return [
-        _sciencePanel(theme, x, y, w, h),
+        _mBox(x, y, w, h, p.raisedPanel, `1px solid ${p.panelBorder}`, p.panelRadius, { boxShadow: p.softShadow }),
+        _bar(x, y, w, 4, color, 0.82, `${p.panelRadius} ${p.panelRadius} 0 0`),
         _scienceLabel(x + 20, y + 18, w - 40, label, p.mu, theme),
         _text(x + 20, y + 44, w - 40, value, {
             color,
@@ -3457,7 +3566,7 @@ function _normalizePresetTextColorsForTheme(elements, theme) {
 function buildPresetSlideState(
     presetId,
     theme,
-    { slideId = generateId("slide"), notes = "", background = "", masterId = null } = {},
+    { slideId = generateId("slide"), notes = "", background = "", masterId = "none" } = {},
 ) {
     const preset = SLIDE_PRESETS[presetId];
     if (!preset) return null;
@@ -3485,7 +3594,7 @@ function buildPresetSlideState(
         id: slideId,
         layoutId: presetId,
         masterId:
-            masterId || (typeof inferMasterIdForLayout === "function" ? inferMasterIdForLayout(presetId) : "content"),
+            masterId || "none",
         background: normalizeSlideBackground(background),
         notes,
         elements,
@@ -3507,6 +3616,7 @@ function applyPresetLayoutToCurrentSlide(presetId) {
         slideId: existing.id,
         notes: existing.notes || "",
         background: existing.background || "",
+        masterId: existing.masterId || "none",
     });
     clearSelection?.();
     renderSlidesFromState?.();

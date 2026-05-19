@@ -78,6 +78,7 @@ function createAnimation(type = "fadeIn", overrides = {}) {
         type: safeType,
         duration: Math.max(100, finiteNumber(overrides.duration, 600)),
         delay: Math.max(0, finiteNumber(overrides.delay, 0)),
+        trigger: overrides.trigger === "on-click" ? "on-click" : "on-slide",
         easing: ANIMATION_EASINGS.includes(overrides.easing) ? overrides.easing : "easeOut",
         repeatCount: Math.max(0, finiteNumber(overrides.repeatCount, 0)),
         repeatDelay: Math.max(0, finiteNumber(overrides.repeatDelay, 0)),

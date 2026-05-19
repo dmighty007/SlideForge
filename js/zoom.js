@@ -280,6 +280,7 @@ function handleEditorViewportResize() {
 }
 
 function centerSlide() {
+    if (isPresentationPlaying()) return;
     const wrapper = document.getElementById("canvas-wrapper");
     const engine = document.getElementById("zoom-engine");
     if (!wrapper || !engine) return;

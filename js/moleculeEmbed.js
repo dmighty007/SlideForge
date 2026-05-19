@@ -736,8 +736,8 @@ html,body{width:100%;height:100%;margin:0;overflow:hidden;background:${backgroun
 .trajectory-speed{display:flex;align-items:center;gap:6px;font-size:10px;color:#cbd5e1;white-space:nowrap}
 .trajectory-speed input{width:70px}
 .trajectory-frame-label{min-width:54px;text-align:right;font-size:11px;color:#e2e8f0;font-variant-numeric:tabular-nums}
-.top{position:absolute;top:10px;left:10px;right:10px;display:flex;justify-content:space-between;gap:8px;pointer-events:none}
-.status{pointer-events:auto;max-width:70%;border:1px solid rgba(148,163,184,.22);background:rgba(15,23,42,.82);border-radius:999px;padding:6px 10px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#cbd5e1}
+.top{display:none}
+.status{display:none}
 input,select,button{font:inherit}
 button{border:1px solid rgba(99,102,241,.35);background:rgba(79,70,229,.86);color:white;border-radius:6px;padding:6px 8px;font-size:11px;font-weight:700;cursor:pointer}
 button.secondary{background:rgba(30,41,59,.9);border-color:rgba(100,116,139,.55);color:#cbd5e1}

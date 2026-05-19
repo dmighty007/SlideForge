@@ -447,6 +447,13 @@ function buildAnimationInspectorPanel() {
             </div>
             <div class="animation-props">
               <div class="prop">
+                <label>Start:</label>
+                <select onchange="updateAnimationProperty('${data.id}', ${timelineIdx}, ${animIdx}, 'trigger', this.value)">
+                  <option value="on-slide" ${(anim.trigger || "on-slide") === "on-slide" ? "selected" : ""}>After slide appears</option>
+                  <option value="on-click" ${anim.trigger === "on-click" ? "selected" : ""}>On click</option>
+                </select>
+              </div>
+              <div class="prop">
                 <label>Duration:</label>
                 <input type="number" min="100" max="5000" step="100" value="${anim.duration}"
                   onchange="updateAnimationProperty('${data.id}', ${timelineIdx}, ${animIdx}, 'duration', this.value)">
@@ -862,6 +869,11 @@ function applyAnimationPreset(elementId, presetName) {
 
     // Create animation from preset
     const animation = createPresetAnimation(presetName);
+    if (!animation) {
+        console.warn("Unknown animation preset:", presetName);
+        showNotification?.("Could not add animation preset", "error");
+        return;
+    }
 
     // Add to element
     saveStateToUndo();
@@ -877,6 +889,10 @@ function applyAnimationPreset(elementId, presetName) {
     // Add timeline and animation
     const timeline = createElementTimeline(elementId);
     timeline.animations.push(animation);
+    timeline.totalDuration = Math.max(
+        0,
+        ...timeline.animations.map(anim => (Number(anim.startTime ?? anim.delay) || 0) + (Number(anim.duration) || 0)),
+    );
 
     if (!element.animation.timelines) {
         element.animation.timelines = [];
@@ -917,6 +933,9 @@ function updateAnimationProperty(elementId, timelineIdx, animIdx, property, valu
             break;
         case "delay":
             animation.delay = Math.max(0, Number(value) || 0);
+            break;
+        case "trigger":
+            animation.trigger = value === "on-click" ? "on-click" : "on-slide";
             break;
         case "easing":
             animation.easing = String(value);

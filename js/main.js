@@ -30,7 +30,8 @@ window.onload = async () => {
         embedded: true,
         center: false,
         hash: false,
-        transition: "slide",
+        transition: "none",
+        backgroundTransition: "none",
         width: slideConfig.width,
         height: slideConfig.height,
         margin: 0,
@@ -76,13 +77,14 @@ window.onload = async () => {
             requestAnimationFrame(syncActiveSlideMedia);
         }
 
-        // Ensure the new slide is centered, especially if zoomed in
-        if (typeof centerSlide === "function") centerSlide();
-
         if (document.body.classList.contains("play-mode-active")) {
             if (typeof _playSlideAnimations === "function") {
                 _playSlideAnimations(event.indexh);
             }
+        } else if (typeof centerSlide === "function") {
+            // Editor-only recentering. In presentation mode this causes a visible
+            // stage bump because the fullscreen wrapper is intentionally fixed.
+            centerSlide();
         }
         if (typeof updateActiveSlidePreview === "function") {
             updateActiveSlidePreview(event.indexh);

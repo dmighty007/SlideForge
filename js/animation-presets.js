@@ -771,6 +771,9 @@ function createPresetAnimation(presetName, overrides = {}) {
         ...preset,
         ...overrides,
         id: generateId("anim"),
+        trigger: overrides.trigger === "on-click" ? "on-click" : preset.trigger || "on-slide",
+        delay: Math.max(0, Number(overrides.delay ?? preset.delay) || 0),
+        duration: Math.max(100, Number(overrides.duration ?? preset.duration) || 600),
     };
 }
 

@@ -50,10 +50,11 @@ class AnimationEngine {
     /**
      * Load timeline animations stored on a slide's element state.
      */
-    loadSlide(slide) {
+    loadSlide(slide, options = {}) {
         this.pause();
         this.playheadTime = 0;
         this.clearAnimations();
+        const animationFilter = typeof options.animationFilter === "function" ? options.animationFilter : null;
 
         (slide?.elements || []).forEach(elementState => {
             const config =
@@ -64,6 +65,7 @@ class AnimationEngine {
 
             config.timelines.forEach(timeline => {
                 (timeline.animations || []).forEach(animation => {
+                    if (animationFilter && !animationFilter(animation, elementState, timeline)) return;
                     const startTime = Number(animation.startTime ?? animation.delay) || 0;
                     this.addAnimation(elementState.id, animation, startTime);
                 });
@@ -1042,7 +1044,19 @@ function playConfiguredSlideAnimations(slideIndex = 0, options = {}) {
     if (options.restoreBeforePlay !== false) {
         engine.restoreElements();
     }
-    engine.loadSlide(slide);
+    const trigger = options.trigger === "on-click" ? "on-click" : options.trigger === "all" ? "all" : "on-slide";
+    const animationIds = Array.isArray(options.animationIds) ? new Set(options.animationIds.map(String)) : null;
+    engine.loadSlide(slide, {
+        animationFilter(animation, elementState, timeline) {
+            const animationTrigger = animation?.trigger === "on-click" ? "on-click" : "on-slide";
+            if (trigger !== "all" && animationTrigger !== trigger) return false;
+            if (animationIds && !animationIds.has(String(animation.id || ""))) return false;
+            if (typeof options.animationFilter === "function") {
+                return options.animationFilter(animation, elementState, timeline);
+            }
+            return true;
+        },
+    });
     engine.seek(0);
 
     let totalDuration = 0;

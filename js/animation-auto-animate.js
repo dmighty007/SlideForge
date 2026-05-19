@@ -361,7 +361,7 @@ function clearAutoAnimateAnimations(engine, elementIds) {
  */
 function createDefaultAutoAnimateConfig() {
     return {
-        enabled: true,
+        enabled: false,
         duration: 600,
         easing: 'easeInOut',
         staggerDelay: 0,
