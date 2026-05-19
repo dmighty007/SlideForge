@@ -229,15 +229,7 @@ function buildMasterSlideElements(slide, slideIndex, theme = getPresentationThem
             }, "logo"));
         }
     } else if (masterId === "section") {
-        elements.push(_masterEl("shape", 0, 0, 10, 768, { backgroundColor: accent, borderRadius: "0px" }));
-        elements.push(_masterEl("shape", 24, 42, 92, 92, { backgroundColor: surface, border: `1px solid ${border}`, borderRadius: "24px" }));
-        elements.push(_masterText(47, 67, 60, slideNumber, {
-            color: accent,
-            fontFamily: headingFont,
-            fontSize: "34px",
-            fontWeight: "800",
-            textAlign: "center",
-        }));
+        // Keeps the section divider slide canvas clean and lets preset layout determine the styling
     } else {
         if (config.showTopRule) elements.push(_masterEl("shape", 0, 0, 1024, 5, { backgroundColor: accent, borderRadius: "0px" }));
         elements.push(_masterEl("shape", 52, 714, 920, 1, { backgroundColor: border, borderRadius: "0px", opacity: "0.85" }, "", "footer-rule"));

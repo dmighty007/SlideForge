@@ -313,10 +313,10 @@ function _mBox(x, y, w, h, fill, border, radius = "18px", extra = {}, zIndex) {
 function _modernShell(theme, title, subtitle = "", kicker = "") {
     const p = _modernPalette(theme);
     return [
-        _mBox(0, 0, 1024, 768, p.canvas, undefined, "0px", { background: p.canvasBackground }),
-        _bar(0, 0, 1024, 8, p.a, undefined, undefined),
-        _bar(0, 736, 1024, 32, p.footer, 0.96, undefined),
-        _bar(0, 8, 1024, 96, p.header, undefined, undefined),
+        _mBox(0, 0, 1024, 768, p.canvas, undefined, "0px", { background: p.canvasBackground, pointerEvents: "none" }, 0),
+        _bar(0, 0, 1024, 8, p.a, undefined, undefined, 0),
+        _bar(0, 736, 1024, 32, p.footer, 0.96, undefined, 0),
+        _bar(0, 8, 1024, 96, p.header, undefined, undefined, 0),
         _bar(50, 64, 18, 18, p.a, undefined, "999px"),
         _bar(76, 70, 150, 6, p.line, undefined, "999px"),
         _bar(798, 58, 44, 22, p.pastels[0], undefined, "999px"),
@@ -1589,25 +1589,45 @@ function _installModernPresetBuilders() {
         "section-divider": theme => {
             const p = _modernPalette(theme);
             return [
-                ..._modernShell(theme, "02", "Next section", "New focus"),
-                _text(66, 240, 540, "Section Title", {
+                _mBox(0, 0, 1024, 768, p.canvas, undefined, "0px", { background: p.canvasBackground, pointerEvents: "none" }, 0),
+                // Left hand sidebar layout
+                _bar(80, 180, 8, 400, p.a, undefined, "999px", 1),
+                _text(112, 174, 180, "02", {
+                    color: p.a,
+                    fontSize: "110px",
+                    fontFamily: p.hf,
+                    fontWeight: "900",
+                    lineHeight: "0.9",
+                    letterSpacing: "-0.04em",
+                }),
+                _text(118, 285, 180, "SECTION", {
+                    color: p.muted,
+                    fontSize: "12px",
+                    fontFamily: p.bf,
+                    fontWeight: "800",
+                    letterSpacing: "0.22em",
+                }),
+                // Main content
+                _text(320, 230, 480, "Section Title", {
                     color: p.ink,
-                    fontSize: "68px",
+                    fontSize: "64px",
                     fontFamily: p.hf,
                     fontWeight: "800",
-                    lineHeight: "1.02",
+                    lineHeight: "1.1",
                 }),
-                _text(70, 392, 500, "A short sentence that frames what the audience should expect next.", {
+                _bar(320, 328, 80, 4, p.a, undefined, "999px", 1),
+                _text(320, 355, 460, "A short sentence that frames what the audience should expect next.", {
                     color: p.muted,
-                    fontSize: "22px",
+                    fontSize: "20px",
                     fontFamily: p.bf,
-                    lineHeight: "1.42",
+                    lineHeight: "1.45",
                 }),
-                _mBox(650, 174, 220, 340, p.pastels[0], `1px solid ${_alpha(p.accents[0], 0.18)}`, "24px"),
-                _bar(682, 220, 128, 9, p.accents[0], undefined, "999px"),
-                _bar(682, 250, 96, 9, p.raisedPanel, 0.72, "999px"),
-                _bar(682, 300, 150, 68, p.raisedPanel, 0.65, "16px"),
-                _bar(682, 386, 112, 68, p.raisedPanel, 0.65, "16px"),
+                // Decorative right panel
+                _mBox(830, 180, 130, 400, p.pastels[0], `1px solid ${_alpha(p.accents[0], 0.14)}`, "24px", { boxShadow: p.softShadow }, 0),
+                _bar(855, 210, 80, 28, p.raisedPanel, undefined, "999px", 1),
+                _bar(855, 260, 80, 6, p.accents[0], undefined, "999px", 1),
+                _bar(855, 290, 80, 100, p.raisedPanel, 0.65, "12px", 1),
+                _bar(855, 410, 80, 130, p.raisedPanel, 0.65, "12px", 1),
             ];
         },
         "content-slide": theme => {
@@ -2490,55 +2510,54 @@ function _installSciencePresetBuilders() {
                 const p = _sciencePalette(theme);
                 return [
                     _bar(0, 0, 1024, 8, p.a, undefined, undefined, 0),
-                    _box(72, 156, 880, 380, p.wash, `1px solid ${p.panelBorder}`, "22px", 0),
-                    _bar(72, 156, 10, 380, p.a, undefined, "22px 0 0 22px", 1),
-                    _bar(314, 210, 1, 272, p.line, undefined, "999px", 1),
-                    _text(112, 236, 154, "02", {
+                    // Glassmorphic container with left-hand accent ribbon
+                    _box(72, 140, 880, 420, p.wash, `1px solid ${p.panelBorder}`, "24px", 0),
+                    _bar(72, 140, 8, 420, p.a, undefined, "24px 0 0 24px", 1),
+                    // Centered vertical separator
+                    _bar(314, 190, 1, 320, p.line, undefined, "999px", 1),
+                    // Left-side section details
+                    _text(102, 210, 180, "02", {
                         color: p.a,
-                        fontSize: "118px",
+                        fontSize: "110px",
                         fontFamily: p.hf,
-                        fontWeight: "850",
+                        fontWeight: "900",
                         lineHeight: "0.9",
                         textAlign: "center",
-                        opacity: "0.32",
+                        letterSpacing: "-0.04em",
                     }),
-                    _text(118, 362, 142, "SECTION", {
+                    _text(102, 325, 180, "SECTION TWO", {
                         color: p.mu,
-                        fontSize: "14px",
+                        fontSize: "12px",
                         fontFamily: p.bf,
                         fontWeight: "800",
-                        letterSpacing: "0.16em",
+                        letterSpacing: "0.22em",
                         textAlign: "center",
                     }),
-                    _text(366, 224, 500, "Section Title", {
+                    // Main title and description
+                    _text(360, 200, 540, "Section Title", {
                         color: p.fg,
-                        fontSize: "62px",
+                        fontSize: "64px",
                         fontFamily: p.hf,
-                        fontWeight: "850",
-                        lineHeight: "1.05",
+                        fontWeight: "800",
+                        lineHeight: "1.1",
                     }),
-                    _bar(368, 338, 116, 5, p.a, undefined, "999px", 1),
-                    _bar(498, 338, 58, 5, p.a2, undefined, "999px", 1),
-                    _text(368, 370, 500, "Short framing sentence for this part of the MD/ML story.", {
+                    _bar(360, 298, 80, 4, p.a, undefined, "999px", 1),
+                    _text(360, 325, 540, "A brief description of what this section covers", {
                         color: p.mu,
-                        fontSize: "22px",
+                        fontSize: "20px",
                         fontFamily: p.bf,
-                        lineHeight: "1.42",
+                        fontWeight: "400",
+                        lineHeight: "1.45",
                     }),
-                    _box(368, 452, 430, 48, p.raisedPanel, `1px solid ${p.panelBorder}`, "14px", 0),
-                    _text(
-                        388,
-                        466,
-                        390,
-                        "Use this divider to reset attention before the next argument, method block, or result cluster.",
-                        {
-                            color: p.fg,
-                            fontSize: "14px",
-                            fontFamily: p.bf,
-                            fontWeight: "650",
-                            lineHeight: "1.32",
-                        },
-                    ),
+                    // Bottom capsule callout
+                    _box(360, 412, 540, 54, p.raisedPanel, `1px solid ${p.panelBorder}`, "16px", 0),
+                    _text(380, 428, 500, "Focus area, core metrics, and strategic outcomes.", {
+                        color: p.fg,
+                        fontSize: "14px",
+                        fontFamily: p.bf,
+                        fontWeight: "600",
+                        lineHeight: "1.32",
+                    }),
                 ];
             },
         },
