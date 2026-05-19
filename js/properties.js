@@ -2403,6 +2403,9 @@ function buildPropertiesPanel() {
                 createField("URL", `<input type="text" id="prop-img" class="w-full" value="${data.content || ""}">`),
             );
             imgGrp.innerHTML += `
+                <button onclick="const input=document.getElementById('image-file-upload'); input.dataset.targetImageId='${data.id}'; input.click()" class="w-full mt-2 py-2 rounded bg-slate-900 border border-slate-700 text-xs text-slate-100 hover:bg-slate-800 transition-colors">
+                    <i class="fa-solid fa-upload mr-1"></i> Replace Image File
+                </button>
                 <div class="flex gap-2 mt-2">
                     <div class="flex-1 flex flex-col gap-1">
                         <label class="text-xs text-slate-600 uppercase font-semibold tracking-wider">Width</label>
@@ -3304,14 +3307,35 @@ function buildPropertiesPanel() {
             if (data.type === "image") {
                 const imageUrl = document.getElementById("prop-img");
                 if (imageUrl) {
-                    const commitImage = () => {
+                    const commitImage = async () => {
                         const nextUrl = imageUrl.value.trim();
                         if (!nextUrl) return;
+                        let dimensions = null;
+                        if (typeof _getImageSourceDimensions === "function") {
+                            try {
+                                dimensions = await _getImageSourceDimensions(nextUrl);
+                            } catch (_err) {}
+                        }
                         onCommit(() => {
-                            updateElementState(data.id, { content: nextUrl });
+                            const updates = { content: nextUrl };
+                            if (dimensions?.width && dimensions?.height) {
+                                const ratio = dimensions.width / Math.max(1, dimensions.height);
+                                updates.imageAspectRatio = ratio;
+                                updates.lockAspectRatio = data.lockAspectRatio ?? true;
+                                if (data.lockAspectRatio !== false) {
+                                    const currentW = parseFloat(data.width) || parseFloat(document.getElementById(data.id)?.style.width) || 300;
+                                    const nextH = currentW / ratio;
+                                    updates.height = `${nextH}px`;
+                                    updates.heightSetManually = true;
+                                    data.height = updates.height;
+                                }
+                                data.imageAspectRatio = ratio;
+                            }
+                            updateElementState(data.id, updates);
                             const dom = document.getElementById(data.id);
                             const img = dom?.querySelector("img");
                             if (img) img.src = nextUrl;
+                            if (dom && updates.height) dom.style.height = updates.height;
                         });
                     };
                     imageUrl.onchange = commitImage;

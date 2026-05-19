@@ -216,7 +216,8 @@ function _setupElementInteract() {
                 },
                 move(event) {
                     const scale = getCanvasScale();
-                    const shiftHeld = event.shiftKey;
+                    const sourceEvent = event.sourceEvent || event;
+                    const shiftHeld = Boolean(sourceEvent.shiftKey);
                     const target = getInteractCanvasTarget(event.target);
                     if (!target) return;
                     const elementData = state.slides[currentSlideIndex].elements.find(item => item.id === target.id);
@@ -235,8 +236,10 @@ function _setupElementInteract() {
                     const oldH = parseFloat(target.style.height) || parseFloat(elementData.height) || 100;
                     let x = oldX;
                     let y = oldY;
-                    let w = Math.max(24, _snapVal(event.rect.width / scale, shiftHeld));
-                    let h = Math.max(24, _snapVal(event.rect.height / scale, shiftHeld));
+                    const rawW = Math.max(24, event.rect.width / scale);
+                    const rawH = Math.max(24, event.rect.height / scale);
+                    let w = isImage ? rawW : Math.max(24, _snapVal(rawW, shiftHeld));
+                    let h = isImage ? rawH : Math.max(24, _snapVal(rawH, shiftHeld));
 
                     // Handle Aspect Ratio Locking
                     if (isImage && elementData.lockAspectRatio) {
@@ -246,10 +249,24 @@ function _setupElementInteract() {
                                 : typeof getImageAspectRatio === "function"
                                 ? getImageAspectRatio(elementData)
                                 : oldW / Math.max(1, oldH);
-                        
-                        if (Math.abs(event.deltaRect.width) > Math.abs(event.deltaRect.height)) {
+
+                        const horizontalHandle = Boolean(event.edges?.left || event.edges?.right);
+                        const verticalHandle = Boolean(event.edges?.top || event.edges?.bottom);
+                        if (horizontalHandle && !verticalHandle) {
+                            h = w / ratio;
+                        } else if (verticalHandle && !horizontalHandle) {
+                            w = h * ratio;
+                        } else if (Math.abs(rawW - oldW) / Math.max(1, oldW) >= Math.abs(rawH - oldH) / Math.max(1, oldH)) {
                             h = w / ratio;
                         } else {
+                            w = h * ratio;
+                        }
+                        if (w < 24) {
+                            w = 24;
+                            h = w / ratio;
+                        }
+                        if (h < 24) {
+                            h = 24;
                             w = h * ratio;
                         }
                         if (event.edges?.left) x = oldX + oldW - w;

@@ -959,20 +959,56 @@ function _createClipboardTextElement(text, x = 100, y = 100) {
 }
 
 function _createClipboardImageElement(dataUrl, origWidth, origHeight, x = 100, y = 100) {
-    const targetWidth = 400;
-    const aspect = origHeight / Math.max(1, origWidth);
-    const imageAspectRatio = Math.max(0.01, origWidth / Math.max(1, origHeight));
+    const placement = _getImageInsertPlacement(origWidth, origHeight, { x, y, center: false });
     return {
         id: generateId("el"),
         type: "image",
-        x,
-        y,
-        width: `${targetWidth}px`,
-        height: `${Math.round(targetWidth * aspect)}px`,
+        x: placement.x,
+        y: placement.y,
+        width: `${placement.width}px`,
+        height: `${placement.height}px`,
         lockAspectRatio: true,
-        imageAspectRatio,
+        imageAspectRatio: placement.ratio,
         content: dataUrl,
         styles: { zIndex: getNextZIndex(), borderRadius: "8px" },
+    };
+}
+
+function _getSlideInsertBounds() {
+    const slideConfig =
+        typeof getPresentationPageSetupConfig === "function"
+            ? getPresentationPageSetupConfig()
+            : { width: 1024, height: 768 };
+    const slideW = Number(slideConfig.width) || 1024;
+    const slideH = Number(slideConfig.height) || 768;
+    const margin = Math.max(32, Math.min(slideW, slideH) * 0.06);
+    return {
+        slideW,
+        slideH,
+        margin,
+        maxW: Math.max(80, slideW - margin * 2),
+        maxH: Math.max(80, slideH - margin * 2),
+    };
+}
+
+function _getImageInsertPlacement(origWidth, origHeight, { x = 100, y = 100, center = true } = {}) {
+    const naturalW = Math.max(1, Number(origWidth) || 400);
+    const naturalH = Math.max(1, Number(origHeight) || 300);
+    const ratio = Math.max(0.01, naturalW / naturalH);
+    const bounds = _getSlideInsertBounds();
+    const maxW = Math.min(bounds.maxW, bounds.slideW * 0.72);
+    const maxH = Math.min(bounds.maxH, bounds.slideH * 0.72);
+    const scale = Math.min(maxW / naturalW, maxH / naturalH, 1);
+    const width = Math.max(24, Math.round(naturalW * scale));
+    const height = Math.max(24, Math.round(naturalH * scale));
+    const nextX = center ? Math.round((bounds.slideW - width) / 2) : Math.min(Math.max(bounds.margin, x), bounds.slideW - width - bounds.margin);
+    const nextY = center ? Math.round((bounds.slideH - height) / 2) : Math.min(Math.max(bounds.margin, y), bounds.slideH - height - bounds.margin);
+    return {
+        x: Math.max(0, nextX),
+        y: Math.max(0, nextY),
+        width,
+        height,
+        ratio,
     };
 }
 
@@ -1025,6 +1061,15 @@ function _blobToDataUrl(blob) {
     });
 }
 
+function _getImageSourceDimensions(src) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve({ width: img.naturalWidth || img.width, height: img.naturalHeight || img.height });
+        img.onerror = () => reject(new Error("Could not read image dimensions"));
+        img.src = src;
+    });
+}
+
 async function _copySelectionToSystemClipboard(selectedElements) {
     if (!navigator.clipboard) return;
 
@@ -1063,7 +1108,11 @@ async function _pasteFromSystemClipboard(activeIndex) {
                 if (imageType) {
                     const blob = await item.getType(imageType);
                     const dataUrl = await _blobToDataUrl(blob);
-                    const imageEl = _createClipboardImageElement(dataUrl, 400, 300, 100, 100);
+                    let dimensions = { width: 400, height: 300 };
+                    try {
+                        dimensions = await _getImageSourceDimensions(dataUrl);
+                    } catch (_err) {}
+                    const imageEl = _createClipboardImageElement(dataUrl, dimensions.width, dimensions.height, 100, 100);
                     saveStateToUndo();
                     state.slides[activeIndex].elements.push(imageEl);
                     renderSlidesFromState();
@@ -1263,6 +1312,8 @@ async function handlePaste(e) {
 
 async function handleImageFileInsert(event) {
     const file = event.target.files?.[0];
+    const targetImageId = event.target.dataset?.targetImageId || "";
+    if (event.target.dataset) delete event.target.dataset.targetImageId;
     event.target.value = "";
     if (!file) return;
     if (!file.type.startsWith("image/")) {
@@ -1273,26 +1324,40 @@ async function handleImageFileInsert(event) {
     try {
         const { dataUrl, origWidth, origHeight } = await optimizeImageToWebP(file);
         const activeIndex = ensureActiveSlideSync();
+        const slide = state.slides[activeIndex];
+        const existingImage = targetImageId ? slide?.elements?.find(el => el.id === targetImageId && el.type === "image") : null;
         saveStateToUndo();
-        const id = generateId("el");
-
-        const targetWidth = 420;
-        const aspect = origHeight / origWidth;
-        const targetHeight = targetWidth * aspect;
-        const imageAspectRatio = Math.max(0.01, origWidth / Math.max(1, origHeight));
-
-        state.slides[activeIndex].elements.push({
+        const id = existingImage?.id || generateId("el");
+        const placement = _getImageInsertPlacement(origWidth, origHeight, { center: true });
+        const imageAspectRatio = placement.ratio;
+        const width = existingImage ? parseFloat(existingImage.width) || placement.width : placement.width;
+        const height = existingImage
+            ? existingImage.lockAspectRatio !== false
+                ? Math.round(width / imageAspectRatio)
+                : parseFloat(existingImage.height) || placement.height
+            : placement.height;
+        const nextImageData = {
             id,
             type: "image",
-            x: 100,
-            y: 100,
-            width: `${targetWidth}px`,
-            height: `${Math.round(targetHeight)}px`,
-            lockAspectRatio: true,
+            x: existingImage?.x ?? placement.x,
+            y: existingImage?.y ?? placement.y,
+            width: `${Math.round(width)}px`,
+            height: `${Math.round(height)}px`,
+            lockAspectRatio: existingImage?.lockAspectRatio ?? true,
             imageAspectRatio,
             content: dataUrl,
-            styles: { zIndex: getNextZIndex(), borderRadius: "8px" },
-        });
+            styles: {
+                ...(existingImage?.styles || {}),
+                zIndex: existingImage?.styles?.zIndex ?? getNextZIndex(),
+                borderRadius: existingImage?.styles?.borderRadius ?? "8px",
+            },
+            ...(existingImage ? { heightSetManually: true } : {}),
+        };
+        if (existingImage) {
+            Object.assign(existingImage, nextImageData);
+        } else {
+            state.slides[activeIndex].elements.push(nextImageData);
+        }
         renderSlidesFromState();
         selectElement(id);
     } catch (err) {
