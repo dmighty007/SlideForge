@@ -193,10 +193,10 @@ async function getCurrentAppScriptForZip(path) {
 
 async function addAnimationRuntimeScriptsToZip(zip) {
     const scripts = [
-        "js/animation-utils.js",
-        "js/animation-advanced.js",
-        "js/animation-state.js",
-        "js/animation-engine.js",
+        "js/animations/animation-utils.js",
+        "js/animations/animation-advanced.js",
+        "js/animations/animation-state.js",
+        "js/animations/animation-engine.js",
     ];
     for (const path of scripts) {
         const source = await getCurrentAppScriptForZip(path);
@@ -606,10 +606,10 @@ function generateViewerHtml(stateJson, theme) {
         </div>
     </div>
 
-    <script src="js/animation-utils.js"></script>
-    <script src="js/animation-advanced.js"></script>
-    <script src="js/animation-state.js"></script>
-    <script src="js/animation-engine.js"></script>
+    <script src="js/animations/animation-utils.js"></script>
+    <script src="js/animations/animation-advanced.js"></script>
+    <script src="js/animations/animation-state.js"></script>
+    <script src="js/animations/animation-engine.js"></script>
     <script src="js/viewer.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {

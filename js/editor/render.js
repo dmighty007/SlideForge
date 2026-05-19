@@ -1160,7 +1160,7 @@ function renderSlidePreviews(targetIndex = null, options = {}) {
         card.appendChild(num);
 
         const actions = document.createElement("div");
-        actions.className = "absolute top-2 right-2 flex items-center gap-1 z-10";
+        actions.className = "slide-preview-actions absolute top-2 right-2 flex items-center gap-1 z-10";
 
         const duplicateBtn = document.createElement("button");
         duplicateBtn.type = "button";
