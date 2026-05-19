@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -7,13 +8,18 @@ import subprocess
 import tempfile
 import uuid
 from pathlib import Path
+from typing import Optional, Dict, Any, Tuple, List
 
 from django.conf import settings
 from django.core.files.base import File
-from django.db import transaction
+from django.db import models, transaction
+from django.db.models import Sum
+from django.db.models.functions import Cast
+from django.db.models.fields.json import KeyTextTransform
 from django.http import FileResponse, HttpResponseBadRequest, JsonResponse
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_http_methods
+from django_ratelimit.decorators import ratelimit
 from PIL import Image, UnidentifiedImageError
 
 from bridge.llm_utils import _generate_structured_json, build_task_provider
@@ -29,28 +35,28 @@ ALLOWED_PDF_EXTENSIONS = {".pdf"}
 ALLOWED_MOLECULE_EXTENSIONS = {".pdb", ".ent", ".gro", ".mol2", ".xyz", ".sdf", ".cif", ".mmcif"}
 
 
-def _auth_required(request):
+def _auth_required(request) -> Optional[JsonResponse]:
     if request.user.is_authenticated:
         return None
     return JsonResponse({"error": "Authentication required"}, status=401)
 
 
-def _owned_presentation(request, presentation_id):
+def _owned_presentation(request, presentation_id: str) -> Optional[Presentation]:
     try:
-        presentation = Presentation.objects.get(id=presentation_id, owner=request.user)
+        presentation = Presentation.objects.select_related("owner").get(id=presentation_id, owner=request.user)
     except Presentation.DoesNotExist:
         return None
     return presentation
 
 
-def _request_json(request):
+def _request_json(request) -> Dict[str, Any]:
     try:
         return json.loads(request.body.decode("utf-8") or "{}")
     except json.JSONDecodeError as exc:
         raise ValueError(str(exc)) from exc
 
 
-def _normalize_video_file(uploaded_file):
+def _normalize_video_file(uploaded_file) -> Tuple[str, Dict[str, Any]]:
     suffix = Path(uploaded_file.name or "upload.mp4").suffix or ".mp4"
     src_fd, src_path = tempfile.mkstemp(suffix=suffix)
     os.close(src_fd)
@@ -91,9 +97,27 @@ def _normalize_video_file(uploaded_file):
             "originalName": uploaded_file.name,
             "originalContentType": uploaded_file.content_type or "",
         }
-    except Exception as exc:
-        shutil.copyfile(src_path, out_path)
+    except (OSError, IOError, subprocess.SubprocessError, RuntimeError) as exc:
+        logger.warning(f"Video transcoding failed, attempting fallback copy: {exc}")
+        try:
+            shutil.copyfile(src_path, out_path)
+        except (OSError, IOError) as copy_err:
+            logger.error(f"Video transcoding failed and fallback copy also failed: {copy_err}")
+            return None, {
+                "transcoded": False,
+                "transcodeError": f"Video processing failed and fallback failed: {copy_err}",
+                "originalName": uploaded_file.name,
+                "originalContentType": uploaded_file.content_type or "",
+            }
         return out_path, {
+            "transcoded": False,
+            "transcodeError": str(exc),
+            "originalName": uploaded_file.name,
+            "originalContentType": uploaded_file.content_type or "",
+        }
+    except Exception as exc:
+        logger.exception(f"Unexpected error in video normalization: {exc}")
+        return None, {
             "transcoded": False,
             "transcodeError": str(exc),
             "originalName": uploaded_file.name,
@@ -110,19 +134,52 @@ def _json_error(message, *, status=400):
     return JsonResponse({"error": message}, status=status)
 
 
-def _as_float(value, default=0.0):
+def _json_response(data: Optional[Any] = None, *, status: int = 200, error: Optional[str] = None, message: Optional[str] = None) -> JsonResponse:
+    """
+    Consistent JSON response helper for all API endpoints.
+    
+    Constructs a response dict with optional data, error, or message fields.
+    Ensures uniform response schema across the application.
+    
+    Args:
+        data: Response data payload
+        status: HTTP status code
+        error: Error message (mutually exclusive with data)
+        message: Additional message field (for success messages)
+    
+    Returns:
+        JsonResponse with consistent schema
+    """
+    if error:
+        response = {"error": error}
+    else:
+        response = data if isinstance(data, dict) else {"data": data}
+        if message:
+            response["message"] = message
+    
+    return JsonResponse(response, status=status)
+
+
+def _as_float(value: Any, default: float = 0.0, min_val: Optional[float] = None, max_val: Optional[float] = None) -> float:
     try:
-        return float(str(value).replace("px", ""))
+        f = float(str(value).replace("px", ""))
+        if math.isnan(f) or math.isinf(f):
+            return default
+        if min_val is not None and f < min_val:
+            return default
+        if max_val is not None and f > max_val:
+            return default
+        return f
     except (TypeError, ValueError):
         return default
 
 
-def _limited_text(value, limit=1600):
+def _limited_text(value: Any, limit: int = 1600) -> str:
     text = re.sub(r"\s+", " ", str(value or "")).strip()
     return text[:limit]
 
 
-def _cleanup_element_summary(element):
+def _cleanup_element_summary(element: Dict[str, Any]) -> Dict[str, Any]:
     styles = element.get("styles") if isinstance(element.get("styles"), dict) else {}
     element_type = str(element.get("type") or "")
     content_limit = 260 if element_type == "text" else 80
@@ -370,14 +427,13 @@ def _classify_asset_upload(uploaded_file):
 
 
 def _user_asset_storage_bytes(user):
-    total = 0
-    for metadata in Asset.objects.filter(owner=user).values_list("metadata_json", flat=True):
-        if isinstance(metadata, dict):
-            try:
-                total += int(metadata.get("size") or 0)
-            except (TypeError, ValueError):
-                continue
-    return total
+    result = Asset.objects.filter(owner=user).aggregate(
+        total=Sum(
+            Cast(KeyTextTransform("size", "metadata_json"), models.IntegerField),
+            default=0
+        )
+    )
+    return result.get("total") or 0
 
 
 def _save_asset_file(uploaded_file, *, asset_type="other", owner=None, presentation=None):
@@ -422,6 +478,7 @@ def spa_index(request):
 
 
 @require_http_methods(["POST"])
+@ratelimit(key='user', rate='100/h', method='POST')
 def asset_upload(request):
     auth_error = _auth_required(request)
     if auth_error:
@@ -607,8 +664,8 @@ def slide_cleanup_view(request):
         return JsonResponse({"elements": [], "summary": "No elements to clean up"})
 
     page_setup = payload.get("pageSetup") if isinstance(payload.get("pageSetup"), dict) else {}
-    slide_width = max(320.0, _as_float(page_setup.get("width"), 1024.0))
-    slide_height = max(240.0, _as_float(page_setup.get("height"), 768.0))
+    slide_width = _as_float(page_setup.get("width"), 1024.0, min_val=320.0, max_val=16000.0)
+    slide_height = _as_float(page_setup.get("height"), 768.0, min_val=240.0, max_val=12000.0)
     theme = _limited_text(payload.get("theme") or "editorial", 80)
     selected_only = bool(payload.get("selectedOnly"))
     target_elements = [_cleanup_element_summary(el) for el in elements[:80]]
@@ -671,7 +728,7 @@ def export_pptx_view(request):
 
         exporter = PPTXExporter(state)
         pptx_stream = exporter.export()
-        
+
         filename = payload.get("filename", "presentation.pptx")
         # Sanitize filename
         filename = re.sub(r'[^\w\s.-]', '', filename).strip().replace(' ', '_')

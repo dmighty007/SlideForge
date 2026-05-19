@@ -134,11 +134,11 @@ class GeminiProvider(LLMProvider):
         response = None
         for attempt in range(attempts):
             response = requests.post(
-                (
-                    "https://generativelanguage.googleapis.com/v1beta/models/"
-                    f"{self.model}:generateContent?key={self.api_key}"
-                ),
-                headers={"Content-Type": "application/json"},
+                f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent",
+                headers={
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": self.api_key,
+                },
                 json=payload,
                 timeout=300,
             )

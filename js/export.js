@@ -1,3 +1,100 @@
+/**
+ * Sanitizes HTML content to prevent XSS attacks.
+ * Allows only safe HTML tags and attributes for presentation content.
+ */
+function sanitizeHtml(html) {
+    if (typeof html !== "string") return "";
+
+    // Create a temporary container
+    const temp = document.createElement("div");
+    temp.innerHTML = html;
+
+    // List of allowed tags for presentation content
+    const allowedTags = new Set([
+        "DIV",
+        "SPAN",
+        "P",
+        "BR",
+        "STRONG",
+        "B",
+        "EM",
+        "I",
+        "U",
+        "OL",
+        "UL",
+        "LI",
+        "TABLE",
+        "TR",
+        "TD",
+        "TH",
+        "TBODY",
+        "THEAD",
+        "H1",
+        "H2",
+        "H3",
+        "H4",
+        "H5",
+        "H6",
+        "CODE",
+        "PRE",
+    ]);
+
+    // List of allowed attributes
+    const allowedAttributes = new Set(["class", "style", "data-bullet-style", "tabindex", "aria-readonly"]);
+
+    function sanitizeNode(node) {
+        if (node.nodeType === Node.TEXT_NODE) {
+            return node;
+        }
+
+        if (node.nodeType !== Node.ELEMENT_NODE) {
+            return null;
+        }
+
+        if (!allowedTags.has(node.tagName)) {
+            // Replace disallowed tags with their text content
+            const fragment = document.createDocumentFragment();
+            for (let child of node.childNodes) {
+                const sanitized = sanitizeNode(child);
+                if (sanitized) fragment.appendChild(sanitized.cloneNode(true));
+            }
+            return fragment;
+        }
+
+        const newNode = document.createElement(node.tagName);
+
+        // Only copy allowed attributes
+        for (let attr of node.attributes) {
+            if (allowedAttributes.has(attr.name.toLowerCase())) {
+                // Sanitize style attribute to prevent injection
+                if (attr.name === "style") {
+                    const safeCss = attr.value.replace(/javascript:/gi, "").replace(/on\w+\s*=/gi, "");
+                    if (safeCss) newNode.setAttribute(attr.name, safeCss);
+                } else {
+                    newNode.setAttribute(attr.name, attr.value);
+                }
+            }
+        }
+
+        // Recursively sanitize child nodes
+        for (let child of node.childNodes) {
+            const sanitized = sanitizeNode(child);
+            if (sanitized) newNode.appendChild(sanitized.cloneNode(true));
+        }
+
+        return newNode;
+    }
+
+    const fragment = document.createDocumentFragment();
+    for (let child of temp.childNodes) {
+        const sanitized = sanitizeNode(child);
+        if (sanitized) fragment.appendChild(sanitized);
+    }
+
+    const result = document.createElement("div");
+    result.appendChild(fragment);
+    return result.innerHTML;
+}
 
 /**
  * Exports the current presentation as a standalone Reveal.js framework in a ZIP file.
@@ -11,24 +108,29 @@ async function exportZip() {
     }
     if (typeof ensureEditableMasterFooterElements === "function") {
         const themeForMasters = theme;
-        (state.slides || []).forEach((slide, slideIndex) => ensureEditableMasterFooterElements(slide, slideIndex, themeForMasters));
+        (state.slides || []).forEach((slide, slideIndex) =>
+            ensureEditableMasterFooterElements(slide, slideIndex, themeForMasters),
+        );
     }
-    
+
     // 1. Process the same normalized snapshot used by save/PPTX exports.
-    const exportState = createZipViewerState(typeof getPersistableState === "function" ? getPersistableState() : JSON.parse(JSON.stringify(state)), theme);
+    const exportState = createZipViewerState(
+        typeof getPersistableState === "function" ? getPersistableState() : JSON.parse(JSON.stringify(state)),
+        theme,
+    );
     const { processedState, assets } = await processStateAssets(exportState);
     const stateJson = JSON.stringify(processedState);
-    
+
     // 2. Add Assets
     const assetsFolder = zip.folder("assets");
     for (const [name, data] of Object.entries(assets)) {
         assetsFolder.file(name, data, { base64: true });
     }
-    
+
     // 3. Generate index.html (Viewer) - Now with embedded state
     const viewerHtml = generateViewerHtml(stateJson, theme);
     zip.file("index.html", viewerHtml);
-    
+
     // 4. Generate viewer.js
     await addAnimationRuntimeScriptsToZip(zip);
     const viewerJs = generateViewerJs();
@@ -37,7 +139,7 @@ async function exportZip() {
     // 5. Generate viewer.css
     const viewerCss = generateViewerCss(theme, await getCurrentAppCssForZip());
     zip.file("css/viewer.css", viewerCss);
-    
+
     // 6. Download Zip
     const content = await zip.generateAsync({ type: "blob" });
     saveAs(content, "presentation_framework.zip");
@@ -115,28 +217,30 @@ function getActiveExportSlideElement() {
 
 function hideExportEditorUi() {
     const hiddenNodes = Array.from(
-        document.querySelectorAll('.resize-handle, .crop-handle, .connector-point-handle, #group-bound, .anim-badge'),
+        document.querySelectorAll(".resize-handle, .crop-handle, .connector-point-handle, #group-bound, .anim-badge"),
     ).map(el => ({ el, display: el.style.display }));
     hiddenNodes.forEach(({ el }) => {
-        el.style.display = 'none';
+        el.style.display = "none";
     });
 
-    const selectedNodes = Array.from(document.querySelectorAll('.canvas-element.selected, .canvas-element.group-member-selected')).map(el => ({
+    const selectedNodes = Array.from(
+        document.querySelectorAll(".canvas-element.selected, .canvas-element.group-member-selected"),
+    ).map(el => ({
         el,
-        selected: el.classList.contains('selected'),
-        groupMemberSelected: el.classList.contains('group-member-selected'),
+        selected: el.classList.contains("selected"),
+        groupMemberSelected: el.classList.contains("group-member-selected"),
     }));
-    selectedNodes.forEach(({ el }) => el.classList.remove('selected', 'group-member-selected'));
+    selectedNodes.forEach(({ el }) => el.classList.remove("selected", "group-member-selected"));
 
     return () => {
         hiddenNodes.forEach(({ el, display }) => {
             el.style.display = display;
         });
         selectedNodes.forEach(({ el, selected, groupMemberSelected }) => {
-            el.classList.toggle('selected', selected);
-            el.classList.toggle('group-member-selected', groupMemberSelected);
+            el.classList.toggle("selected", selected);
+            el.classList.toggle("group-member-selected", groupMemberSelected);
         });
-        if (typeof updateGroupBound === 'function') updateGroupBound();
+        if (typeof updateGroupBound === "function") updateGroupBound();
     };
 }
 
@@ -146,9 +250,7 @@ const DEFAULT_EXPORT_PAGE_SIZE = Object.freeze({
 });
 
 function getExportPageSetup() {
-    const config = typeof getPresentationPageSetupConfig === "function"
-        ? getPresentationPageSetupConfig()
-        : {};
+    const config = typeof getPresentationPageSetupConfig === "function" ? getPresentationPageSetupConfig() : {};
     const width = Number(config.width) || DEFAULT_EXPORT_PAGE_SIZE.defaultWidth;
     const height = Number(config.height) || DEFAULT_EXPORT_PAGE_SIZE.defaultHeight;
     return {
@@ -163,7 +265,7 @@ async function exportPDF() {
     const pdf = new jspdf.jsPDF({
         orientation: page.orientation,
         unit: "px",
-        format: [page.width, page.height]
+        format: [page.width, page.height],
     });
     const originalIndex = currentSlideIndex;
 
@@ -192,7 +294,7 @@ async function exportPDF() {
                     width: page.width,
                     height: page.height,
                     windowWidth: page.width,
-                    windowHeight: page.height
+                    windowHeight: page.height,
                 });
             } finally {
                 restoreUi();
@@ -237,17 +339,17 @@ async function exportPNG() {
                 width: page.width,
                 height: page.height,
                 windowWidth: page.width,
-                windowHeight: page.height
+                windowHeight: page.height,
             });
         } finally {
             restoreUi();
         }
 
-        const link = document.createElement('a');
+        const link = document.createElement("a");
         link.download = `slide_${currentSlideIndex + 1}.png`;
         link.href = canvas.toDataURL("image/png");
         link.click();
-        
+
         setProjectSaveHint?.("PNG Exported!", "success");
     } catch (err) {
         console.error(err);
@@ -262,11 +364,11 @@ window.exportPresentationPNG = exportPNG;
  */
 function getCookie(name) {
     let cookieValue = null;
-    if (document.cookie && document.cookie !== '') {
-        const cookies = document.cookie.split(';');
+    if (document.cookie && document.cookie !== "") {
+        const cookies = document.cookie.split(";");
         for (let i = 0; i < cookies.length; i++) {
             const cookie = cookies[i].trim();
-            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+            if (cookie.substring(0, name.length + 1) === name + "=") {
                 cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
                 break;
             }
@@ -284,7 +386,7 @@ async function exportPPTX() {
         if (typeof syncMoleculeViewStatesFromDom === "function") {
             await syncMoleculeViewStatesFromDom();
         }
-        
+
         // Use the same filename as the project title
         const titleInput = document.getElementById("project-title-input");
         const filename = (titleInput && titleInput.value.trim() ? titleInput.value.trim() : "presentation") + ".pptx";
@@ -298,8 +400,8 @@ async function exportPPTX() {
             },
             body: JSON.stringify({
                 state: exportState,
-                filename: filename
-            })
+                filename: filename,
+            }),
         });
 
         if (!response.ok) {
@@ -362,7 +464,10 @@ async function processStateAssets(originalState) {
                     assets[fileName] = base64Data;
                     slide.background.content = `assets/${fileName}`;
                 }
-            } else if ((bg.type === "image" || bg.type === "video") && (isBundlableLocalAsset(bg.content) || String(bg.content || "").startsWith("blob:"))) {
+            } else if (
+                (bg.type === "image" || bg.type === "video") &&
+                (isBundlableLocalAsset(bg.content) || String(bg.content || "").startsWith("blob:"))
+            ) {
                 const sourceUrl = new URL(bg.content, window.location.href);
                 const response = await fetch(sourceUrl.toString());
                 if (response.ok) {
@@ -380,17 +485,27 @@ async function processStateAssets(originalState) {
             if ((el.type === "image" || el.type === "video" || el.type === "pdf") && el.content?.startsWith("data:")) {
                 const parts = el.content.split(",");
                 if (parts.length < 2) continue;
-                
+
                 const meta = parts[0];
                 const base64Data = parts[1];
                 const mimeMatch = meta.match(/data:(.*?);/);
-                const mime = mimeMatch ? mimeMatch[1] : (el.type === "image" ? "image/png" : el.type === "pdf" ? "application/pdf" : "video/mp4");
-                const ext = mime === "application/pdf" ? "pdf" : mime.split("/")[1] || (el.type === "image" ? "png" : "mp4");
-                
+                const mime = mimeMatch
+                    ? mimeMatch[1]
+                    : el.type === "image"
+                      ? "image/png"
+                      : el.type === "pdf"
+                        ? "application/pdf"
+                        : "video/mp4";
+                const ext =
+                    mime === "application/pdf" ? "pdf" : mime.split("/")[1] || (el.type === "image" ? "png" : "mp4");
+
                 const fileName = `asset_${assetCounter++}.${ext}`;
                 assets[fileName] = base64Data;
                 el.content = `assets/${fileName}`;
-            } else if ((el.type === "image" || el.type === "video" || el.type === "pdf" || el.type === "molecule") && (isBundlableLocalAsset(el.content) || String(el.content || "").startsWith("blob:"))) {
+            } else if (
+                (el.type === "image" || el.type === "video" || el.type === "pdf" || el.type === "molecule") &&
+                (isBundlableLocalAsset(el.content) || String(el.content || "").startsWith("blob:"))
+            ) {
                 const sourceUrl = new URL(el.content, window.location.href);
                 const response = await fetch(sourceUrl.toString());
                 if (!response.ok) continue;
@@ -402,15 +517,24 @@ async function processStateAssets(originalState) {
                     continue;
                 }
 
-                const mime = blob.type || (el.type === "image" ? "image/png" : el.type === "pdf" ? "application/pdf" : el.type === "molecule" ? "chemical/x-pdb" : "video/mp4");
-                const ext = mime === "application/pdf" ? "pdf" : mime.split("/")[1] || (el.type === "image" ? "png" : "mp4");
+                const mime =
+                    blob.type ||
+                    (el.type === "image"
+                        ? "image/png"
+                        : el.type === "pdf"
+                          ? "application/pdf"
+                          : el.type === "molecule"
+                            ? "chemical/x-pdb"
+                            : "video/mp4");
+                const ext =
+                    mime === "application/pdf" ? "pdf" : mime.split("/")[1] || (el.type === "image" ? "png" : "mp4");
                 const fileName = `asset_${assetCounter++}.${ext}`;
                 assets[fileName] = await toBase64(blob);
                 el.content = `assets/${fileName}`;
             }
         }
     }
-    
+
     return { processedState: newState, assets };
 }
 
@@ -512,7 +636,7 @@ function generateViewerCss(theme, appCss = "") {
             vars += `${key}: ${val};\n`;
         }
     }
-    
+
     return `
 ${appCss}
 
@@ -1184,7 +1308,7 @@ body {
 function generateViewerJs() {
     return `
 const animationEffects = ['fade-in', 'slide-up', 'slide-down', 'slide-left', 'slide-right', 'zoom-in', 'pop-in', 'wipe-in', 'pulse', 'glow'];
-const MOLECULE_EMBED_NGL_SRC = ${JSON.stringify(typeof MOLECULE_EMBED_NGL_SRC === 'string' ? MOLECULE_EMBED_NGL_SRC : 'https://unpkg.com/ngl@2.4.0/dist/ngl.js')};
+const MOLECULE_EMBED_NGL_SRC = ${JSON.stringify(typeof MOLECULE_EMBED_NGL_SRC === "string" ? MOLECULE_EMBED_NGL_SRC : "https://unpkg.com/ngl@2.4.0/dist/ngl.js")};
 
 const BULLET_STYLE_THEMES = {
     default: { levels: [
@@ -1238,22 +1362,22 @@ function _viewerGetBulletIndent(level, levelStyle) {
     return Math.max(themeIndent, structuralIndent);
 }
 
-${typeof createDefaultMoleculeContent === 'function' ? createDefaultMoleculeContent.toString() : ''}
-${typeof MOLECULE_SUPPORTED_FORMATS !== 'undefined' ? `const MOLECULE_SUPPORTED_FORMATS = new Set(${JSON.stringify(Array.from(MOLECULE_SUPPORTED_FORMATS))});` : ''}
-${typeof MOLECULE_INLINE_CONTENT_LIMIT !== 'undefined' ? `const MOLECULE_INLINE_CONTENT_LIMIT = ${Number(MOLECULE_INLINE_CONTENT_LIMIT) || 2097152};` : ''}
-${typeof MOLECULE_LARGE_CONTENT_LIMIT !== 'undefined' ? `const MOLECULE_LARGE_CONTENT_LIMIT = ${Number(MOLECULE_LARGE_CONTENT_LIMIT) || 26214400};` : ''}
-${typeof normalizeMoleculeFormat === 'function' ? normalizeMoleculeFormat.toString() : ''}
-${typeof normalizeMoleculeBackgroundColor === 'function' ? normalizeMoleculeBackgroundColor.toString() : ''}
-${typeof isMoleculeContentUrl === 'function' ? isMoleculeContentUrl.toString() : ''}
-${typeof isMoleculeTrajectoryData === 'function' ? isMoleculeTrajectoryData.toString() : ''}
-${typeof normalizeMoleculeRepresentationLayer === 'function' ? normalizeMoleculeRepresentationLayer.toString() : ''}
-${typeof normalizeMoleculeViewState === 'function' ? normalizeMoleculeViewState.toString() : ''}
-${typeof _escapeMoleculeHtml === 'function' ? _escapeMoleculeHtml.toString() : ''}
-${typeof _serializeMoleculePayload === 'function' ? _serializeMoleculePayload.toString() : ''}
-${typeof _moleculeSrcdocScript === 'function' ? _moleculeSrcdocScript.toString() : ''}
-${typeof buildMoleculeEmbedSrcdoc === 'function' ? buildMoleculeEmbedSrcdoc.toString() : ''}
-${typeof applyMoleculeEmbedSandbox === 'function' ? applyMoleculeEmbedSandbox.toString() : ''}
-${typeof attachMoleculeDataBridge === 'function' ? attachMoleculeDataBridge.toString() : ''}
+${typeof createDefaultMoleculeContent === "function" ? createDefaultMoleculeContent.toString() : ""}
+${typeof MOLECULE_SUPPORTED_FORMATS !== "undefined" ? `const MOLECULE_SUPPORTED_FORMATS = new Set(${JSON.stringify(Array.from(MOLECULE_SUPPORTED_FORMATS))});` : ""}
+${typeof MOLECULE_INLINE_CONTENT_LIMIT !== "undefined" ? `const MOLECULE_INLINE_CONTENT_LIMIT = ${Number(MOLECULE_INLINE_CONTENT_LIMIT) || 2097152};` : ""}
+${typeof MOLECULE_LARGE_CONTENT_LIMIT !== "undefined" ? `const MOLECULE_LARGE_CONTENT_LIMIT = ${Number(MOLECULE_LARGE_CONTENT_LIMIT) || 26214400};` : ""}
+${typeof normalizeMoleculeFormat === "function" ? normalizeMoleculeFormat.toString() : ""}
+${typeof normalizeMoleculeBackgroundColor === "function" ? normalizeMoleculeBackgroundColor.toString() : ""}
+${typeof isMoleculeContentUrl === "function" ? isMoleculeContentUrl.toString() : ""}
+${typeof isMoleculeTrajectoryData === "function" ? isMoleculeTrajectoryData.toString() : ""}
+${typeof normalizeMoleculeRepresentationLayer === "function" ? normalizeMoleculeRepresentationLayer.toString() : ""}
+${typeof normalizeMoleculeViewState === "function" ? normalizeMoleculeViewState.toString() : ""}
+${typeof _escapeMoleculeHtml === "function" ? _escapeMoleculeHtml.toString() : ""}
+${typeof _serializeMoleculePayload === "function" ? _serializeMoleculePayload.toString() : ""}
+${typeof _moleculeSrcdocScript === "function" ? _moleculeSrcdocScript.toString() : ""}
+${typeof buildMoleculeEmbedSrcdoc === "function" ? buildMoleculeEmbedSrcdoc.toString() : ""}
+${typeof applyMoleculeEmbedSandbox === "function" ? applyMoleculeEmbedSandbox.toString() : ""}
+${typeof attachMoleculeDataBridge === "function" ? attachMoleculeDataBridge.toString() : ""}
 
 function normalizeImageCropTransform(crop) {
     if (!crop || typeof crop !== 'object') return { widthPercent: 100, heightPercent: 100, leftPercent: 0, topPercent: 0 };
@@ -1475,7 +1599,7 @@ function initViewer(data) {
         runtime.revealedGroups = previousIndex;
         return true;
     }
-    
+
     slides.forEach((slide, slideIndex) => {
         const section = document.createElement('section');
         section.id = slide.id;
@@ -1489,15 +1613,15 @@ function initViewer(data) {
         };
         const bgNode = createViewerSlideBackgroundNode(slide.background, mediaOptions);
         if (bgNode) section.appendChild(bgNode);
-        
+
         (slide.elements || []).forEach(elData => {
             const node = createViewerElement(elData, mediaOptions);
             section.appendChild(node);
         });
-        
+
         container.appendChild(section);
     });
-    
+
     const getSlideDom = index => container.children[index];
     const getFragments = slideDom =>
         Array.from(slideDom.querySelectorAll('.fragment'))
@@ -1946,7 +2070,7 @@ function createViewerElement(elData, mediaOptions = {}) {
         el.style.opacity = '0';
         el.style.pointerEvents = 'none';
     }
-    
+
     if (elData.type === 'text') {
         const content = document.createElement('div');
         content.className = 'text-element-content';
@@ -1954,7 +2078,7 @@ function createViewerElement(elData, mediaOptions = {}) {
         content.setAttribute('draggable', 'false');
         content.setAttribute('tabindex', '-1');
         content.setAttribute('aria-readonly', 'true');
-        content.innerHTML = renderTextContent(elData);
+        content.innerHTML = sanitizeHtml(renderTextContent(elData));
         el.appendChild(content);
     } else if (elData.type === 'table') {
         const tableData = normalizeTableDataLocal(elData.tableData);
@@ -2056,9 +2180,9 @@ function createViewerElement(elData, mediaOptions = {}) {
             videoNode.setAttribute('title', 'YouTube video player');
         } else if (videoInfo.type === 'vimeo') {
             videoNode = document.createElement('iframe');
-            videoNode.src = 'https://player.vimeo.com/video/' + videoInfo.id + 
-                           '?autoplay=' + (elData.autoplay && initiallyActive ? 1 : 0) + 
-                           '&muted=' + (elData.muted ? 1 : 0) + 
+            videoNode.src = 'https://player.vimeo.com/video/' + videoInfo.id +
+                           '?autoplay=' + (elData.autoplay && initiallyActive ? 1 : 0) +
+                           '&muted=' + (elData.muted ? 1 : 0) +
                            '&loop=' + (elData.loop ? 1 : 0) +
                            '&api=1';
             setMediaIframePermissions(videoNode, 'autoplay; fullscreen');
@@ -2161,7 +2285,7 @@ function createViewerElement(elData, mediaOptions = {}) {
         container.innerHTML = elData.content || elData.latexSrc || "";
         el.appendChild(container);
     }
-    
+
     return el;
 }
 
@@ -2428,10 +2552,10 @@ function applyShapeStyles(el, elData) {
 window.exportPresentationZip = exportZip;
 window.exportPresentationPDF = exportPDF;
 window.exportPresentationPPTX = exportPPTX;
-window.exportPresentationJson = function() {
+window.exportPresentationJson = function () {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state));
-    const downloadAnchorNode = document.createElement('a');
-    downloadAnchorNode.setAttribute("href",     dataStr);
+    const downloadAnchorNode = document.createElement("a");
+    downloadAnchorNode.setAttribute("href", dataStr);
     downloadAnchorNode.setAttribute("download", "presentation.json");
     document.body.appendChild(downloadAnchorNode);
     downloadAnchorNode.click();

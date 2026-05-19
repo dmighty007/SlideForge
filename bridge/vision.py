@@ -12,10 +12,13 @@ Results are cached by SHA-256 of the image file so re-runs are free.
 import base64
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 _VISION_PRIORITY = [
     "gemma4:latest",
@@ -175,15 +178,17 @@ def enrich_figure(image_path: str, model: str | None = None) -> dict | None:
         return None
 
     try:
-        return _call_vision_model(
+        result = _call_vision_model(
             image_path=image_path,
             prompt=_FIGURE_PROMPT,
             model=model,
             cache_prefix="enrich",
         )
+        if result:
+            logger.debug(f"Figure enrichment succeeded for {image_path} using model {model}")
+        return result
     except Exception as exc:
-        print(f"[vision] enrichment failed for {image_path}: {exc}")
-        return None
+        logger.exception(f"Figure enrichment failed for {image_path} with model {model}: {exc}")
 
 
 def analyze_figure_candidate(image_path: str, model: str | None = None) -> dict | None:
@@ -205,8 +210,11 @@ def analyze_figure_candidate(image_path: str, model: str | None = None) -> dict 
             model=model,
             cache_prefix="screen",
         )
+        if not result:
+            logger.warning(f"Figure candidate analysis returned empty result for {image_path}")
+            return None
     except Exception as exc:
-        print(f"[vision] candidate analysis failed for {image_path}: {exc}")
+        logger.exception(f"Figure candidate analysis failed for {image_path} with model {model}: {exc}")
         return None
 
     if not isinstance(result, dict):

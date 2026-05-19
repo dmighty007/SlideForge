@@ -19,18 +19,36 @@ def _env_int(name: str, default: int, *, minimum: int | None = None, maximum: in
     return value
 
 
-DEBUG = os.getenv("DJANGO_DEBUG", "0") == "1"
+DEBUG = os.getenv("DJANGO_DEBUG", "1") == "1"
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 if not SECRET_KEY:
     if DEBUG or "test" in sys.argv:
-        SECRET_KEY = "dev-only-pptmaker-secret-key"
+        import warnings
+        warnings.warn(
+            "DJANGO_SECRET_KEY not set. Using development key. "
+            "Set DJANGO_SECRET_KEY environment variable in production!",
+            RuntimeWarning
+        )
+        SECRET_KEY = "dev-only-pptmaker-secret-key-change-in-production"
     else:
-        raise ImproperlyConfigured("DJANGO_SECRET_KEY must be set when DJANGO_DEBUG is not 1.")
-ALLOWED_HOSTS = [
-    host.strip()
-    for host in os.getenv("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost,testserver").split(",")
-    if host.strip()
-]
+        raise ImproperlyConfigured(
+            "DJANGO_SECRET_KEY environment variable must be set in production. "
+            "Generate a new key with: python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'"
+        )
+ALLOWED_HOSTS_ENV = os.getenv("DJANGO_ALLOWED_HOSTS", "")
+if not ALLOWED_HOSTS_ENV:
+    if DEBUG or "test" in sys.argv:
+        ALLOWED_HOSTS = ["127.0.0.1", "localhost", "testserver"]
+    else:
+        raise ImproperlyConfigured(
+            "DJANGO_ALLOWED_HOSTS environment variable must be set in production. "
+            "Set it to a comma-separated list of allowed hostnames (e.g., 'example.com,www.example.com')"
+        )
+else:
+    ALLOWED_HOSTS = [host.strip() for host in ALLOWED_HOSTS_ENV.split(",") if host.strip()]
+    if not ALLOWED_HOSTS:
+        raise ImproperlyConfigured("DJANGO_ALLOWED_HOSTS is empty after parsing")
+
 
 
 INSTALLED_APPS = [
@@ -110,6 +128,26 @@ PPTMAKER_MAX_USER_ASSET_STORAGE_BYTES = _env_int("PPTMAKER_MAX_USER_ASSET_STORAG
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 X_FRAME_OPTIONS = "SAMEORIGIN"
+
+# ========== SECURITY SETTINGS ==========
+SECURE_SSL_REDIRECT = not DEBUG
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0  # 1 year
+SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
+SECURE_HSTS_PRELOAD = not DEBUG
+
+# CSP Headers (optional but recommended)
+SECURE_CONTENT_SECURITY_POLICY = {
+    "default-src": ("'self'",),
+    "script-src": ("'self'", "'unsafe-inline'"),  # unsafe-inline for inline scripts, consider removing
+    "style-src": ("'self'", "'unsafe-inline'"),
+    "img-src": ("'self'", "data:", "https:"),
+    "font-src": ("'self'", "data:"),
+    "connect-src": ("'self'",),
+    "frame-ancestors": ("'self'",),
+}
+# ========== END SECURITY SETTINGS ==========
 
 PPTMAKER_CONDA = os.getenv("PPTMAKER_CONDA", "")
 PPTMAKER_BRIDGE_JSON_TIMEOUT = _env_int("PPTMAKER_BRIDGE_JSON_TIMEOUT", 7200, minimum=60)

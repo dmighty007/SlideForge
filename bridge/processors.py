@@ -39,8 +39,14 @@ class LocalVisionPDFProcessor(PDFProcessor):
 
     def _emit_status(self, event: str, message: str, data: dict | None = None):
         if self.status_callback:
-            try: self.status_callback(event, message, data)
-            except: self.status_callback(event, message)
+            try:
+                self.status_callback(event, message, data)
+            except (TypeError, ValueError, AttributeError) as e:
+                logger.debug(f"Status callback signature mismatch: {e}")
+                try:
+                    self.status_callback(event, message)
+                except Exception as e:
+                    logger.warning(f"Status callback failed: {e}")
 
     def extract_visuals_hybrid(self):
         if self._use_marker_visuals():
@@ -70,8 +76,9 @@ class LocalVisionPDFProcessor(PDFProcessor):
 
         if not os.path.exists(md_file):
             self._emit_status("vision", f"Running Marker layout parsing on {base_name}")
+            logger.info(f"Starting Marker layout parsing for PDF: {base_name}")
             _unload_ollama_models()
-            time.sleep(5) 
+            time.sleep(5)
             marker_bin = os.path.join(os.path.dirname(sys.executable), "marker_single")
             if not os.path.exists(marker_bin): marker_bin = "marker_single"
 
@@ -84,15 +91,21 @@ class LocalVisionPDFProcessor(PDFProcessor):
             env.setdefault("NUMEXPR_NUM_THREADS", "2")
             try:
                 subprocess.run(cmd, check=True, env=env, timeout=self._marker_timeout_seconds())
+                logger.debug(f"Marker layout parsing succeeded for: {base_name}")
             except subprocess.TimeoutExpired:
+                logger.warning(f"Marker layout parsing timed out (>{self._marker_timeout_seconds()}s) for: {base_name}")
                 self._emit_status("vision", "Marker timed out; using embedded image extraction")
                 return []
-            except Exception:
+            except Exception as e:
+                logger.exception(f"Marker layout parsing failed for {base_name}: {e}")
                 self._emit_status("vision", "Marker failed; using embedded image extraction")
                 return []
 
-        if not os.path.exists(md_file): return []
+        if not os.path.exists(md_file):
+            logger.warning(f"Marker output file not found after processing: {md_file}")
+            return []
         with open(md_file, "r", encoding="utf-8") as f: self.marker_markdown = f.read()
+        logger.debug(f"Loaded marker markdown for {base_name}: {len(self.marker_markdown)} chars")
 
         extracted = []
         pattern = re.compile(r'!\[(.*?)\]\((.*?\.jpeg|.*?\.png)\)')
@@ -203,7 +216,11 @@ class LocalVisionPDFProcessor(PDFProcessor):
         seen_xrefs = set()
         try:
             doc = fitz.open(self.filepath)
-        except Exception:
+        except (FileNotFoundError, ValueError) as e:
+            logger.warning(f"Failed to open PDF {self.filepath}: {e}")
+            return []
+        except Exception as e:
+            logger.exception(f"Unexpected error opening PDF {self.filepath}: {e}")
             return []
 
         with doc:
@@ -224,7 +241,11 @@ class LocalVisionPDFProcessor(PDFProcessor):
 
                     try:
                         image_data = doc.extract_image(xref)
-                    except Exception:
+                    except (ValueError, RuntimeError) as e:
+                        logger.debug(f"Failed to extract image xref {xref}: {e}")
+                        continue
+                    except Exception as e:
+                        logger.warning(f"Unexpected error extracting image xref {xref}: {e}")
                         continue
                     image_bytes = image_data.get("image")
                     if not image_bytes:
@@ -241,7 +262,15 @@ class LocalVisionPDFProcessor(PDFProcessor):
                         with Image.open(image_path) as image:
                             width, height = image.size
                             image.verify()
-                    except Exception:
+                    except (IOError, UnidentifiedImageError) as e:
+                        logger.warning(f"Failed to verify image {image_path}: {e}")
+                        try:
+                            os.remove(image_path)
+                        except OSError:
+                            pass
+                        continue
+                    except Exception as e:
+                        logger.exception(f"Unexpected error processing image {image_path}: {e}")
                         try:
                             os.remove(image_path)
                         except OSError:

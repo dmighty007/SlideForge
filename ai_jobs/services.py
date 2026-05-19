@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
 import shutil
+import signal
 import subprocess
 import sys
 import concurrent.futures
@@ -10,6 +13,7 @@ import time
 import urllib.request
 import urllib.error
 from pathlib import Path
+from typing import Optional
 
 from django.conf import settings
 from django.db import close_old_connections
@@ -28,7 +32,7 @@ _OLLAMA_LOCK = threading.Lock()
 _OLLAMA_REF_COUNT = 0
 _OLLAMA_PROC = None
 
-def _acquire_ollama():
+def _acquire_ollama() -> None:
     global _OLLAMA_REF_COUNT, _OLLAMA_PROC
     with _OLLAMA_LOCK:
         _OLLAMA_REF_COUNT += 1
@@ -39,7 +43,7 @@ def _acquire_ollama():
                 _OLLAMA_PROC = subprocess.Popen(["ollama", "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 time.sleep(2)
 
-def _release_ollama():
+def _release_ollama() -> None:
     global _OLLAMA_REF_COUNT, _OLLAMA_PROC
     with _OLLAMA_LOCK:
         _OLLAMA_REF_COUNT -= 1
@@ -53,7 +57,7 @@ def _release_ollama():
             _OLLAMA_PROC = None
 
 
-def _unload_ollama_models():
+def _unload_ollama_models() -> None:
     try:
         with urllib.request.urlopen("http://127.0.0.1:11434/api/ps", timeout=5) as response:
             payload = json.loads(response.read().decode("utf-8") or "{}")
@@ -225,13 +229,13 @@ def _materialize_bridge_visuals(bridge_result: dict, job: ImportJob) -> dict:
 
 def check_bridge_dependencies() -> str | None:
     cmd = _bridge_command(Path("dummy.pdf"), Path("dummy.json"))
-    
+
     try:
         idx = cmd.index("-i")
         help_cmd = cmd[:idx] + ["--help"]
     except ValueError:
         help_cmd = cmd + ["--help"]
-        
+
     try:
         proc = subprocess.run(help_cmd, cwd=str(settings.BASE_DIR), capture_output=True, text=True, timeout=15)
         if proc.returncode != 0:
@@ -239,30 +243,36 @@ def check_bridge_dependencies() -> str | None:
             return f"Bridge check failed: {error_msg}"
     except Exception as e:
         return f"Could not run bridge process: {e}"
-        
+
     if not shutil.which("ollama"):
         return "ollama is not installed or not in PATH."
-    
+
     return None
 
 
-def queue_import_job(import_job: ImportJob):
+def queue_import_job(import_job: ImportJob) -> None:
     _IMPORT_EXECUTOR.submit(_run_import_job, import_job.id)
 
 
-def _run_import_job(job_id):
+def _run_import_job(job_id: str) -> None:
     close_old_connections()
-    job = ImportJob.objects.get(id=job_id)
+    
+    with transaction.atomic():
+        job = ImportJob.objects.select_for_update().get(id=job_id)
+        if job.status != "pending":
+            logger.info(f"Import job {job_id} is no longer pending (status: {job.status}), skipping")
+            return
+        
+        job.status = "running"
+        job.event = "processing"
+        job.message = "Starting PDF bridge"
+        job.progress_percent = 10
+        job.save(update_fields=["status", "event", "message", "progress_percent", "updated_at"])
+    
     ollama_acquired = False
     proc = None
     pdf_path = Path(job.source_pdf.path)
     output_path = pdf_path.with_name(f"presentation_export_{job.id}.json")
-
-    job.status = "running"
-    job.event = "processing"
-    job.message = "Starting PDF bridge"
-    job.progress_percent = 10
-    job.save(update_fields=["status", "event", "message", "progress_percent", "updated_at"])
 
     try:
         _acquire_ollama()
@@ -300,7 +310,19 @@ def _run_import_job(job_id):
                 job.progress_percent = max(job.progress_percent, max(0, min(100, parsed_percent)))
                 job.save(update_fields=["event", "message", "progress_percent", "updated_at"])
 
-        returncode = proc.wait(timeout=settings.PPTMAKER_BRIDGE_JSON_TIMEOUT)
+        try:
+            returncode = proc.wait(timeout=settings.PPTMAKER_BRIDGE_JSON_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.kill(proc.pid, signal.SIGKILL)
+                except (OSError, ProcessLookupError):
+                    pass
+            raise RuntimeError(f"Bridge process timeout (>= {settings.PPTMAKER_BRIDGE_JSON_TIMEOUT}s), killed")
+        
         if returncode != 0:
             raise RuntimeError(f"Bridge exited with code {returncode}")
 

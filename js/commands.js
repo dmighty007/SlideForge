@@ -80,13 +80,26 @@ function alignSelection(alignment) {
         let nextY = unit.minY;
 
         switch (alignment) {
-            case 'left': nextX = bounds.minX; break;
-            case 'center': nextX = bounds.minX + (bounds.maxX - bounds.minX) / 2 - unit.width / 2; break;
-            case 'right': nextX = bounds.maxX - unit.width; break;
-            case 'top': nextY = bounds.minY; break;
-            case 'middle': nextY = bounds.minY + (bounds.maxY - bounds.minY) / 2 - unit.height / 2; break;
-            case 'bottom': nextY = bounds.maxY - unit.height; break;
-            default: return;
+            case "left":
+                nextX = bounds.minX;
+                break;
+            case "center":
+                nextX = bounds.minX + (bounds.maxX - bounds.minX) / 2 - unit.width / 2;
+                break;
+            case "right":
+                nextX = bounds.maxX - unit.width;
+                break;
+            case "top":
+                nextY = bounds.minY;
+                break;
+            case "middle":
+                nextY = bounds.minY + (bounds.maxY - bounds.minY) / 2 - unit.height / 2;
+                break;
+            case "bottom":
+                nextY = bounds.maxY - unit.height;
+                break;
+            default:
+                return;
         }
 
         const dx = nextX - unit.minX;
@@ -132,7 +145,14 @@ function getActiveSlideIndex() {
 function ensureActiveSlideSync() {
     const idx = getActiveSlideIndex();
     if (idx !== currentSlideIndex) setCurrentSlideIndex(idx);
-    if (!state.slides[idx]) state.slides[idx] = { id: generateId("slide"), layoutId: "blank-titled", masterId: "content", notes: "", elements: [] };
+    if (!state.slides[idx])
+        state.slides[idx] = {
+            id: generateId("slide"),
+            layoutId: "blank-titled",
+            masterId: "content",
+            notes: "",
+            elements: [],
+        };
     return idx;
 }
 
@@ -146,7 +166,13 @@ function _normalizeSlideIndex(index) {
 function addSlide(targetIndex = null) {
     const activeIndex = _normalizeSlideIndex(targetIndex) ?? ensureActiveSlideSync();
     saveStateToUndo();
-    state.slides.splice(activeIndex + 1, 0, { id: generateId("slide"), layoutId: "blank-titled", masterId: "content", notes: "", elements: [] });
+    state.slides.splice(activeIndex + 1, 0, {
+        id: generateId("slide"),
+        layoutId: "blank-titled",
+        masterId: "content",
+        notes: "",
+        elements: [],
+    });
     setCurrentSlideIndex(activeIndex + 1);
     renderSlidesFromState();
     Reveal.slide(activeIndex + 1);
@@ -240,13 +266,13 @@ function addElement(type, options = {}) {
                     ? "360px"
                     : type === "table"
                       ? "520px"
-                    : type === "video"
-                      ? "480px"
-                      : type === "pdf"
-                        ? "520px"
-                        : type === "molecule"
-                          ? "620px"
-                      : "auto",
+                      : type === "video"
+                        ? "480px"
+                        : type === "pdf"
+                          ? "520px"
+                          : type === "molecule"
+                            ? "620px"
+                            : "auto",
         height:
             type === "shape"
                 ? isArrowShape
@@ -256,35 +282,41 @@ function addElement(type, options = {}) {
                   ? "200px"
                   : type === "table"
                     ? "240px"
-                  : type === "video"
-                    ? "270px"
-                    : type === "pdf"
-                      ? "360px"
-                      : type === "molecule"
-                        ? "420px"
-                    : "auto",
+                    : type === "video"
+                      ? "270px"
+                      : type === "pdf"
+                        ? "360px"
+                        : type === "molecule"
+                          ? "420px"
+                          : "auto",
         content:
             type === "text"
                 ? "Double click to edit text"
                 : type === "table"
                   ? ""
-                : type === "image"
-                  ? "https://picsum.photos/400/300"
-                  : type === "video"
-                    ? "https://www.youtube.com/watch?v=aqz-KE-bpKQ"
-                    : type === "pdf"
-                      ? ""
-                      : type === "molecule" && typeof createDefaultMoleculeContent === "function"
-                        ? createDefaultMoleculeContent()
-                    : "",
+                  : type === "image"
+                    ? "https://picsum.photos/400/300"
+                    : type === "video"
+                      ? "https://www.youtube.com/watch?v=aqz-KE-bpKQ"
+                      : type === "pdf"
+                        ? ""
+                        : type === "molecule" && typeof createDefaultMoleculeContent === "function"
+                          ? createDefaultMoleculeContent()
+                          : "",
         styles: {
             color: type === "text" || type === "table" ? theme.defaultTextColor : "transparent",
             fontSize: type === "text" ? "32px" : type === "table" ? "16px" : "0px",
             fontFamily: theme.bodyFont,
             textAlign: type === "text" || type === "table" ? "left" : undefined,
             zIndex: getNextZIndex(),
-            borderRadius: type === "shape" ? shapeBorderRadius : type === "video" || type === "pdf" || type === "molecule" ? "8px" : "0px",
-            backgroundColor: type === "molecule" ? "#020617" : type === "shape" ? theme.defaultShapeColor : "transparent",
+            borderRadius:
+                type === "shape"
+                    ? shapeBorderRadius
+                    : type === "video" || type === "pdf" || type === "molecule"
+                      ? "8px"
+                      : "0px",
+            backgroundColor:
+                type === "molecule" ? "#020617" : type === "shape" ? theme.defaultShapeColor : "transparent",
         },
         ...(type === "text" ? { textFitMode: "autoHeight" } : {}),
         animation: null,
@@ -308,20 +340,22 @@ function addChart(chartType = "bar") {
         chartType,
         chartData: {
             labels: ["Jan", "Feb", "Mar", "Apr", "May"],
-            datasets: [{
-                label: "Sales",
-                data: [12, 19, 3, 5, 2],
-                backgroundColor: [theme.accentStrong, theme.accentStrong + "CC"],
-                borderColor: theme.accentStrong,
-                borderWidth: 1
-            }]
+            datasets: [
+                {
+                    label: "Sales",
+                    data: [12, 19, 3, 5, 2],
+                    backgroundColor: [theme.accentStrong, theme.accentStrong + "CC"],
+                    borderColor: theme.accentStrong,
+                    borderWidth: 1,
+                },
+            ],
         },
         chartOptions: {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: { display: true, position: 'top' }
-            }
+                legend: { display: true, position: "top" },
+            },
         },
         x: 100,
         y: 100,
@@ -332,8 +366,8 @@ function addChart(chartType = "bar") {
             backgroundColor: "#ffffff",
             padding: "16px",
             borderRadius: "12px",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.05)"
-        }
+            boxShadow: "0 4px 12px rgba(0,0,0,0.05)",
+        },
     });
     renderSlidesFromState();
     selectElement(id);
@@ -476,12 +510,17 @@ function aiCleanUpSlideHeuristic() {
     const edgeMargin = Math.round(Math.max(36, Math.min(slideW, slideH) * 0.05) / grid) * grid;
     const gap = 16;
     let changedCount = 0;
-    const before = new Map(targetElements.map(el => [el.id, JSON.stringify({
-        x: el.x,
-        y: el.y,
-        width: el.width,
-        height: el.height,
-    })]));
+    const before = new Map(
+        targetElements.map(el => [
+            el.id,
+            JSON.stringify({
+                x: el.x,
+                y: el.y,
+                width: el.width,
+                height: el.height,
+            }),
+        ]),
+    );
 
     saveStateToUndo();
 
@@ -504,10 +543,10 @@ function aiCleanUpSlideHeuristic() {
         let nx = snap(b.x);
         let ny = snap(b.y);
 
-        if (Math.abs((nx + b.w / 2) - centerX) < snapThreshold) {
+        if (Math.abs(nx + b.w / 2 - centerX) < snapThreshold) {
             nx = snap(centerX - b.w / 2);
         }
-        if (Math.abs((ny + b.h / 2) - centerY) < snapThreshold) {
+        if (Math.abs(ny + b.h / 2 - centerY) < snapThreshold) {
             ny = snap(centerY - b.h / 2);
         }
         if (Math.abs(nx - edgeMargin) < snapThreshold) nx = edgeMargin;
@@ -533,24 +572,38 @@ function aiCleanUpSlideHeuristic() {
                 buckets.push({ value, values: [value], items: [el] });
             }
         });
-        buckets.filter(group => group.items.length >= 2).forEach(group => {
-            const target = snap(median(group.values));
-            group.items.forEach(el => setter(el, target));
-        });
+        buckets
+            .filter(group => group.items.length >= 2)
+            .forEach(group => {
+                const target = snap(median(group.values));
+                group.items.forEach(el => setter(el, target));
+            });
     };
 
-    alignCluster(targetElements, b => b.x, (el, value) => {
-        const b = numericBounds(el);
-        el.x = clamp(value, 0, Math.max(0, slideW - b.w));
-    });
-    alignCluster(targetElements, b => b.x + b.w / 2, (el, value) => {
-        const b = numericBounds(el);
-        el.x = clamp(snap(value - b.w / 2), 0, Math.max(0, slideW - b.w));
-    });
-    alignCluster(targetElements, b => b.y, (el, value) => {
-        const b = numericBounds(el);
-        el.y = clamp(value, 0, Math.max(0, slideH - b.h));
-    });
+    alignCluster(
+        targetElements,
+        b => b.x,
+        (el, value) => {
+            const b = numericBounds(el);
+            el.x = clamp(value, 0, Math.max(0, slideW - b.w));
+        },
+    );
+    alignCluster(
+        targetElements,
+        b => b.x + b.w / 2,
+        (el, value) => {
+            const b = numericBounds(el);
+            el.x = clamp(snap(value - b.w / 2), 0, Math.max(0, slideW - b.w));
+        },
+    );
+    alignCluster(
+        targetElements,
+        b => b.y,
+        (el, value) => {
+            const b = numericBounds(el);
+            el.y = clamp(value, 0, Math.max(0, slideH - b.h));
+        },
+    );
 
     const sorted = [...targetElements].sort((a, b) => (Number(a.y) || 0) - (Number(b.y) || 0));
     for (let i = 1; i < sorted.length; i += 1) {
@@ -661,8 +714,8 @@ function addComponent(templateId) {
             y: 200 + (el.offsetY || 0),
             styles: {
                 ...(el.styles || {}),
-                zIndex: baseZ + componentZ - 1
-            }
+                zIndex: baseZ + componentZ - 1,
+            },
         });
         newIds.push(id);
     });
@@ -709,7 +762,7 @@ function duplicateSelectedElements() {
     saveStateToUndo();
     const newIds = [];
     const groupIdMap = {};
-    
+
     state.selectedIds.forEach(id => {
         const el = state.slides[activeIndex].elements.find(e => e.id === id);
         if (!el) return;
@@ -718,7 +771,7 @@ function duplicateSelectedElements() {
         copy.id = newId;
         copy.x += 20;
         copy.y += 20;
-        
+
         if (copy.groupId) {
             if (!groupIdMap[copy.groupId]) {
                 groupIdMap[copy.groupId] = generateId("grp");
@@ -727,10 +780,10 @@ function duplicateSelectedElements() {
         } else {
             copy.groupId = null;
         }
-        
+
         if (!copy.styles) copy.styles = {};
         copy.styles.zIndex = getNextZIndex();
-        
+
         state.slides[activeIndex].elements.push(copy);
         newIds.push(newId);
     });
@@ -795,8 +848,8 @@ function _cloneSelectedElements() {
     if (!state.selectedIds.length) return [];
     return state.selectedIds
         .map(id => {
-        const el = state.slides[activeIndex].elements.find(e => e.id === id);
-        return JSON.parse(JSON.stringify(el));
+            const el = state.slides[activeIndex].elements.find(e => e.id === id);
+            return JSON.parse(JSON.stringify(el));
         })
         .filter(Boolean);
 }
@@ -813,7 +866,9 @@ function copyElement(clipboardEvent = null) {
             JSON.stringify({ elements: selectedElements }),
         );
         const textSummary = selectedElements
-            .map(el => (el.type === "text" ? String(parseTextFromHtml?.(el.content) || el.content || "") : `[${el.type}]`))
+            .map(el =>
+                el.type === "text" ? String(parseTextFromHtml?.(el.content) || el.content || "") : `[${el.type}]`,
+            )
             .filter(Boolean)
             .join("\n");
         clipboardEvent.clipboardData.setData("text/plain", textSummary || "[SlideForge elements]");
@@ -1025,14 +1080,14 @@ function pasteElement(payload = null) {
     saveStateToUndo();
     const newIds = [];
     const groupIdMap = {};
-    
+
     sourceElements.forEach(el => {
         const newId = generateId("el");
         const copy = JSON.parse(JSON.stringify(el));
         copy.id = newId;
         copy.x = (Number(copy.x) || 0) + 40;
         copy.y = (Number(copy.y) || 0) + 40;
-        
+
         if (copy.groupId) {
             if (!groupIdMap[copy.groupId]) {
                 groupIdMap[copy.groupId] = generateId("grp");
@@ -1041,10 +1096,10 @@ function pasteElement(payload = null) {
         } else {
             copy.groupId = null;
         }
-        
+
         if (!copy.styles) copy.styles = {};
         copy.styles.zIndex = getNextZIndex();
-        
+
         state.slides[activeIndex].elements.push(copy);
         newIds.push(newId);
     });
@@ -1091,7 +1146,7 @@ async function optimizeImageToWebP(file, maxWidth = 3840, maxHeight = 2160, qual
             resolve({
                 dataUrl: canvas.toDataURL("image/webp", quality),
                 origWidth: img.width,
-                origHeight: img.height
+                origHeight: img.height,
             });
         };
         img.onerror = () => {
@@ -1113,7 +1168,7 @@ async function handlePaste(e) {
             break;
         }
     }
-    
+
     // Prevent pasting raw base64 string into contenteditable if we are handling it
     if (hasImage && isTextEditing) {
         e.preventDefault();
@@ -1138,8 +1193,9 @@ async function handlePaste(e) {
     if (!hasImage && !isTextEditing) {
         const plainText = e.clipboardData?.getData("text/plain") || "";
         const htmlText = e.clipboardData?.getData("text/html") || "";
-        const incomingText = String(plainText || "").trim()
-            || (htmlText ? new DOMParser().parseFromString(htmlText, "text/html").body.innerText.trim() : "");
+        const incomingText =
+            String(plainText || "").trim() ||
+            (htmlText ? new DOMParser().parseFromString(htmlText, "text/html").body.innerText.trim() : "");
         if (incomingText) {
             e.preventDefault();
             handled = _insertClipboardTextAsBestFit(incomingText, 100, 100);
@@ -1193,12 +1249,12 @@ async function handleImageFileInsert(event) {
         const activeIndex = ensureActiveSlideSync();
         saveStateToUndo();
         const id = generateId("el");
-        
+
         const targetWidth = 420;
         const aspect = origHeight / origWidth;
         const targetHeight = targetWidth * aspect;
         const imageAspectRatio = Math.max(0.01, origWidth / Math.max(1, origHeight));
-        
+
         state.slides[activeIndex].elements.push({
             id,
             type: "image",
@@ -1238,7 +1294,12 @@ async function handlePdfFileInsert(event) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    if (file.type !== "application/pdf" && !String(file.name || "").toLowerCase().endsWith(".pdf")) {
+    if (
+        file.type !== "application/pdf" &&
+        !String(file.name || "")
+            .toLowerCase()
+            .endsWith(".pdf")
+    ) {
         setProjectSaveHint?.("Please choose a valid PDF file", "danger");
         return;
     }
@@ -1559,7 +1620,12 @@ function handleHtmlFileInsert(event) {
             width: "520px",
             height: "320px",
             content: htmlContent,
-            styles: { zIndex: getNextZIndex(), borderRadius: "8px", backgroundColor: "#111827", border: "1px solid #334155" },
+            styles: {
+                zIndex: getNextZIndex(),
+                borderRadius: "8px",
+                backgroundColor: "#111827",
+                border: "1px solid #334155",
+            },
         });
         renderSlidesFromState();
         selectElement(id);
@@ -1589,7 +1655,7 @@ async function _detectMoleculeFileTrajectory(file) {
             const { value, done } = await reader.read();
             buffered += decoder.decode(value || new Uint8Array(), { stream: !done });
             const lines = buffered.split(/\r?\n/);
-            buffered = done ? "" : (lines.pop() || "");
+            buffered = done ? "" : lines.pop() || "";
             for (const line of lines) {
                 if (/^MODEL\b/.test(line)) {
                     modelCount += 1;
@@ -1651,14 +1717,23 @@ async function handleMoleculeFileInsert(event) {
     event.target.value = "";
     if (!file) return;
 
-    const inlineMaxBytes = typeof MOLECULE_INLINE_CONTENT_LIMIT === "number" ? MOLECULE_INLINE_CONTENT_LIMIT : 2 * 1024 * 1024;
-    const largeMaxBytes = typeof MOLECULE_LARGE_CONTENT_LIMIT === "number" ? MOLECULE_LARGE_CONTENT_LIMIT : 64 * 1024 * 1024;
-    const rawExt = String(file.name || "").split(".").pop().toLowerCase();
-    const allowedFormats = typeof MOLECULE_SUPPORTED_FORMATS !== "undefined"
-        ? MOLECULE_SUPPORTED_FORMATS
-        : new Set(["pdb", "ent", "gro", "mol2", "xyz", "sdf", "cif", "mmcif"]);
+    const inlineMaxBytes =
+        typeof MOLECULE_INLINE_CONTENT_LIMIT === "number" ? MOLECULE_INLINE_CONTENT_LIMIT : 2 * 1024 * 1024;
+    const largeMaxBytes =
+        typeof MOLECULE_LARGE_CONTENT_LIMIT === "number" ? MOLECULE_LARGE_CONTENT_LIMIT : 64 * 1024 * 1024;
+    const rawExt = String(file.name || "")
+        .split(".")
+        .pop()
+        .toLowerCase();
+    const allowedFormats =
+        typeof MOLECULE_SUPPORTED_FORMATS !== "undefined"
+            ? MOLECULE_SUPPORTED_FORMATS
+            : new Set(["pdb", "ent", "gro", "mol2", "xyz", "sdf", "cif", "mmcif"]);
     if (!allowedFormats.has(rawExt)) {
-        setProjectSaveHint?.("Choose a supported molecule file: PDB, ENT, GRO, MOL2, XYZ, SDF, CIF, or mmCIF", "danger");
+        setProjectSaveHint?.(
+            "Choose a supported molecule file: PDB, ENT, GRO, MOL2, XYZ, SDF, CIF, or mmCIF",
+            "danger",
+        );
         return;
     }
     if (file.size > largeMaxBytes) {
@@ -1674,7 +1749,10 @@ async function handleMoleculeFileInsert(event) {
         let isTrajectory = false;
         if (file.size <= inlineMaxBytes) {
             data = await _readMoleculeFileText(file);
-            isTrajectory = typeof isMoleculeTrajectoryData === "function" ? isMoleculeTrajectoryData(data) : /^MODEL\b/m.test(data) && /^ENDMDL\b/m.test(data);
+            isTrajectory =
+                typeof isMoleculeTrajectoryData === "function"
+                    ? isMoleculeTrajectoryData(data)
+                    : /^MODEL\b/m.test(data) && /^ENDMDL\b/m.test(data);
         } else {
             isTrajectory = await _detectMoleculeFileTrajectory(file);
             try {
@@ -1686,21 +1764,22 @@ async function handleMoleculeFileInsert(event) {
                 setProjectSaveHint?.("Large molecule stored for this session only", "warn");
             }
         }
-        const moleculeData = typeof createMoleculeElementData === "function"
-            ? createMoleculeElementData({
-                  data,
-                  name: file.name,
-                  format: ext,
-                  isTrajectory,
-                  sourceUrl,
-              })
-            : {
-                  content: sourceUrl || data,
-                  moleculeName: file.name,
-                  moleculeFormat: ext,
-                  moleculeIsTrajectory: isTrajectory,
-                  moleculeSourceType: sourceUrl ? "url" : "inline",
-              };
+        const moleculeData =
+            typeof createMoleculeElementData === "function"
+                ? createMoleculeElementData({
+                      data,
+                      name: file.name,
+                      format: ext,
+                      isTrajectory,
+                      sourceUrl,
+                  })
+                : {
+                      content: sourceUrl || data,
+                      moleculeName: file.name,
+                      moleculeFormat: ext,
+                      moleculeIsTrajectory: isTrajectory,
+                      moleculeSourceType: sourceUrl ? "url" : "inline",
+                  };
         const replaced = _upsertMoleculeElement(moleculeData);
         setProjectSaveHint?.(
             `${moleculeData.moleculeIsTrajectory ? "Trajectory" : "PDB structure"} ${replaced ? "replaced" : "added"}`,
@@ -1870,9 +1949,32 @@ function _bridgeWordClamp(text, maxWords = 22) {
 
 function _bridgeTokenSet(text) {
     const stop = new Set([
-        "the", "and", "for", "with", "that", "this", "from", "into", "over", "under", "across", "after",
-        "before", "figure", "panel", "shows", "show", "display", "displays", "result", "results", "using",
-        "method", "methods", "simulation", "simulations",
+        "the",
+        "and",
+        "for",
+        "with",
+        "that",
+        "this",
+        "from",
+        "into",
+        "over",
+        "under",
+        "across",
+        "after",
+        "before",
+        "figure",
+        "panel",
+        "shows",
+        "show",
+        "display",
+        "displays",
+        "result",
+        "results",
+        "using",
+        "method",
+        "methods",
+        "simulation",
+        "simulations",
     ]);
     return new Set(
         String(text || "")
@@ -1914,24 +2016,26 @@ function _bridgeChoosePrimaryVisual(slide) {
         .map((visual, index) => ({
             visual,
             index,
-            score: _bridgeTextMatchScore(slideText, [visual.caption, visual.finding, visual.type, visual.id].filter(Boolean).join(" ")),
+            score: _bridgeTextMatchScore(
+                slideText,
+                [visual.caption, visual.finding, visual.type, visual.id].filter(Boolean).join(" "),
+            ),
             preferred: weakPreferredId && visual.id === weakPreferredId ? 1 : 0,
         }))
-        .sort((a, b) => (b.score - a.score) || (b.preferred - a.preferred) || (a.index - b.index))[0].visual;
+        .sort((a, b) => b.score - a.score || b.preferred - a.preferred || a.index - b.index)[0].visual;
 }
 
 function _normalizeBridgeContentSlide(slide) {
     const visuals = Array.isArray(slide?.visuals) ? slide.visuals.filter(Boolean) : [];
     const primaryVisual = _bridgeChoosePrimaryVisual({ ...slide, visuals });
     const normalizedFigPath =
-        typeof slide?.fig_path === "string" && slide.fig_path.trim()
-            && (!primaryVisual || primaryVisual.id === slide?.visual_id || primaryVisual.path === slide.fig_path)
+        typeof slide?.fig_path === "string" &&
+        slide.fig_path.trim() &&
+        (!primaryVisual || primaryVisual.id === slide?.visual_id || primaryVisual.path === slide.fig_path)
             ? slide.fig_path
             : primaryVisual?.path || "";
     const normalizedFigCap =
-        typeof slide?.fig_cap === "string" && slide.fig_cap.trim()
-            ? slide.fig_cap
-            : primaryVisual?.caption || "";
+        typeof slide?.fig_cap === "string" && slide.fig_cap.trim() ? slide.fig_cap : primaryVisual?.caption || "";
 
     return {
         ...slide,
@@ -1969,7 +2073,12 @@ function _bridgePlanPrimaryVisuals(slides) {
         if (visualUsage.has(visualId)) return;
         const best = candidates
             .filter(item => item.visual.id === visualId)
-            .sort((a, b) => (b.score - a.score) || ((visualUsage.get(_bridgeChoosePrimaryVisual(a.slide)?.id) || 0) - (visualUsage.get(_bridgeChoosePrimaryVisual(b.slide)?.id) || 0)))[0];
+            .sort(
+                (a, b) =>
+                    b.score - a.score ||
+                    (visualUsage.get(_bridgeChoosePrimaryVisual(a.slide)?.id) || 0) -
+                        (visualUsage.get(_bridgeChoosePrimaryVisual(b.slide)?.id) || 0),
+            )[0];
         if (!best) return;
         const previous = _bridgeChoosePrimaryVisual(best.slide);
         if (previous?.id) visualUsage.set(previous.id, Math.max(0, (visualUsage.get(previous.id) || 1) - 1));
@@ -2060,16 +2169,45 @@ function _bridgeBuildPresetSlide(presetId, theme, mutator = null) {
 }
 
 function _bridgeTextPlain(value) {
-    return String(value || "").replace(/<[^>]*>/g, "").trim();
+    return String(value || "")
+        .replace(/<[^>]*>/g, "")
+        .trim();
 }
 
 const BRIDGE_CASE_ACRONYMS = [
-    "MD", "ML", "AI", "DNA", "RNA", "PDB", "RMSD", "RMSF", "PCA", "UMAP", "t-SNE", "GNN", "CNN", "RNN",
-    "AUC", "ROC", "MSE", "RMSE", "MAE", "GPU", "CPU", "NVT", "NPT", "PMF", "MSM", "FEP", "TI",
+    "MD",
+    "ML",
+    "AI",
+    "DNA",
+    "RNA",
+    "PDB",
+    "RMSD",
+    "RMSF",
+    "PCA",
+    "UMAP",
+    "t-SNE",
+    "GNN",
+    "CNN",
+    "RNN",
+    "AUC",
+    "ROC",
+    "MSE",
+    "RMSE",
+    "MAE",
+    "GPU",
+    "CPU",
+    "NVT",
+    "NPT",
+    "PMF",
+    "MSM",
+    "FEP",
+    "TI",
 ];
 
 function _bridgeHumanizeImportedCase(value) {
-    const raw = String(value || "").replace(/\s+/g, " ").trim();
+    const raw = String(value || "")
+        .replace(/\s+/g, " ")
+        .trim();
     if (!raw) return "";
     const letters = raw.match(/[A-Za-z]/g) || [];
     if (letters.length < 8 && !/\s/.test(raw)) return raw;
@@ -2087,13 +2225,19 @@ function _bridgeHumanizeImportedCase(value) {
 }
 
 function _bridgeCleanImportedText(value, fallback = "") {
-    const cleaned = String(value || "").replace(/<[^>]*>/g, "").replace(/\s+/g, " ").replace(/^[•\-\u2022]\s*/, "").trim();
+    const cleaned = String(value || "")
+        .replace(/<[^>]*>/g, "")
+        .replace(/\s+/g, " ")
+        .replace(/^[•\-\u2022]\s*/, "")
+        .trim();
     return cleaned ? _bridgeHumanizeImportedCase(cleaned) : fallback;
 }
 
 function _bridgeIsPlaceholderText(text) {
     return /^(imported presentation|imported (slide )?content|imported figure|imported section from the source document|insert figure( \/ chart)? here|chart \/ graph placeholder|insert figure or chart here|insert chart:.*)$/i.test(
-        String(text || "").replace(/[\[\]]/g, "").trim(),
+        String(text || "")
+            .replace(/[\[\]]/g, "")
+            .trim(),
     );
 }
 
@@ -2134,11 +2278,11 @@ function _bridgeBulletPlainText(item) {
 function _bridgeSetBulletLines(elements, content, options = {}) {
     const structured = _bridgeSetFirstBulletBlock(elements, content, options);
     if (structured) return structured;
-    const bulletTexts = (Array.isArray(content) ? content : [])
-        .map(_bridgeBulletPlainText)
-        .filter(Boolean);
+    const bulletTexts = (Array.isArray(content) ? content : []).map(_bridgeBulletPlainText).filter(Boolean);
     if (!bulletTexts.length) return null;
-    const bulletEls = (elements || []).filter(item => item.type === "text" && /^•\s+/.test(_bridgeTextPlain(item.content)));
+    const bulletEls = (elements || []).filter(
+        item => item.type === "text" && /^•\s+/.test(_bridgeTextPlain(item.content)),
+    );
     bulletEls.forEach((el, idx) => {
         el.content = bulletTexts[idx] ? `• ${bulletTexts[idx]}` : "";
     });
@@ -2163,7 +2307,9 @@ function _bridgeTextLineCount(value, charsPerLine) {
             return sum + Math.max(1, Math.ceil(text.length / charsPerLine)) + (item?.level ? 0.15 : 0.35);
         }, 0);
     }
-    const chunks = String(_bridgeTextPlain(value) || "").split(/\n+/).filter(Boolean);
+    const chunks = String(_bridgeTextPlain(value) || "")
+        .split(/\n+/)
+        .filter(Boolean);
     if (!chunks.length) return 1;
     return chunks.reduce((sum, chunk) => sum + Math.max(1, Math.ceil(chunk.length / charsPerLine)), 0);
 }
@@ -2210,7 +2356,8 @@ function _bridgeFindNearText(elements, x, y, tolerance = 8) {
 function _bridgeApplyContentAwareFit(slideState) {
     const layoutId = slideState?.layoutId;
     const elements = slideState?.elements || [];
-    const fitAt = (x, y, maxHeight, options = {}) => _bridgeFitTextElement(_bridgeFindNearText(elements, x, y), { maxHeight, ...options });
+    const fitAt = (x, y, maxHeight, options = {}) =>
+        _bridgeFitTextElement(_bridgeFindNearText(elements, x, y), { maxHeight, ...options });
     const fitArrayText = (index, maxHeight, options = {}) => {
         const el = elements.filter(item => item.type === "text" && Array.isArray(item.content))[index];
         _bridgeFitTextElement(el, { maxHeight, ...options });
@@ -2280,7 +2427,8 @@ function _bridgePresetForContentSlide(slide) {
     if (/comparison|compare|contrast/.test(hint)) return slide?.fig_path ? "results-data" : "two-column";
     if (/results|data|metric|benchmark/.test(hint)) return "results-data";
     if (/figure|mechanism|workflow/.test(hint) && slide?.fig_path) return "figure-caption";
-    if (/text|argument|setup|problem/.test(hint) && !slide?.fig_path) return metrics.pointCount >= 3 ? "two-column" : "content-slide";
+    if (/text|argument|setup|problem/.test(hint) && !slide?.fig_path)
+        return metrics.pointCount >= 3 ? "two-column" : "content-slide";
     if (/future|impact|implication|conclusion|summary|takeaway|limit|direction/i.test(title)) return "conclusion";
     if (slide?.fig_path) return "figure-caption";
     if (metrics.pointCount >= 4 || metrics.bulletCount >= 7 || metrics.wordCount >= 78) return "two-column";
@@ -2298,23 +2446,36 @@ function _bridgeHydrateContentPreset(slideState, slide, theme) {
     if (presetId === "figure-caption") {
         _bridgeSetTextByPlaceholders(elements, ["Results / Figure", "Trajectory result"], title);
         _bridgeSetTextByPlaceholder(elements, "FIGURE", "Figure");
-        _bridgeSetTextByPlaceholders(elements, [
-            "Key finding stated as a clear assertion — the figure supports this claim",
-            "Replace the placeholder with RMSD, free-energy, PCA, contact, or clustering plots.",
-        ], summary);
-        _bridgeSetTextByPlaceholders(elements, [
-            "Figure 1. Descriptive caption explaining the figure content.",
-            "Figure 1. Short caption describing the simulation system, model, and key observation.",
-        ], _bridgeWordClamp(slide.fig_cap || summary || title, 26));
+        _bridgeSetTextByPlaceholders(
+            elements,
+            [
+                "Key finding stated as a clear assertion — the figure supports this claim",
+                "Replace the placeholder with RMSD, free-energy, PCA, contact, or clustering plots.",
+            ],
+            summary,
+        );
+        _bridgeSetTextByPlaceholders(
+            elements,
+            [
+                "Figure 1. Descriptive caption explaining the figure content.",
+                "Figure 1. Short caption describing the simulation system, model, and key observation.",
+            ],
+            _bridgeWordClamp(slide.fig_cap || summary || title, 26),
+        );
         _bridgeSetTextByPlaceholders(elements, ["Key Insight", "Interpretation"], "Interpretation");
         const insight =
-            _bridgeFindText(elements, text => text.startsWith("Explain what this result means"))
-            || _bridgeFindText(elements, text => text.startsWith("What changed in the ensemble"));
-        if (insight) insight.content = _bridgeWordClamp(_bridgeNarrativeSummary(slide.points, 2) || summary || slide.fig_cap || title, 34);
+            _bridgeFindText(elements, text => text.startsWith("Explain what this result means")) ||
+            _bridgeFindText(elements, text => text.startsWith("What changed in the ensemble"));
+        if (insight)
+            insight.content = _bridgeWordClamp(
+                _bridgeNarrativeSummary(slide.points, 2) || summary || slide.fig_cap || title,
+                34,
+            );
         const stat = _bridgeFindText(elements, text => text === "p < 0.001");
-        if (stat) stat.content = _bridgeWordClamp((slide.points?.[0]?.heading || "Evidence"), 5);
+        if (stat) stat.content = _bridgeWordClamp(slide.points?.[0]?.heading || "Evidence", 5);
         const sig = _bridgeFindText(elements, text => text === "Statistical significance");
-        if (sig) sig.content = _bridgeWordClamp(slide.fig_cap || slide.points?.[0]?.content?.[0] || "Figure evidence", 9);
+        if (sig)
+            sig.content = _bridgeWordClamp(slide.fig_cap || slide.points?.[0]?.content?.[0] || "Figure evidence", 9);
         elements.push(
             _makeImageElement({
                 x: 72,
@@ -2330,21 +2491,35 @@ function _bridgeHydrateContentPreset(slideState, slide, theme) {
     if (presetId === "two-column") {
         _bridgeSetTextByPlaceholders(elements, ["Comparative Analysis", "Two complementary views"], title);
         _bridgeSetTextByPlaceholder(elements, "COMPARE", "Compare");
-        _bridgeSetTextByPlaceholder(elements, "Use this layout to compare physical simulation and learned models.", summary);
+        _bridgeSetTextByPlaceholder(
+            elements,
+            "Use this layout to compare physical simulation and learned models.",
+            summary,
+        );
         const midpoint = Math.ceil(bullets.length / 2);
         const left = bullets.slice(0, midpoint);
         const right = bullets.slice(midpoint);
         const textBlocks = elements.filter(item => item.type === "text" && Array.isArray(item.content));
         if (textBlocks[0]) textBlocks[0].content = left.length ? left : bullets;
         if (textBlocks[1]) textBlocks[1].content = right.length ? right : bullets.slice(0, 2);
-        _bridgeSetTextByPlaceholders(elements, ["Column A", "Molecular dynamics"], slide.fig_path ? "Figure evidence" : "Evidence");
+        _bridgeSetTextByPlaceholders(
+            elements,
+            ["Column A", "Molecular dynamics"],
+            slide.fig_path ? "Figure evidence" : "Evidence",
+        );
         _bridgeSetTextByPlaceholders(elements, ["Column B", "Machine learning"], "Model implication");
         if (!textBlocks.length) {
-            const bulletEls = elements.filter(item => item.type === "text" && /^•\s+/.test(_bridgeTextPlain(item.content)));
+            const bulletEls = elements.filter(
+                item => item.type === "text" && /^•\s+/.test(_bridgeTextPlain(item.content)),
+            );
             const leftEls = bulletEls.filter(el => (parseFloat(el.x) || 0) < 500);
             const rightEls = bulletEls.filter(el => (parseFloat(el.x) || 0) >= 500);
-            leftEls.forEach((el, idx) => { el.content = left[idx] ? `• ${_bridgeBulletPlainText(left[idx])}` : ""; });
-            rightEls.forEach((el, idx) => { el.content = right[idx] ? `• ${_bridgeBulletPlainText(right[idx])}` : ""; });
+            leftEls.forEach((el, idx) => {
+                el.content = left[idx] ? `• ${_bridgeBulletPlainText(left[idx])}` : "";
+            });
+            rightEls.forEach((el, idx) => {
+                el.content = right[idx] ? `• ${_bridgeBulletPlainText(right[idx])}` : "";
+            });
         }
         return;
     }
@@ -2352,18 +2527,34 @@ function _bridgeHydrateContentPreset(slideState, slide, theme) {
     if (presetId === "results-data") {
         _bridgeSetTextByPlaceholders(elements, ["Key Results", "Quantitative summary"], title);
         _bridgeSetTextByPlaceholder(elements, "RESULTS", "Results");
-        _bridgeSetTextByPlaceholders(elements, [
-            "Main finding stated as a clear assertion — the chart below supports this",
-            "Use simple metrics that are easy to edit and defend.",
-        ], summary);
-        _bridgeSetTextByPlaceholder(elements, "Figure 1. Short caption for chart.", _bridgeWordClamp(slide.fig_cap || summary || title, 20));
+        _bridgeSetTextByPlaceholders(
+            elements,
+            [
+                "Main finding stated as a clear assertion — the chart below supports this",
+                "Use simple metrics that are easy to edit and defend.",
+            ],
+            summary,
+        );
+        _bridgeSetTextByPlaceholder(
+            elements,
+            "Figure 1. Short caption for chart.",
+            _bridgeWordClamp(slide.fig_cap || summary || title, 20),
+        );
         const labels = _bridgePointsAsCards(slide.points, 3);
         ["p < 0.001", "n = 1,024", "R² = 0.94"].forEach((placeholder, idx) => {
-            const el = _bridgeSetTextByPlaceholder(elements, placeholder, labels[idx]?.heading || ["Finding", "Evidence", "Impact"][idx]);
+            const el = _bridgeSetTextByPlaceholder(
+                elements,
+                placeholder,
+                labels[idx]?.heading || ["Finding", "Evidence", "Impact"][idx],
+            );
             if (el) el.styles.fontSize = "24px";
         });
         ["3 x 500 ns", "5 clusters", "0.91"].forEach((placeholder, idx) => {
-            const el = _bridgeSetTextByPlaceholder(elements, placeholder, labels[idx]?.heading || ["Finding", "Evidence", "Impact"][idx]);
+            const el = _bridgeSetTextByPlaceholder(
+                elements,
+                placeholder,
+                labels[idx]?.heading || ["Finding", "Evidence", "Impact"][idx],
+            );
             if (el) el.styles.fontSize = "24px";
         });
         ["Statistical Significance", "Sample Size", "Model Fit"].forEach((placeholder, idx) => {
@@ -2391,17 +2582,29 @@ function _bridgeHydrateContentPreset(slideState, slide, theme) {
         _bridgeSetTextByPlaceholder(elements, "WRAP-UP", "Wrap-up");
         _bridgeSetTextByPlaceholder(elements, "Keep the final slide direct and editable.", summary);
         _bridgeSetBulletLines(elements, bullets);
-        _bridgeSetTextByPlaceholders(elements, ["Acknowledgements · Funding · Grant Reference", "Acknowledgements - compute resources - funding"], summary);
+        _bridgeSetTextByPlaceholders(
+            elements,
+            ["Acknowledgements · Funding · Grant Reference", "Acknowledgements - compute resources - funding"],
+            summary,
+        );
         _bridgeSetTextByPlaceholders(elements, ["author@university.edu", "email@institute.edu"], "");
         return;
     }
 
     _bridgeSetTextByPlaceholders(elements, ["Slide Title", "Key claim from simulation and learning"], title);
-    _bridgeSetTextByPlaceholders(elements, [
-        "One clear assertion that summarises the content on this slide",
-        "State one result clearly, then support it with evidence.",
-    ], summary);
-    _bridgeSetTextByPlaceholders(elements, ["Signal", "Finding", "FINDING"], _bridgeWordClamp(slide.points?.[0]?.heading || "Takeaway", 3));
+    _bridgeSetTextByPlaceholders(
+        elements,
+        [
+            "One clear assertion that summarises the content on this slide",
+            "State one result clearly, then support it with evidence.",
+        ],
+        summary,
+    );
+    _bridgeSetTextByPlaceholders(
+        elements,
+        ["Signal", "Finding", "FINDING"],
+        _bridgeWordClamp(slide.points?.[0]?.heading || "Takeaway", 3),
+    );
     _bridgeSetBulletLines(elements, bullets);
     const takeHome = _bridgeFindText(elements, text => text.startsWith("A compact sentence explaining why"));
     if (takeHome) takeHome.content = _bridgeWordClamp(_bridgeNarrativeSummary(slide.points, 2) || summary || title, 28);
@@ -2422,17 +2625,25 @@ function _makeBeamerHeader(theme, sectionTitle) {
     const ui = _bridgeVisualMeta(theme);
     return [
         _makeShapeElement({
-            x: 0, y: 0, width: 1024, height: 72,
+            x: 0,
+            y: 0,
+            width: 1024,
+            height: 72,
             backgroundColor: ui.accent,
             zIndex: 1,
-            borderRadius: "0px"
+            borderRadius: "0px",
         }),
         _makeTextElement({
-            x: 40, y: 20, width: 944,
+            x: 40,
+            y: 20,
+            width: 944,
             content: String(sectionTitle || "Overview"),
-            fontSize: 26, fontWeight: "700", color: "#ffffff", fontFamily: ui.headingFont,
-            textAlign: "left"
-        })
+            fontSize: 26,
+            fontWeight: "700",
+            color: "#ffffff",
+            fontFamily: ui.headingFont,
+            textAlign: "left",
+        }),
     ];
 }
 
@@ -2441,33 +2652,61 @@ function _makeBeamerFooter(theme, presentationTitle, slideNumber, totalSlides) {
     const content = `${String(presentationTitle || "Presentation")} — Slide ${slideNumber} of ${totalSlides}`;
     return [
         _makeShapeElement({
-            x: 0, y: 736, width: 1024, height: 32,
+            x: 0,
+            y: 736,
+            width: 1024,
+            height: 32,
             backgroundColor: "rgba(0,0,0,0.04)",
             zIndex: 1,
-            borderRadius: "0px"
+            borderRadius: "0px",
         }),
         _makeTextElement({
-            x: 40, y: 742, width: 944,
+            x: 40,
+            y: 742,
+            width: 944,
             content: content,
-            fontSize: 12, fontWeight: "500", color: ui.muted, fontFamily: ui.bodyFont,
-            textAlign: "center"
-        })
+            fontSize: 12,
+            fontWeight: "500",
+            color: ui.muted,
+            fontFamily: ui.bodyFont,
+            textAlign: "center",
+        }),
     ];
 }
 
 function _createBridgeTitleSlide(data, theme, presentationTitle, slideNumber, totalSlides) {
-    return _bridgeFinalizeSlide(_bridgeBuildPresetSlide("title-page", theme, elements => {
-        _bridgeSetTextByPlaceholders(elements, ["RESEARCH PRESENTATION", "Molecular Dynamics and Machine Learning"], data.journal_name || "Imported Presentation");
-        _bridgeSetTextByPlaceholder(elements, "Research Title Goes Here", _bridgeCleanImportedText(presentationTitle, "Imported Presentation"));
-        _bridgeSetTextByPlaceholders(elements, ["Author Name · Co-Author Name", "Author Name - Group / Institute - Date"], data.authors || "");
-        const metaText = [data.journal_name, data.publish_date, data.doi ? `DOI: ${data.doi}` : ""].filter(Boolean).join(" · ");
-        _bridgeSetTextByPlaceholders(elements, [
-            "Department · University · Conference 2025",
-            "MD trajectories | protein dynamics | learned representations",
-        ], metaText || _bridgeCleanImportedText(data.sub, "AI-generated research presentation"));
-        _bridgeSetTextByPlaceholder(elements, "contact@university.edu", "");
-    }));
-/*
+    return _bridgeFinalizeSlide(
+        _bridgeBuildPresetSlide("title-page", theme, elements => {
+            _bridgeSetTextByPlaceholders(
+                elements,
+                ["RESEARCH PRESENTATION", "Molecular Dynamics and Machine Learning"],
+                data.journal_name || "Imported Presentation",
+            );
+            _bridgeSetTextByPlaceholder(
+                elements,
+                "Research Title Goes Here",
+                _bridgeCleanImportedText(presentationTitle, "Imported Presentation"),
+            );
+            _bridgeSetTextByPlaceholders(
+                elements,
+                ["Author Name · Co-Author Name", "Author Name - Group / Institute - Date"],
+                data.authors || "",
+            );
+            const metaText = [data.journal_name, data.publish_date, data.doi ? `DOI: ${data.doi}` : ""]
+                .filter(Boolean)
+                .join(" · ");
+            _bridgeSetTextByPlaceholders(
+                elements,
+                [
+                    "Department · University · Conference 2025",
+                    "MD trajectories | protein dynamics | learned representations",
+                ],
+                metaText || _bridgeCleanImportedText(data.sub, "AI-generated research presentation"),
+            );
+            _bridgeSetTextByPlaceholder(elements, "contact@university.edu", "");
+        }),
+    );
+    /*
     const ui = _bridgeVisualMeta(theme);
     const summary = String(data.sub || "AI-generated research presentation");
     const elements = [
@@ -2504,7 +2743,7 @@ function _createBridgeTitleSlide(data, theme, presentationTitle, slideNumber, to
             })
         );
     }
-    
+
     let metaText = [];
     if (data.journal_name) metaText.push(String(data.journal_name));
     if (data.publish_date) metaText.push(String(data.publish_date));
@@ -2530,16 +2769,22 @@ function _createBridgeTitleSlide(data, theme, presentationTitle, slideNumber, to
 }
 
 function _createBridgeSectionSlide(slide, theme, presentationTitle, slideNumber, totalSlides) {
-    return _bridgeFinalizeSlide(_bridgeBuildPresetSlide("section-divider", theme, elements => {
-        _bridgeSetTextByPlaceholder(elements, "02", String(Math.max(1, slideNumber - 1)).padStart(2, "0"));
-        _bridgeSetTextByPlaceholder(elements, "Section Title", _bridgeCleanImportedText(slide.title, "Section"));
-        const description = slide.goal || slide.claim || slide.summary || presentationTitle || "";
-        _bridgeSetTextByPlaceholders(elements, [
-            "A brief description of what this section covers",
-            "Short framing sentence for this part of the MD/ML story.",
-        ], _bridgeWordClamp(description, 18));
-    }));
-/*
+    return _bridgeFinalizeSlide(
+        _bridgeBuildPresetSlide("section-divider", theme, elements => {
+            _bridgeSetTextByPlaceholder(elements, "02", String(Math.max(1, slideNumber - 1)).padStart(2, "0"));
+            _bridgeSetTextByPlaceholder(elements, "Section Title", _bridgeCleanImportedText(slide.title, "Section"));
+            const description = slide.goal || slide.claim || slide.summary || presentationTitle || "";
+            _bridgeSetTextByPlaceholders(
+                elements,
+                [
+                    "A brief description of what this section covers",
+                    "Short framing sentence for this part of the MD/ML story.",
+                ],
+                _bridgeWordClamp(description, 18),
+            );
+        }),
+    );
+    /*
     const ui = _bridgeVisualMeta(theme);
     return {
         id: generateId("slide"),
@@ -2568,7 +2813,7 @@ function _createBridgeEvidenceSlide(slide, theme, currentSectionName, presentati
     const slideState = _bridgeBuildPresetSlide("figure-caption", theme);
     _bridgeHydrateContentPreset(slideState, slide, theme);
     return _bridgeFinalizeSlide(slideState);
-/*
+    /*
     const ui = _bridgeVisualMeta(theme);
     const hasFigure = Boolean(slide.fig_path);
     const bulletContent = _buildBulletContent(slide.points);
@@ -2616,11 +2861,11 @@ function _createBridgeArgumentSlide(slide, theme, currentSectionName, presentati
     const slideState = _bridgeBuildPresetSlide(presetId, theme);
     _bridgeHydrateContentPreset(slideState, slide, theme);
     return _bridgeFinalizeSlide(slideState);
-/*
+    /*
     const ui = _bridgeVisualMeta(theme);
     const bulletContent = _buildBulletContent(slide.points);
     const hasFigure = Boolean(slide.fig_path);
-    
+
     const elements = [
         ..._makeBeamerHeader(theme, currentSectionName),
         _makeTextElement({
@@ -2661,10 +2906,10 @@ function _createBridgeSummarySlide(slide, theme, currentSectionName, presentatio
     const slideState = _bridgeBuildPresetSlide("conclusion", theme);
     _bridgeHydrateContentPreset(slideState, slide, theme);
     return _bridgeFinalizeSlide(slideState);
-/*
+    /*
     const ui = _bridgeVisualMeta(theme);
     const bulletContent = _buildBulletContent(slide.points);
-    
+
     return {
         id: generateId("slide"),
         elements: [
@@ -2691,67 +2936,98 @@ function _createBridgeSummarySlide(slide, theme, currentSectionName, presentatio
 
 function _createBridgeContentSlide(slide, theme, currentSectionName, presentationTitle, slideNumber, totalSlides) {
     const hasFigure = Boolean(slide.fig_path);
-    const pointCount = (Array.isArray(slide.points) ? slide.points.length : 0);
+    const pointCount = Array.isArray(slide.points) ? slide.points.length : 0;
     const dense = _bridgeIsDenseSlide(slide);
     const summaryLike = /future|impact|implication|conclusion|limit|direction/i.test(String(slide.title || ""));
     const hint = String(slide?.layout_hint || "").toLowerCase();
-    
+
     if (summaryLike && pointCount >= 2) {
         return _createBridgeSummarySlide(slide, theme, currentSectionName, presentationTitle, slideNumber, totalSlides);
     }
     if (/text|summary/.test(hint) && !hasFigure) {
-        return _createBridgeArgumentSlide(slide, theme, currentSectionName, presentationTitle, slideNumber, totalSlides);
+        return _createBridgeArgumentSlide(
+            slide,
+            theme,
+            currentSectionName,
+            presentationTitle,
+            slideNumber,
+            totalSlides,
+        );
     }
     if (/comparison|results|data/.test(hint)) {
-        return _createBridgeArgumentSlide(slide, theme, currentSectionName, presentationTitle, slideNumber, totalSlides);
+        return _createBridgeArgumentSlide(
+            slide,
+            theme,
+            currentSectionName,
+            presentationTitle,
+            slideNumber,
+            totalSlides,
+        );
     }
     if (hasFigure && !dense && (slideNumber % 2 === 0 || pointCount <= 2)) {
-        return _createBridgeEvidenceSlide(slide, theme, currentSectionName, presentationTitle, slideNumber, totalSlides);
+        return _createBridgeEvidenceSlide(
+            slide,
+            theme,
+            currentSectionName,
+            presentationTitle,
+            slideNumber,
+            totalSlides,
+        );
     }
     return _createBridgeArgumentSlide(slide, theme, currentSectionName, presentationTitle, slideNumber, totalSlides);
 }
 
 function _attachBridgeEquations(slideState, slide) {
     const equations = Array.isArray(slide?.equations) ? slide.equations : [];
-    const usable = equations.filter(item => item && (
-        (typeof item.path === "string" && item.path.trim())
-        || (typeof item.latex === "string" && item.latex.trim())
-    )).slice(0, slide?.equation_slide ? 4 : 1);
+    const usable = equations
+        .filter(
+            item =>
+                item &&
+                ((typeof item.path === "string" && item.path.trim()) ||
+                    (typeof item.latex === "string" && item.latex.trim())),
+        )
+        .slice(0, slide?.equation_slide ? 4 : 1);
     if (!usable.length) return slideState;
 
     if (slide?.equation_slide) {
         const theme = typeof getPresentationTheme === "function" ? getPresentationTheme() : {};
         const elements = (slideState.elements || []).filter(el => !(el.type === "text" && Array.isArray(el.content)));
         usable.forEach((equation, idx) => {
-            elements.push(_makeTextElement({
-                x: 64,
-                y: 158 + idx * 132,
-                width: 190,
-                height: 34,
-                content: String(equation.label || `Equation ${idx + 1}`),
-                fontSize: 18,
-                fontWeight: "700",
-                color: theme.accentStrong || "#2563EB",
-                fontFamily: theme.headingFont || '"Manrope", sans-serif',
-                lineHeight: "1.2",
-                autoHeight: false,
-            }));
+            elements.push(
+                _makeTextElement({
+                    x: 64,
+                    y: 158 + idx * 132,
+                    width: 190,
+                    height: 34,
+                    content: String(equation.label || `Equation ${idx + 1}`),
+                    fontSize: 18,
+                    fontWeight: "700",
+                    color: theme.accentStrong || "#2563EB",
+                    fontFamily: theme.headingFont || '"Manrope", sans-serif',
+                    lineHeight: "1.2",
+                    autoHeight: false,
+                }),
+            );
             if (equation.path) {
-                elements.push(_makeImageElement({
-                    x: 274,
-                    y: 140 + idx * 132,
-                    width: 660,
-                    height: 92,
-                    content: _normalizeImportedImagePath(equation.path),
-                }));
+                elements.push(
+                    _makeImageElement({
+                        x: 274,
+                        y: 140 + idx * 132,
+                        width: 660,
+                        height: 92,
+                        content: _normalizeImportedImagePath(equation.path),
+                    }),
+                );
             } else {
-                elements.push(_makeEquationElement({
-                    x: 274,
-                    y: 140 + idx * 132,
-                    width: 660,
-                    height: 92,
-                    latexSrc: equation.latex,
-                }));
+                elements.push(
+                    _makeEquationElement({
+                        x: 274,
+                        y: 140 + idx * 132,
+                        width: 660,
+                        height: 92,
+                        latexSrc: equation.latex,
+                    }),
+                );
             }
         });
         return _bridgeFinalizeSlide({ ...slideState, elements });
@@ -2761,19 +3037,19 @@ function _attachBridgeEquations(slideState, slide) {
     const first = usable[0];
     const eqEl = first.path
         ? _makeImageElement({
-            x: hasFigure ? 590 : 660,
-            y: hasFigure ? 652 : 620,
-            width: hasFigure ? 300 : 280,
-            height: 70,
-            content: _normalizeImportedImagePath(first.path),
-        })
+              x: hasFigure ? 590 : 660,
+              y: hasFigure ? 652 : 620,
+              width: hasFigure ? 300 : 280,
+              height: 70,
+              content: _normalizeImportedImagePath(first.path),
+          })
         : _makeEquationElement({
-            x: hasFigure ? 590 : 660,
-            y: hasFigure ? 652 : 620,
-            width: hasFigure ? 300 : 280,
-            height: 70,
-            latexSrc: first.latex,
-        });
+              x: hasFigure ? 590 : 660,
+              y: hasFigure ? 652 : 620,
+              width: hasFigure ? 300 : 280,
+              height: 70,
+              latexSrc: first.latex,
+          });
     return {
         ...slideState,
         elements: [...(slideState.elements || []), eqEl],
@@ -2791,9 +3067,13 @@ function _looksLikeBridgeExport(data) {
 function _bridgeInferPresentationTitle(data) {
     const direct = _bridgeCleanImportedText(data?.title);
     if (direct && !/^untitled|imported presentation$/i.test(direct)) return direct;
-    const firstContent = (data?.slides || []).find(slide => slide?.type === "content" && String(slide?.title || "").trim());
+    const firstContent = (data?.slides || []).find(
+        slide => slide?.type === "content" && String(slide?.title || "").trim(),
+    );
     if (firstContent?.title) return _bridgeCleanImportedText(firstContent.title);
-    const firstSection = (data?.slides || []).find(slide => slide?.type === "section" && String(slide?.title || "").trim());
+    const firstSection = (data?.slides || []).find(
+        slide => slide?.type === "section" && String(slide?.title || "").trim(),
+    );
     if (firstSection?.title) return _bridgeCleanImportedText(firstSection.title);
     return direct || "Imported Presentation";
 }
@@ -2824,18 +3104,27 @@ function _convertBridgeExportToEditorState(data) {
     }
 
     let currentSectionName = "";
-    
+
     const bridgeSlides = _bridgePlanPrimaryVisuals((data.slides || []).map(slide => ({ ...slide })));
 
     for (const slide of bridgeSlides) {
         if (slide.type === "section") {
             currentSectionName = slide.title || "Section";
-            addBridgeSlide(_createBridgeSectionSlide(slide, theme, presentationTitle, currentSlideNumber++, totalSlides));
+            addBridgeSlide(
+                _createBridgeSectionSlide(slide, theme, presentationTitle, currentSlideNumber++, totalSlides),
+            );
         } else if (slide.type === "content") {
             const normalizedSlide = _normalizeBridgeContentSlide(slide);
             addBridgeSlide(
                 _attachBridgeEquations(
-                    _createBridgeContentSlide(normalizedSlide, theme, currentSectionName, presentationTitle, currentSlideNumber++, totalSlides),
+                    _createBridgeContentSlide(
+                        normalizedSlide,
+                        theme,
+                        currentSectionName,
+                        presentationTitle,
+                        currentSlideNumber++,
+                        totalSlides,
+                    ),
                     normalizedSlide,
                 ),
             );
@@ -2988,7 +3277,9 @@ async function runAIPdfImport(file) {
                 adoptPresentationRecord(status.presentation_id, status.result?.title || "Imported Presentation", 1);
             }
             importPresentationData(status.result, { showSuccessAlert: false });
-            showAIImportSuccess(`Presentation generated successfully${status.result?.title ? `: ${status.result.title}` : "!"}`);
+            showAIImportSuccess(
+                `Presentation generated successfully${status.result?.title ? `: ${status.result.title}` : "!"}`,
+            );
             setTimeout(() => hideAIImportProgress(), 1400);
             setProjectSaveHint?.("AI import complete", "success");
             return;
@@ -3124,7 +3415,9 @@ function _clearPresentationViewportLayout() {
 function _getPresentationViewportSize() {
     const viewport = window.visualViewport;
     const browserWidth = Math.round(viewport?.width || window.innerWidth || document.documentElement.clientWidth || 1);
-    const browserHeight = Math.round(viewport?.height || window.innerHeight || document.documentElement.clientHeight || 1);
+    const browserHeight = Math.round(
+        viewport?.height || window.innerHeight || document.documentElement.clientHeight || 1,
+    );
     const fullscreenRect = document.fullscreenElement?.getBoundingClientRect?.();
     const fullscreenWidth = Math.round(fullscreenRect?.width || document.fullscreenElement?.clientWidth || 0);
     const fullscreenHeight = Math.round(fullscreenRect?.height || document.fullscreenElement?.clientHeight || 0);
@@ -3214,8 +3507,7 @@ function _updatePresentationToolButtons() {
         menuToggle,
         chalkTools,
         chalkColorChip,
-    } =
-        _presentationToolsElements();
+    } = _presentationToolsElements();
     chalkBtn?.classList.toggle("is-active", _presentationToolsState.chalkEnabled);
     laserBtn?.classList.toggle("is-active", _presentationToolsState.laserEnabled);
     contextChalkBtn?.classList.toggle("is-active", _presentationToolsState.chalkEnabled);
@@ -3223,7 +3515,10 @@ function _updatePresentationToolButtons() {
     const fullscreen = !!document.fullscreenElement;
     fullscreenBtn?.classList.toggle("is-active", fullscreen);
     contextFullscreenBtn?.classList.toggle("is-active", fullscreen);
-    menuToggle?.classList.toggle("is-active", _presentationToolsState.chalkEnabled || _presentationToolsState.laserEnabled);
+    menuToggle?.classList.toggle(
+        "is-active",
+        _presentationToolsState.chalkEnabled || _presentationToolsState.laserEnabled,
+    );
     chalkTools?.classList.toggle("hidden", !_presentationToolsState.chalkEnabled);
     if (chalkColorChip) {
         chalkColorChip.value = _presentationToolsState.chalkColor;
@@ -3315,7 +3610,10 @@ function _updatePresentationCursorMode() {
     const { wrapper } = _presentationToolsElements();
     if (!wrapper) return;
     wrapper.classList.toggle("presentation-cursor-hidden", _presentationToolsState.laserEnabled);
-    wrapper.classList.toggle("presentation-cursor-chalk", _presentationToolsState.chalkEnabled && !_presentationToolsState.laserEnabled);
+    wrapper.classList.toggle(
+        "presentation-cursor-chalk",
+        _presentationToolsState.chalkEnabled && !_presentationToolsState.laserEnabled,
+    );
 }
 
 function _updatePresentationLaserPosition(event) {
@@ -3499,7 +3797,8 @@ function initPresentationTools() {
 
     document.addEventListener("mousedown", event => {
         const { menu, contextMenu, menuToggle: toggle } = _presentationToolsElements();
-        if (menu?.contains(event.target) || contextMenu?.contains(event.target) || toggle?.contains(event.target)) return;
+        if (menu?.contains(event.target) || contextMenu?.contains(event.target) || toggle?.contains(event.target))
+            return;
         closePresentationMenus();
     });
 
@@ -3604,7 +3903,8 @@ function _getAdvancedAnimationClickGroups(slideIndex) {
     if (!slide) return [];
     const groups = [];
     (slide.elements || []).forEach(el => {
-        const config = typeof normalizeElementAnimationConfig === "function" ? normalizeElementAnimationConfig(el) : null;
+        const config =
+            typeof normalizeElementAnimationConfig === "function" ? normalizeElementAnimationConfig(el) : null;
         if (!config || !Array.isArray(config.timelines)) return;
         config.timelines.forEach((timeline, timelineIndex) => {
             (timeline.animations || []).forEach((animation, animationIndex) => {
@@ -3723,9 +4023,14 @@ function _syncPresenterPayload() {
             section.style.color = theme.defaultTextColor;
             section.style.fontFamily = theme.bodyFont;
         }
-        const bgNode = typeof createSlideBackgroundNode === "function" ? createSlideBackgroundNode(slide.background, { slideIndex: currentSlideIndex }) : null;
+        const bgNode =
+            typeof createSlideBackgroundNode === "function"
+                ? createSlideBackgroundNode(slide.background, { slideIndex: currentSlideIndex })
+                : null;
         if (bgNode) section.appendChild(bgNode);
-        (slide.elements || []).forEach(element => section.appendChild(createElementNode(element, { slideIndex: currentSlideIndex })));
+        (slide.elements || []).forEach(element =>
+            section.appendChild(createElementNode(element, { slideIndex: currentSlideIndex })),
+        );
         return section;
     };
     const currentSlide = state.slides?.[currentSlideIndex];
@@ -3847,6 +4152,39 @@ body{margin:0;font-family:Inter,system-ui,sans-serif;background:#0f172a;color:#e
 <script>
 const syncKey = "${_PRESENTER_SYNC_STORAGE_KEY}";
 const commandKey = "${_PRESENTER_COMMAND_STORAGE_KEY}";
+function sanitizeHtmlForPresenter(html) {
+    if (typeof html !== 'string') return '';
+    const temp = document.createElement('div');
+    temp.innerHTML = html;
+    const allowedTags = new Set(['DIV', 'SPAN', 'P', 'BR', 'STRONG', 'B', 'EM', 'I', 'U', 'OL', 'UL', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6']);
+    function sanitizeNode(node) {
+        if (node.nodeType === Node.TEXT_NODE) return node;
+        if (node.nodeType !== Node.ELEMENT_NODE) return null;
+        if (!allowedTags.has(node.tagName)) {
+            const fragment = document.createDocumentFragment();
+            for (let child of node.childNodes) {
+                const sanitized = sanitizeNode(child);
+                if (sanitized) fragment.appendChild(sanitized.cloneNode(true));
+            }
+            return fragment;
+        }
+        const newNode = document.createElement(node.tagName);
+        for (let child of node.childNodes) {
+            const sanitized = sanitizeNode(child);
+            if (sanitized) newNode.appendChild(sanitized.cloneNode(true));
+        }
+        return newNode;
+    }
+    const fragment = document.createDocumentFragment();
+    for (let child of temp.childNodes) {
+        const sanitized = sanitizeNode(child);
+        if (sanitized) fragment.appendChild(sanitized);
+    }
+    const result = document.createElement('div');
+    result.appendChild(fragment);
+    return result.innerHTML;
+}
+
 const currentEl = document.getElementById("presenter-current");
 const nextEl = document.getElementById("presenter-next");
 const notesEl = document.getElementById("presenter-notes");
@@ -3855,8 +4193,8 @@ const timerEl = document.getElementById("presenter-timer");
 const jumpEl = document.getElementById("presenter-jump");
 function formatTime(ms){const s=Math.max(0,Math.floor(ms/1000));const m=String(Math.floor(s/60)).padStart(2,"0");const r=String(s%60).padStart(2,"0");return m+":"+r;}
 function updateFromPayload(payload){
-  currentEl.innerHTML = payload.currentHtml || "";
-  nextEl.innerHTML = payload.nextHtml || "";
+  currentEl.innerHTML = sanitizeHtmlForPresenter(payload.currentHtml || "");
+  nextEl.innerHTML = sanitizeHtmlForPresenter(payload.nextHtml || "");
   notesEl.textContent = payload.notes || "No notes for this slide.";
   metaEl.textContent = (payload.currentIndex + 1) + " / " + Math.max(1, payload.total || 1);
   timerEl.textContent = formatTime(payload.elapsedMs || 0);
@@ -3929,7 +4267,9 @@ function _preparePresentationSlideAnimations(slideIndex) {
     const restoreFully = _presentationRuntimeState.restorePreviousSlideFully;
     if (restoreFully) {
         _presentationRuntimeState.revealedGroups = _presentationRuntimeState.clickGroups.length;
-        _presentationRuntimeState.clickGroups.forEach(group => group.entries.forEach(entry => _showAnimatedEntry(entry, { animate: false })));
+        _presentationRuntimeState.clickGroups.forEach(group =>
+            group.entries.forEach(entry => _showAnimatedEntry(entry, { animate: false })),
+        );
         _presentationRuntimeState.revealedAdvancedGroups = _presentationRuntimeState.advancedClickGroups.length;
         _presentationRuntimeState.advancedClickGroups.forEach(group => _applyAdvancedAnimationFinal(group));
         _presentationRuntimeState.restorePreviousSlideFully = false;
@@ -4133,7 +4473,7 @@ async function togglePlayMode() {
         if (isPlaying) {
             _schedulePresentationSlideAnimations(targetH);
         }
-        
+
         updatePresentButtonState(isPlaying);
     });
     if (isPlaying) {
@@ -4152,7 +4492,9 @@ async function togglePlayMode() {
         requestAnimationFrame(() => {
             if (typeof restoreEditorZoom === "function") restoreEditorZoom();
             // Allow re-entry after layout has settled
-            requestAnimationFrame(() => { _playModeExiting = false; });
+            requestAnimationFrame(() => {
+                _playModeExiting = false;
+            });
         });
         try {
             _presentationRuntimeState.presenterWindow?.close?.();
@@ -4191,9 +4533,7 @@ function handlePresentationFullscreenChange() {
 function updatePresentButtonState(isPlaying) {
     const btn = document.getElementById("btn-present");
     if (!btn) return;
-    btn.innerHTML = isPlaying
-        ? '<i class="fa-solid fa-stop text-red-500"></i>'
-        : '<i class="fa-solid fa-play"></i>';
+    btn.innerHTML = isPlaying ? '<i class="fa-solid fa-stop text-red-500"></i>' : '<i class="fa-solid fa-play"></i>';
     btn.title = isPlaying ? "Exit Presentation (Esc)" : "Present";
     btn.setAttribute("aria-label", btn.title);
 }
@@ -4221,7 +4561,8 @@ function exportJSON() {
     const filenameBase =
         (typeof currentPresentationTitle !== "undefined" && currentPresentationTitle
             ? currentPresentationTitle
-            : "presentation")
+            : "presentation"
+        )
             .replace(/[^\w\-]+/g, "_")
             .replace(/^_+|_+$/g, "") || "presentation";
     const a = document.createElement("a");
@@ -4265,9 +4606,7 @@ function importPresentationJson() {
                 currentSlideIndex = 0;
                 if (typeof setCurrentPresentationTitle === "function") {
                     setCurrentPresentationTitle(
-                        imported.title ||
-                        file.name.replace(/\.json$/i, "") ||
-                        "Imported Presentation",
+                        imported.title || file.name.replace(/\.json$/i, "") || "Imported Presentation",
                     );
                 }
                 applyPresentationTheme(state.presentationTheme, { persist: false });
@@ -4315,11 +4654,19 @@ const COMMANDS = [
     { id: "add-slide", title: "Add Slide", icon: "fa-plus", action: addSlide },
     { id: "duplicate-slide", title: "Duplicate Slide", icon: "fa-copy", action: duplicateCurrentSlide },
     { id: "delete-slide", title: "Delete Slide", icon: "fa-trash", action: deleteCurrentSlide },
-    { id: "add-text", title: "Add Text Box", icon: "fa-t", action: () => addElement('text') },
-    { id: "add-shape-rect", title: "Add Rectangle", icon: "fa-square", action: () => addShape('rectangle') },
-    { id: "add-shape-circle", title: "Add Circle", icon: "fa-circle", action: () => addShape('circle') },
-    { id: "add-image", title: "Add Image", icon: "fa-image", action: () => { const fileInput = document.getElementById('image-file-upload'); if (fileInput) fileInput.click(); } },
-    { id: "add-video", title: "Add Video", icon: "fa-video", action: () => addElement('video') },
+    { id: "add-text", title: "Add Text Box", icon: "fa-t", action: () => addElement("text") },
+    { id: "add-shape-rect", title: "Add Rectangle", icon: "fa-square", action: () => addShape("rectangle") },
+    { id: "add-shape-circle", title: "Add Circle", icon: "fa-circle", action: () => addShape("circle") },
+    {
+        id: "add-image",
+        title: "Add Image",
+        icon: "fa-image",
+        action: () => {
+            const fileInput = document.getElementById("image-file-upload");
+            if (fileInput) fileInput.click();
+        },
+    },
+    { id: "add-video", title: "Add Video", icon: "fa-video", action: () => addElement("video") },
     { id: "ai-cleanup", title: "AI Clean Up Slide", icon: "fa-wand-magic-sparkles", action: aiCleanUpSlide },
     { id: "present", title: "Toggle Presentation Mode", icon: "fa-play", action: togglePlayMode },
     { id: "export-pdf", title: "Export to PDF", icon: "fa-file-pdf", action: exportPresentationPDF },
@@ -4342,8 +4689,8 @@ function openCommandPalette() {
     input.focus();
     renderCommandPaletteResults("");
 
-    input.oninput = (e) => renderCommandPaletteResults(e.target.value);
-    input.onkeydown = (e) => {
+    input.oninput = e => renderCommandPaletteResults(e.target.value);
+    input.onkeydown = e => {
         if (e.key === "ArrowDown") {
             e.preventDefault();
             commandPaletteSelectedIndex = Math.min(commandPaletteSelectedIndex + 1, commandPaletteResults.length - 1);
@@ -4383,30 +4730,34 @@ function renderCommandPaletteResults(query) {
         return;
     }
 
-    container.innerHTML = commandPaletteResults.map((cmd, index) => `
-        <button id="cmd-item-${index}" class="w-full text-left px-4 py-3 flex items-center gap-3 text-slate-700 hover:bg-slate-50 transition-colors ${index === 0 ? 'bg-slate-50 border-l-2 border-primary text-primary' : 'border-l-2 border-transparent'}" onclick="executeCommandPaletteCommand('${cmd.id}')">
-            <i class="fa-solid ${cmd.icon} w-5 text-center ${index === 0 ? 'text-primary' : 'text-slate-400'}"></i>
+    container.innerHTML = commandPaletteResults
+        .map(
+            (cmd, index) => `
+        <button id="cmd-item-${index}" class="w-full text-left px-4 py-3 flex items-center gap-3 text-slate-700 hover:bg-slate-50 transition-colors ${index === 0 ? "bg-slate-50 border-l-2 border-primary text-primary" : "border-l-2 border-transparent"}" onclick="executeCommandPaletteCommand('${cmd.id}')">
+            <i class="fa-solid ${cmd.icon} w-5 text-center ${index === 0 ? "text-primary" : "text-slate-400"}"></i>
             <span class="text-sm font-medium">${cmd.title}</span>
         </button>
-    `).join("");
+    `,
+        )
+        .join("");
 }
 
 function updateCommandPaletteSelection() {
     commandPaletteResults.forEach((_, index) => {
         const btn = document.getElementById(`cmd-item-${index}`);
         if (!btn) return;
-        const icon = btn.querySelector('i');
+        const icon = btn.querySelector("i");
         if (index === commandPaletteSelectedIndex) {
-            btn.classList.add('bg-slate-50', 'border-primary', 'text-primary');
-            btn.classList.remove('border-transparent', 'text-slate-700');
-            icon?.classList.add('text-primary');
-            icon?.classList.remove('text-slate-400');
+            btn.classList.add("bg-slate-50", "border-primary", "text-primary");
+            btn.classList.remove("border-transparent", "text-slate-700");
+            icon?.classList.add("text-primary");
+            icon?.classList.remove("text-slate-400");
             btn.scrollIntoView({ block: "nearest" });
         } else {
-            btn.classList.remove('bg-slate-50', 'border-primary', 'text-primary');
-            btn.classList.add('border-transparent', 'text-slate-700');
-            icon?.classList.remove('text-primary');
-            icon?.classList.add('text-slate-400');
+            btn.classList.remove("bg-slate-50", "border-primary", "text-primary");
+            btn.classList.add("border-transparent", "text-slate-700");
+            icon?.classList.remove("text-primary");
+            icon?.classList.add("text-slate-400");
         }
     });
 }

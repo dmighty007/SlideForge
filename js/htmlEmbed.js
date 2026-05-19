@@ -90,6 +90,9 @@ function buildAutofitScript(mode) {
                 const mode = ${JSON.stringify(mode)};
                 const rootId = ${JSON.stringify(AUTOFIT_ROOT_ID)};
                 let rafId = 0;
+                let timers = [];
+                let resizeObserver = null;
+                let mutationObserver = null;
 
                 function scheduleApply() {
                     if (rafId) return;
@@ -146,6 +149,27 @@ function buildAutofitScript(mode) {
                     body.style.overflowY = fittedHeight > window.innerHeight ? "auto" : "hidden";
                 }
 
+                function cleanup() {
+                    if (rafId) {
+                        window.cancelAnimationFrame(rafId);
+                        rafId = 0;
+                    }
+                    timers.forEach(timer => clearTimeout(timer));
+                    timers = [];
+
+                    if (resizeObserver) {
+                        resizeObserver.disconnect();
+                        resizeObserver = null;
+                    }
+                    if (mutationObserver) {
+                        mutationObserver.disconnect();
+                        mutationObserver = null;
+                    }
+
+                    window.removeEventListener("load", scheduleApply);
+                    window.removeEventListener("resize", scheduleApply);
+                }
+
                 function boot() {
                     scheduleApply();
 
@@ -155,19 +179,19 @@ function buildAutofitScript(mode) {
                     if (mode !== "autofit") return;
 
                     if (window.ResizeObserver) {
-                        const observer = new ResizeObserver(() => scheduleApply());
-                        observer.observe(document.documentElement);
-                        if (document.body) observer.observe(document.body);
+                        resizeObserver = new ResizeObserver(() => scheduleApply());
+                        resizeObserver.observe(document.documentElement);
+                        if (document.body) resizeObserver.observe(document.body);
                     }
 
-                    const mutationObserver = new MutationObserver(() => scheduleApply());
+                    mutationObserver = new MutationObserver(() => scheduleApply());
                     mutationObserver.observe(document.documentElement, {
                         childList: true,
                         subtree: true,
                     });
 
-                    setTimeout(scheduleApply, 0);
-                    setTimeout(scheduleApply, 120);
+                    timers.push(setTimeout(scheduleApply, 0));
+                    timers.push(setTimeout(scheduleApply, 120));
                 }
 
                 if (document.readyState === "loading") {
@@ -175,6 +199,10 @@ function buildAutofitScript(mode) {
                 } else {
                     boot();
                 }
+
+                // Cleanup on page unload
+                window.addEventListener("beforeunload", cleanup);
+                window.addEventListener("unload", cleanup);
             })();
         </script>
     `;
