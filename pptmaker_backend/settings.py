@@ -120,11 +120,11 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
-DATA_UPLOAD_MAX_MEMORY_SIZE = _env_int("DJANGO_DATA_UPLOAD_MAX_MEMORY_SIZE", 64 * 1024 * 1024)
-FILE_UPLOAD_MAX_MEMORY_SIZE = _env_int("DJANGO_FILE_UPLOAD_MAX_MEMORY_SIZE", 1024 * 1024)
-PPTMAKER_MAX_ASSET_UPLOAD_BYTES = _env_int("PPTMAKER_MAX_ASSET_UPLOAD_BYTES", 25 * 1024 * 1024)
-PPTMAKER_MAX_MOLECULE_UPLOAD_BYTES = _env_int("PPTMAKER_MAX_MOLECULE_UPLOAD_BYTES", 64 * 1024 * 1024)
-PPTMAKER_MAX_USER_ASSET_STORAGE_BYTES = _env_int("PPTMAKER_MAX_USER_ASSET_STORAGE_BYTES", 250 * 1024 * 1024)
+DATA_UPLOAD_MAX_MEMORY_SIZE = _env_int("DJANGO_DATA_UPLOAD_MAX_MEMORY_SIZE", 500 * 1024 * 1024)
+FILE_UPLOAD_MAX_MEMORY_SIZE = _env_int("DJANGO_FILE_UPLOAD_MAX_MEMORY_SIZE", 500 * 1024 * 1024)
+PPTMAKER_MAX_ASSET_UPLOAD_BYTES = _env_int("PPTMAKER_MAX_ASSET_UPLOAD_BYTES", 500 * 1024 * 1024)
+PPTMAKER_MAX_MOLECULE_UPLOAD_BYTES = _env_int("PPTMAKER_MAX_MOLECULE_UPLOAD_BYTES", 500 * 1024 * 1024)
+PPTMAKER_MAX_USER_ASSET_STORAGE_BYTES = _env_int("PPTMAKER_MAX_USER_ASSET_STORAGE_BYTES", 5000 * 1024 * 1024)
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 X_FRAME_OPTIONS = "SAMEORIGIN"
@@ -140,12 +140,14 @@ SECURE_HSTS_PRELOAD = not DEBUG
 # CSP Headers (optional but recommended)
 SECURE_CONTENT_SECURITY_POLICY = {
     "default-src": ("'self'",),
-    "script-src": ("'self'", "'unsafe-inline'"),  # unsafe-inline for inline scripts, consider removing
+    "script-src": ("'self'", "'unsafe-inline'"),
     "style-src": ("'self'", "'unsafe-inline'"),
-    "img-src": ("'self'", "data:", "https:"),
+    "img-src": ("'self'", "data:", "blob:", "https:"),
     "font-src": ("'self'", "data:"),
     "connect-src": ("'self'",),
     "frame-ancestors": ("'self'",),
+    "media-src": ("'self'", "blob:", "data:", "https:"),
+    "frame-src": ("'self'", "blob:", "data:", "https:"),
 }
 # ========== END SECURITY SETTINGS ==========
 

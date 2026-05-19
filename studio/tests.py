@@ -586,8 +586,8 @@ class PPTXExporterRegressionTests(TestCase):
 
 class FrontendExportRegressionTests(TestCase):
     def setUp(self):
-        self.export_js = (Path(__file__).resolve().parent.parent / "js" / "export.js").read_text(encoding="utf-8")
-        self.editor_export_block = "\n".join(self.export_js.splitlines()[:150])
+        self.export_js = (Path(__file__).resolve().parent.parent / "js" / "export" / "export.js").read_text(encoding="utf-8")
+        self.editor_export_block = "\n".join(self.export_js.splitlines()[:350])
 
     def test_pdf_and_png_exports_use_page_setup_dimensions_not_hardcoded_4_3(self):
         self.assertIn("getPresentationPageSetupConfig", self.editor_export_block)
@@ -612,8 +612,8 @@ class FrontendExportRegressionTests(TestCase):
 
     def test_cropped_images_render_consistently_in_previews_editor_and_zip_viewer(self):
         project_root = Path(__file__).resolve().parent.parent
-        render_js = (project_root / "js" / "render.js").read_text(encoding="utf-8")
-        crop_js = (project_root / "js" / "crop.js").read_text(encoding="utf-8")
+        render_js = (project_root / "js" / "editor" / "render.js").read_text(encoding="utf-8")
+        crop_js = (project_root / "js" / "editor" / "crop.js").read_text(encoding="utf-8")
 
         self.assertIn("function _createImageContentNode", render_js)
         self.assertIn("_createImageContentNode(elData, { interactive: false })", render_js)
@@ -627,8 +627,8 @@ class FrontendExportRegressionTests(TestCase):
 
     def test_html_embeds_are_sandboxed_without_same_origin(self):
         project_root = Path(__file__).resolve().parent.parent
-        html_embed_js = (project_root / "js" / "htmlEmbed.js").read_text(encoding="utf-8")
-        render_js = (project_root / "js" / "render.js").read_text(encoding="utf-8")
+        html_embed_js = (project_root / "js" / "embeds" / "htmlEmbed.js").read_text(encoding="utf-8")
+        render_js = (project_root / "js" / "editor" / "render.js").read_text(encoding="utf-8")
         properties_js = (project_root / "js" / "properties.js").read_text(encoding="utf-8")
 
         self.assertIn("function applyHtmlEmbedSandbox", html_embed_js)
@@ -652,8 +652,8 @@ class StaticHardeningSourceTests(TestCase):
     def test_frontend_cleanup_todos_are_applied(self):
         project_root = Path(__file__).resolve().parent.parent
         index_html = (project_root / "index.html").read_text(encoding="utf-8")
-        main_js = (project_root / "js" / "main.js").read_text(encoding="utf-8")
-        state_js = (project_root / "js" / "state.js").read_text(encoding="utf-8")
+        main_js = (project_root / "js" / "core" / "main.js").read_text(encoding="utf-8")
+        state_js = (project_root / "js" / "core" / "state.js").read_text(encoding="utf-8")
 
         self.assertEqual(index_html.count("katex@0.16.9/dist/katex.min.css"), 1)
         self.assertIn('for="present-chalk-color-chip"', index_html)
@@ -663,8 +663,8 @@ class StaticHardeningSourceTests(TestCase):
 
     def test_imported_state_and_text_rendering_are_sanitized(self):
         project_root = Path(__file__).resolve().parent.parent
-        state_js = (project_root / "js" / "state.js").read_text(encoding="utf-8")
-        text_content_js = (project_root / "js" / "textContent.js").read_text(encoding="utf-8")
+        state_js = (project_root / "js" / "core" / "state.js").read_text(encoding="utf-8")
+        text_content_js = (project_root / "js" / "text" / "textContent.js").read_text(encoding="utf-8")
 
         self.assertIn("function sanitizeTextHtml", state_js)
         self.assertIn("SAFE_TEXT_TAGS", state_js)

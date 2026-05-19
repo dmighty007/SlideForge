@@ -161,6 +161,20 @@ function _normalizeSlideIndex(index) {
     return Math.max(0, Math.min(index, state.slides.length - 1));
 }
 
+function _inferVideoType(url) {
+    const value = String(url || "").trim();
+    if (!value) return "direct";
+    if (/^data:video\//i.test(value) || /^blob:/i.test(value) || value.startsWith("/media/")) return "local";
+    const parseableValue = /^[a-z][a-z0-9+.-]*:\/\//i.test(value) ? value : `https://${value}`;
+    try {
+        const parsed = new URL(parseableValue);
+        const host = parsed.hostname.replace(/^www\./, "");
+        if (host === "youtube.com" || host === "youtube-nocookie.com" || host === "youtu.be") return "youtube";
+        if (host === "vimeo.com" || host.endsWith(".vimeo.com")) return "vimeo";
+    } catch (_err) {}
+    return "direct";
+}
+
 // ─── Slide Commands ──────────────────────────────────────────────────────────
 
 function addSlide(targetIndex = null) {
@@ -228,6 +242,16 @@ function updateSlideCounter() {
 
 function addElement(type, options = {}) {
     const activeIndex = ensureActiveSlideSync();
+    const videoSource =
+        type === "video"
+            ? String(
+                  options.content ??
+                      window.prompt?.("Enter a video URL, YouTube/Vimeo link, or direct MP4/WebM URL", "") ??
+                      "",
+              ).trim()
+            : "";
+    if (type === "video" && !videoSource) return;
+
     saveStateToUndo();
     const id = generateId("el");
     const theme = getPresentationTheme();
@@ -242,7 +266,9 @@ function addElement(type, options = {}) {
         ...(type === "shape" ? { shapeType } : {}),
         ...(type === "image" ? { lockAspectRatio: true, imageAspectRatio: 1.5 } : {}),
         ...(type === "shape" && isArrowShape ? { arrowHeadSize: 38, arrowShaftSize: 36 } : {}),
-        ...(type === "video" ? { videoType: "youtube", muted: true, autoplay: false, loop: false } : {}),
+        ...(type === "video"
+            ? { videoType: _inferVideoType(videoSource), muted: true, autoplay: false, loop: false }
+            : {}),
         ...(type === "molecule" && typeof createMoleculeElementData === "function" ? createMoleculeElementData() : {}),
         ...(type === "pdf"
             ? {
@@ -297,7 +323,7 @@ function addElement(type, options = {}) {
                   : type === "image"
                     ? "https://picsum.photos/400/300"
                     : type === "video"
-                      ? "https://www.youtube.com/watch?v=aqz-KE-bpKQ"
+                      ? videoSource
                       : type === "pdf"
                         ? ""
                         : type === "molecule" && typeof createDefaultMoleculeContent === "function"
@@ -1277,6 +1303,8 @@ async function handleImageFileInsert(event) {
 
 function handleVideoFileInsert(event) {
     const file = event.target.files?.[0];
+    const targetVideoId = event.target.dataset?.targetVideoId || "";
+    if (event.target.dataset) delete event.target.dataset.targetVideoId;
     event.target.value = "";
     if (!file) return;
     if (!file.type.startsWith("video/")) {
@@ -1284,7 +1312,7 @@ function handleVideoFileInsert(event) {
         return;
     }
 
-    _insertUploadedVideo(file).catch(err => {
+    _insertUploadedVideo(file, { targetId: targetVideoId }).catch(err => {
         console.error("Video insert error:", err);
         setProjectSaveHint?.(err?.message || "Failed to process video", "danger");
     });
@@ -1374,7 +1402,7 @@ function _isSessionOnlyAssetFallbackError(err) {
     return (
         message === "Backend API unavailable" ||
         message === "Authentication required" ||
-        /401|403|404|NetworkError|Failed to fetch|fetch resource/i.test(message)
+        /401|403|404|NetworkError|Network error|Failed to fetch|fetch resource/i.test(message)
     );
 }
 
@@ -1491,48 +1519,149 @@ function clearCurrentSlideBackground() {
     setCurrentSlideBackground(null);
 }
 
-async function _insertUploadedVideo(file) {
-    if (typeof setProjectSaveHint === "function") {
-        setProjectSaveHint("Uploading video…", "warn");
-    }
-
-    let content;
-    let localMimeType = file.type || "video/mp4";
-    try {
-        const upload = await _uploadAssetFile(file);
-        content = upload.url;
-        localMimeType = upload.contentType || localMimeType;
-    } catch (err) {
-        if (!_isSessionOnlyAssetFallbackError(err)) throw err;
-        content = _createSessionObjectUrl(file);
-        if (typeof setProjectSaveHint === "function") {
-            setProjectSaveHint("Video stored for this session only", "warn");
+function _uploadAssetFileWithProgress(file, onProgress, { presentationId = currentPresentationId } = {}) {
+    return new Promise((resolve, reject) => {
+        if (typeof isBackendApiAvailable === "function" && !isBackendApiAvailable()) {
+            reject(new Error("Backend API unavailable"));
+            return;
         }
-    }
 
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "/api/assets/upload/");
+
+        const csrfToken = document.cookie.match(/csrftoken=([^;]+)/)?.[1];
+        if (csrfToken) {
+            xhr.setRequestHeader("X-CSRFToken", csrfToken);
+        }
+
+        xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+                const percent = (e.loaded / e.total) * 100;
+                onProgress(percent);
+            }
+        };
+
+        xhr.onload = () => {
+            let payload = {};
+            try {
+                payload = JSON.parse(xhr.responseText);
+            } catch (_err) {}
+
+            if (xhr.status >= 200 && xhr.status < 300) {
+                resolve(payload);
+            } else {
+                reject(new Error(payload.error || `Upload failed (${xhr.status})`));
+            }
+        };
+
+        xhr.onerror = () => reject(new Error("Network error"));
+
+        const formData = new FormData();
+        formData.append("file", file, file.name || "asset");
+        if (presentationId) {
+            formData.append("presentationId", presentationId);
+        }
+        xhr.send(formData);
+    });
+}
+async function _insertUploadedVideo(file, { targetId = "" } = {}) {
     const activeIndex = ensureActiveSlideSync();
+    const slide = state.slides[activeIndex];
+    if (!slide) return;
+    const existingVideo = targetId ? slide.elements.find(el => el.id === targetId && el.type === "video") : null;
     saveStateToUndo();
-    const id = generateId("el");
-    state.slides[activeIndex].elements.push({
+    const id = existingVideo?.id || generateId("el");
+
+    const nextVideoData = {
         id,
         type: "video",
-        x: 100,
-        y: 100,
-        width: "480px",
-        height: "270px",
-        content,
+        x: existingVideo?.x ?? 100,
+        y: existingVideo?.y ?? 100,
+        width: existingVideo?.width ?? "480px",
+        height: existingVideo?.height ?? "270px",
+        content: "",
         videoType: "local",
-        localMimeType,
-        muted: true,
-        autoplay: false,
-        loop: false,
-        styles: { zIndex: getNextZIndex(), borderRadius: "8px" },
-    });
+        localMimeType: file.type || "video/mp4",
+        muted: existingVideo?.muted ?? true,
+        autoplay: existingVideo?.autoplay ?? false,
+        loop: existingVideo?.loop ?? false,
+        uploading: true,
+        uploadProgress: 0,
+        styles: {
+            ...(existingVideo?.styles || {}),
+            zIndex: existingVideo?.styles?.zIndex ?? getNextZIndex(),
+            borderRadius: existingVideo?.styles?.borderRadius ?? "8px",
+        },
+        animation: existingVideo?.animation ?? null,
+    };
+    if (existingVideo) {
+        Object.assign(existingVideo, nextVideoData);
+    } else {
+        slide.elements.push(nextVideoData);
+    }
+
     renderSlidesFromState();
     selectElement(id);
-    schedulePresentationAutosave?.(150);
-}
 
+    if (typeof setProjectSaveHint === "function") {
+        setProjectSaveHint("Uploading video to media...", "warn");
+    }
+
+    _uploadAssetFileWithProgress(file, (progress) => {
+        const slide = state.slides[activeIndex];
+        if (!slide) return;
+        const elData = slide.elements.find(e => e.id === id);
+        if (elData) {
+            elData.uploadProgress = progress;
+            const badge = document.querySelector(`#${id} .upload-progress-badge`);
+            const bar = document.querySelector(`#${id} .upload-progress-bar`);
+            if (badge) badge.textContent = `Uploading... ${Math.round(progress)}%`;
+            if (bar) bar.style.width = `${progress}%`;
+        }
+    }).then(upload => {
+        const slide = state.slides[activeIndex];
+        if (!slide) return;
+        const elData = slide.elements.find(e => e.id === id);
+        if (elData) {
+            elData.content = upload.url;
+            elData.localMimeType = upload.contentType || elData.localMimeType;
+            elData.videoType = "local";
+            delete elData.uploading;
+            delete elData.uploadProgress;
+            renderSlidesFromState();
+            selectElement(id);
+            schedulePresentationAutosave?.(150);
+            if (typeof setProjectSaveHint === "function") {
+                setProjectSaveHint("Video uploaded successfully", "success");
+            }
+        }
+    }).catch(err => {
+        console.error("Video background upload failed:", err);
+        const slide = state.slides[activeIndex];
+        if (!slide) return;
+        const elData = slide.elements.find(e => e.id === id);
+        if (elData) {
+            delete elData.uploading;
+            delete elData.uploadProgress;
+            if (_isSessionOnlyAssetFallbackError(err)) {
+                elData.content = _createSessionObjectUrl(file);
+                elData.videoType = "local";
+                elData.localMimeType = file.type || "video/mp4";
+            }
+            renderSlidesFromState();
+            selectElement(id);
+            schedulePresentationAutosave?.(150);
+        }
+        if (typeof setProjectSaveHint === "function") {
+            const isTooLarge = err?.message?.toLowerCase().includes("too large") || String(err).toLowerCase().includes("too large");
+            if (_isSessionOnlyAssetFallbackError(err)) {
+                setProjectSaveHint("Video stored for this session only", "warn");
+            } else {
+                setProjectSaveHint(isTooLarge ? "Video exceeds maximum size (500MB)" : "Video upload failed", "error");
+            }
+        }
+    });
+}
 function _dataUrlToFile(dataUrl, filename = "video.mp4") {
     const parts = String(dataUrl || "").split(",", 2);
     if (parts.length < 2) throw new Error("Invalid data URL");

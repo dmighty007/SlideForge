@@ -65,6 +65,30 @@
     overflow: visible;
 }
 
+.canvas-element[data-type="image"],
+.canvas-element[data-type="video"] {
+    padding: 0 !important;
+    position: absolute;
+    overflow: hidden;
+    line-height: 0;
+}
+
+.canvas-element[data-type="image"] > img,
+.canvas-element[data-type="image"] > div,
+.canvas-element[data-type="video"] > iframe,
+.canvas-element[data-type="video"] > video,
+.canvas-element[data-type="video"] > .video-wrapper {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    max-width: none !important;
+    max-height: none !important;
+    display: block;
+    box-sizing: border-box;
+    margin: 0 !important;
+}
+
 .equation-container {
     padding: 4px !important;
     line-height: 1 !important;
@@ -1700,6 +1724,8 @@ body.play-mode-active {
 .video-wrapper {
     width: 100%;
     height: 100%;
+    padding: 0 !important;
+    box-sizing: border-box;
     overflow: hidden;
     border-radius: inherit;
 }
@@ -1972,4 +1998,3 @@ aside {
 .element-locked * {
     pointer-events: none !important;
 }
-

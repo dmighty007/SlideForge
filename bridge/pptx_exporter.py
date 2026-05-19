@@ -671,7 +671,9 @@ class PPTXExporter:
                 self._add_table_element(slide, el, x, y, w, h)
             elif el_type == "connector":
                 self._add_connector_element(slide, el, x, y, w, h)
-            elif el_type in {"video", "html", "pdf", "molecule", "chart", "equation", "latex"}:
+            elif el_type == "video":
+                self._add_video_element(slide, el, x, y, w, h)
+            elif el_type in {"html", "pdf", "molecule", "chart", "equation", "latex"}:
                 self._add_placeholder_element(slide, el, x, y, w, h)
         except Exception as e:
             print(f"Error adding element {el.get('id')}: {e}")
@@ -849,3 +851,49 @@ class PPTXExporter:
             run.text = f"{label} placeholder"
         run.font.size = Pt(14)
         run.font.color.rgb = self.theme["muted"]
+
+    def _resolve_local_video_path(self, content: str) -> Optional[Path]:
+        normalized = str(content or "").strip()
+        if not normalized or "://" in normalized:
+            return None
+
+        candidates: list[Path] = []
+        if normalized.startswith("/media/"):
+            candidates.append(self.project_root / normalized.lstrip("/"))
+        elif normalized.startswith("/static/"):
+            candidates.append(self.project_root / normalized.lstrip("/"))
+        elif normalized.startswith("/"):
+            candidates.append(Path(normalized))
+        else:
+            candidates.append(self.project_root / normalized)
+
+        safe_roots = self._safe_asset_roots()
+        for candidate in candidates:
+            try:
+                path = candidate.expanduser().resolve()
+            except Exception:
+                continue
+            if path.exists() and path.is_file():
+                if any(path == root or path.is_relative_to(root) for root in safe_roots):
+                    return path
+        return None
+
+    def _add_video_element(self, slide: Any, el: Dict[str, Any], x: Inches, y: Inches, w: Inches, h: Inches):
+        content = el.get("content", "")
+        video_path = self._resolve_local_video_path(content)
+        if video_path:
+            try:
+                slide.shapes.add_movie(
+                    str(video_path),
+                    x,
+                    y,
+                    width=w,
+                    height=h,
+                    mime_type="video/mp4"
+                )
+                return
+            except Exception as e:
+                print(f"Error embedding video file in PPTX: {e}")
+
+        # Fall back to visual placeholder if file resolution or embedding fails
+        self._add_placeholder_element(slide, el, x, y, w, h)

@@ -1019,6 +1019,9 @@ function renderSlidesFromState(options = {}) {
         requestAnimationFrame(() => _resizePresentationChalkboard());
     }
     requestAnimationFrame(syncActiveSlideMedia);
+    if (typeof updateGroupBound === "function") {
+        updateGroupBound();
+    }
     const nextPreviewSignature = getSlidePreviewStructureSignature();
     if (_slidePreviewStructureSignature === nextPreviewSignature) {
         renderSlidePreviews(currentSlideIndex);
@@ -1240,8 +1243,12 @@ function updateActiveSlidePreview(index) {
 function _applyStylesToElement(el, styles) {
     if (!styles) return;
     const textProps = ["color", "fontSize", "fontFamily", "fontWeight", "fontStyle", "textAlign", "lineHeight", "textShadow"];
+    const mediaTypesWithoutPadding = new Set(["image", "video"]);
+    const paddingProps = new Set(["padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"]);
+    const suppressPadding = mediaTypesWithoutPadding.has(el?.dataset?.type);
     Object.entries(styles).forEach(([prop, value]) => {
         if (value === undefined || value === null) return;
+        if (suppressPadding && paddingProps.has(prop)) return;
         if (prop === "textStrokeWidth") {
             if (String(value) === "0" || String(value) === "0px") {
                 el.style.removeProperty("-webkit-text-stroke-width");
@@ -1262,6 +1269,13 @@ function _applyStylesToElement(el, styles) {
         const priority = textProps.includes(prop) ? "important" : "";
         el.style.setProperty(cssProp, value, priority);
     });
+    if (suppressPadding) {
+        el.style.setProperty("padding", "0", "important");
+        el.style.setProperty("overflow", "hidden");
+        ["padding-top", "padding-right", "padding-bottom", "padding-left"].forEach(prop => {
+            el.style.removeProperty(prop);
+        });
+    }
 }
 
 function _getTableCellDisplayStyles(tableData, rowIndex, colIndex, cellStyles = {}) {
@@ -1605,6 +1619,7 @@ function _createImageContentNode(elData, { interactive = false } = {}) {
         img.className = "pointer-events-none";
         img.draggable = false;
         img.style.position = "absolute";
+        img.style.inset = "0";
         img.style.left = `${crop.leftPercent}%`;
         img.style.top = `${crop.topPercent}%`;
         img.style.width = `${crop.widthPercent}%`;
@@ -1624,6 +1639,8 @@ function _createImageContentNode(elData, { interactive = false } = {}) {
         ? "w-full h-full object-cover rounded-[inherit] pointer-events-none"
         : "w-full h-full object-cover rounded-[inherit]";
     img.draggable = false;
+    img.style.position = "absolute";
+    img.style.inset = "0";
     img.style.display = "block";
     img.style.setProperty("margin", "0", "important");
     return img;
@@ -2079,29 +2096,36 @@ function _applyTypeContent(el, elData, options = {}) {
             videoNode.setAttribute("playsinline", "true");
             videoNode.setAttribute("preload", "metadata");
 
-            const source = document.createElement("source");
-            source.src = elData.content;
-
-            // Attempt to detect mime type for better browser compatibility
-            if (elData.content?.startsWith("data:video/")) {
-                const mime = elData.content.split(";")[0].split(":")[1];
-                if (mime) source.type = mime;
-            } else if (elData.content?.startsWith("blob:")) {
-                if (elData.localMimeType) source.type = elData.localMimeType;
-            } else {
-                const urlLower = String(elData.content || "").toLowerCase();
-                if (urlLower.endsWith(".mp4")) source.type = "video/mp4";
-                else if (urlLower.endsWith(".webm")) source.type = "video/webm";
-                else if (urlLower.endsWith(".ogg")) source.type = "video/ogg";
-                else if (urlLower.endsWith(".mov")) source.type = "video/quicktime";
+            if (elData.content) {
+                videoNode.src = videoInfo.url || elData.content;
             }
-            videoNode.appendChild(source);
-            videoNode.onerror = () => {
+            videoNode.style.objectFit = "cover";
+
+            const handleVideoError = () => {
                 console.error("Video element error for ID:", elData.id, videoNode.error);
+                const progressOverlay = el.querySelector(".upload-progress-overlay");
+                if (progressOverlay) progressOverlay.remove();
+
+                let errOverlay = el.querySelector(".video-error-overlay");
+                if (!errOverlay) {
+                    errOverlay = document.createElement("div");
+                    errOverlay.className = "video-error-overlay absolute inset-0 bg-slate-950/85 backdrop-blur-[4px] rounded-[inherit] flex flex-col items-center justify-center p-4 gap-2.5 z-20 text-center text-slate-300 font-medium";
+                    errOverlay.innerHTML = `
+                        <i class="fa-solid fa-circle-exclamation text-rose-500 text-lg"></i>
+                        <span class="text-xs font-semibold text-slate-100">Unsupported Format or Corrupted Video</span>
+                        <span class="text-[10px] text-slate-400 max-w-[220px] leading-relaxed">The browser failed to decode this video file (demuxer or codec error).</span>
+                        <button type="button" class="mt-1 px-3 py-1 bg-white/10 hover:bg-white/15 active:bg-white/20 text-[9px] font-bold uppercase tracking-wider rounded border border-white/10 transition-colors pointer-events-auto" onclick="document.getElementById('video-file-upload').click()">Try another file</button>
+                    `;
+                    el.appendChild(errOverlay);
+                }
             };
+
+            videoNode.onerror = handleVideoError;
             videoNode.innerHTML += "Your browser does not support the video tag or this format.";
         }
         videoNode.className = "w-full h-full rounded-[inherit] pointer-events-none play-mode-events-auto";
+        videoNode.style.position = "absolute";
+        videoNode.style.inset = "0";
         videoNode.dataset.autoplay = elData.autoplay ? "true" : "false";
         if (videoNode.tagName === "IFRAME") {
             videoNode.addEventListener("load", () => {
@@ -2116,11 +2140,25 @@ function _applyTypeContent(el, elData, options = {}) {
         const overlay = document.createElement("div");
         overlay.className = "absolute inset-0 z-10 cursor-move play-mode-hidden";
         el.appendChild(overlay);
-
         const badge = document.createElement("span");
         badge.innerHTML = `<i class="fa-solid fa-film mr-1"></i> Video`;
         badge.className = "absolute top-2 left-2 px-2 py-1 bg-gray-900/80 text-white text-[10px] rounded border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none";
         el.appendChild(badge);
+
+        if (elData.uploading) {
+            const progressOverlay = document.createElement("div");
+            progressOverlay.className = "upload-progress-overlay absolute inset-0 bg-slate-950/70 backdrop-blur-[2px] rounded-[inherit] flex flex-col items-center justify-center gap-2.5 z-20 text-white font-medium transition-all duration-300";
+            progressOverlay.innerHTML = `
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-spinner fa-spin text-[#38bdf8] text-sm"></i>
+                    <span class="upload-progress-badge text-[11px] font-semibold tracking-wider text-slate-100">Uploading... ${Math.round(elData.uploadProgress || 0)}%</span>
+                </div>
+                <div class="w-1/2 h-1 bg-white/20 rounded-full overflow-hidden">
+                    <div class="upload-progress-bar h-full bg-[#38bdf8] transition-all duration-200" style="width: ${elData.uploadProgress || 0}%"></div>
+                </div>
+            `;
+            el.appendChild(progressOverlay);
+        }
     } else if (elData.type === "html") {
         el.classList.toggle("html-interactive", Boolean(elData.htmlInteractive));
         el.setAttribute("data-html-mode", normalizeHtmlMode(elData));
@@ -2271,7 +2309,8 @@ function _applyTypeContent(el, elData, options = {}) {
 function _parseVideoUrl(url) {
     if (!url) return { type: "none" };
     const value = String(url).trim();
-    const parseableValue = /^[a-z][a-z0-9+.-]*:\/\//i.test(value) ? value : `https://${value}`;
+    const isRelativeOrInline = /^(\/|\.\/|\.\.\/|data:|blob:)/i.test(value);
+    const parseableValue = /^[a-z][a-z0-9+.-]*:\/\//i.test(value) || isRelativeOrInline ? value : `https://${value}`;
     let parsed = null;
     try {
         parsed = new URL(parseableValue);
@@ -2282,6 +2321,7 @@ function _parseVideoUrl(url) {
         if (host === "youtu.be") videoId = parsed.pathname.split("/").filter(Boolean)[0] || "";
         else if (parsed?.searchParams.has("v")) videoId = parsed.searchParams.get("v") || "";
         else if (parsed?.pathname.includes("/embed/")) videoId = parsed.pathname.split("/embed/")[1].split("/")[0];
+        else if (parsed?.pathname.includes("/shorts/")) videoId = parsed.pathname.split("/shorts/")[1].split("/")[0];
         else videoId = parsed?.pathname.split("/").filter(Boolean)[0] || "";
         return { type: "youtube", id: videoId };
     }
@@ -2289,7 +2329,7 @@ function _parseVideoUrl(url) {
         const videoId = parsed?.pathname.split("/").filter(Boolean)[0] || "";
         return { type: "vimeo", id: videoId };
     }
-    return { type: "direct", url: value };
+    return { type: "direct", url: parseableValue };
 }
 
 function buildPdfEmbedSrc(url) {

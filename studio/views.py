@@ -429,7 +429,7 @@ def _classify_asset_upload(uploaded_file):
 def _user_asset_storage_bytes(user):
     result = Asset.objects.filter(owner=user).aggregate(
         total=Sum(
-            Cast(KeyTextTransform("size", "metadata_json"), models.IntegerField),
+            Cast(KeyTextTransform("size", "metadata_json"), models.IntegerField()),
             default=0
         )
     )
@@ -485,6 +485,29 @@ def asset_upload(request):
         return auth_error
 
     uploaded_file = request.FILES.get("file")
+    local_path = request.POST.get("local_path")
+
+    if not uploaded_file and local_path:
+        import os
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        import mimetypes
+
+        if not os.path.exists(local_path) or not os.path.isfile(local_path):
+            return _json_error("Local file does not exist or is not a file")
+
+        try:
+            filename = os.path.basename(local_path)
+            with open(local_path, "rb") as f:
+                file_content = f.read()
+            content_type, _ = mimetypes.guess_type(local_path)
+            uploaded_file = SimpleUploadedFile(
+                filename,
+                file_content,
+                content_type=content_type or "application/octet-stream"
+            )
+        except Exception as e:
+            return _json_error(f"Failed to read local file: {str(e)}")
+
     if uploaded_file is None:
         return _json_error("Missing file upload")
 
