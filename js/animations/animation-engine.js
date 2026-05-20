@@ -364,10 +364,24 @@ class AnimationEngine {
         element.style.transform = [baseTransform, localTransform].filter(Boolean).join(" ");
     }
 
+    _hasOpacityAnimation(animation) {
+        return Object.prototype.hasOwnProperty.call(animation || {}, "startOpacity")
+            || Object.prototype.hasOwnProperty.call(animation || {}, "endOpacity");
+    }
+
     _captureElementSnapshot(element) {
         const snapshotKey = this._getElementSnapshotKey(element);
         if (!snapshotKey || this.elementSnapshots.has(snapshotKey)) return;
         const textHost = element.querySelector(".text-element-content");
+        const styledChildren = this._getAnimationStyledChildren(element).map(child => ({
+            element: child,
+            strokeDasharray: child.style.strokeDasharray,
+            strokeDashoffset: child.style.strokeDashoffset,
+            strokeWidth: child.style.strokeWidth,
+            opacity: child.style.opacity,
+            height: child.style.height,
+            filter: child.style.filter,
+        }));
         this.elementSnapshots.set(snapshotKey, {
             transform: element.style.transform,
             opacity: element.style.opacity,
@@ -379,10 +393,14 @@ class AnimationEngine {
             fill: element.style.fill,
             stroke: element.style.stroke,
             borderWidth: element.style.borderWidth,
+            strokeWidth: element.style.strokeWidth,
+            clipPath: element.style.clipPath,
             zIndex: element.style.zIndex,
             parentPerspective: element.parentElement?.style.perspective || "",
             textHost,
             textHtml: textHost ? textHost.innerHTML : null,
+            textText: textHost ? textHost.textContent || "" : null,
+            styledChildren,
         });
     }
 
@@ -401,6 +419,8 @@ class AnimationEngine {
         element.style.fill = snapshot.fill;
         element.style.stroke = snapshot.stroke;
         element.style.borderWidth = snapshot.borderWidth;
+        element.style.strokeWidth = snapshot.strokeWidth;
+        element.style.clipPath = snapshot.clipPath;
         element.style.zIndex = snapshot.zIndex;
         if (element.parentElement) {
             element.parentElement.style.perspective = snapshot.parentPerspective;
@@ -408,7 +428,74 @@ class AnimationEngine {
         if (snapshot.textHost?.isConnected && snapshot.textHtml !== null) {
             snapshot.textHost.innerHTML = snapshot.textHtml;
         }
+        (snapshot.styledChildren || []).forEach(childSnapshot => {
+            if (!childSnapshot.element?.isConnected) return;
+            childSnapshot.element.style.strokeDasharray = childSnapshot.strokeDasharray;
+            childSnapshot.element.style.strokeDashoffset = childSnapshot.strokeDashoffset;
+            childSnapshot.element.style.strokeWidth = childSnapshot.strokeWidth;
+            childSnapshot.element.style.opacity = childSnapshot.opacity;
+            childSnapshot.element.style.height = childSnapshot.height;
+            childSnapshot.element.style.filter = childSnapshot.filter;
+        });
         delete element.dataset.sfAnimationBaseTransform;
+    }
+
+    _getAnimationStyledChildren(element) {
+        if (!element) return [];
+        return Array.from(
+            element.querySelectorAll(
+                "path, circle, line, rect, polyline, polygon, ellipse, [data-chart-bar], .chart-bar, [data-chart-line], .chart-line",
+            ),
+        );
+    }
+
+    _getDrawableElements(element) {
+        if (!element) return [];
+        const selector = "path, circle, line, rect, polyline, polygon, ellipse";
+        if (element.matches?.(selector)) return [element];
+        const svg = element.tagName?.toLowerCase() === "svg" ? element : element.querySelector?.("svg");
+        return svg ? Array.from(svg.querySelectorAll(selector)) : [];
+    }
+
+    _getDrawableLength(drawable) {
+        const measured = drawable?.getTotalLength?.();
+        if (Number.isFinite(measured) && measured > 0) return measured;
+        const box = drawable?.getBBox?.();
+        if (box && Number.isFinite(box.width) && Number.isFinite(box.height)) {
+            return Math.max(1, (box.width + box.height) * 2);
+        }
+        return 1000;
+    }
+
+    _getSnapshotForElement(element) {
+        const key = this._getElementSnapshotKey(element);
+        return key ? this.elementSnapshots.get(key) || null : null;
+    }
+
+    _getTextMorphText(element, animation, key, fallback = "") {
+        const value = animation?.[key];
+        if (typeof value === "string" && value.length > 0) return value;
+        const snapshot = this._getSnapshotForElement(element);
+        if (typeof snapshot?.textText === "string") return snapshot.textText;
+        const textHost = element?.querySelector?.(".text-element-content") || element;
+        return textHost?.textContent || fallback || "";
+    }
+
+    _hasExplicitTextMorphText(animation, key) {
+        return typeof animation?.[key] === "string" && animation[key].length > 0;
+    }
+
+    _applyTextMorphFinalContent(element, textHost, animation) {
+        if (this._hasExplicitTextMorphText(animation, "endText")) {
+            textHost.textContent = animation.endText;
+            return;
+        }
+        const snapshot = this._getSnapshotForElement(element);
+        if (typeof snapshot?.textHtml === "string") {
+            textHost.innerHTML = snapshot.textHtml;
+        } else {
+            textHost.textContent = this._getTextMorphText(element, animation, "endText");
+        }
     }
 
     /**
@@ -420,10 +507,16 @@ class AnimationEngine {
                 element.style.opacity = String(animation.startOpacity ?? 0);
                 break;
             case "fadeOut":
-                element.style.opacity = "1";
+                element.style.opacity = String(animation.startOpacity ?? 1);
                 break;
             case "scaleInPlace":
-                this._setTransform(element, `scale3d(${animation.startScale}, ${animation.startScale}, 1)`);
+                this._setTransform(
+                    element,
+                    `scale3d(${animation.startScale ?? 0.8}, ${animation.startScale ?? 0.8}, 1)`,
+                );
+                if (this._hasOpacityAnimation(animation)) {
+                    element.style.opacity = String(animation.startOpacity ?? 1);
+                }
                 break;
             case "moveInPlace":
                 const startX = animation.startX ?? 0;
@@ -463,20 +556,19 @@ class AnimationEngine {
             case "create":
                 // Create animation: start hidden with no stroke
                 element.style.opacity = "0";
-                if (element.tagName.toLowerCase() === "svg" || element.querySelector("path")) {
-                    const paths = element.querySelectorAll("path, circle, line, polyline");
-                    paths.forEach(path => {
-                        path.style.strokeDasharray = path.getTotalLength?.() || "1000";
-                        path.style.strokeDashoffset = path.getTotalLength?.() || "1000";
+                if (this._getDrawableElements(element).length) {
+                    this._getDrawableElements(element).forEach(path => {
+                        const length = this._getDrawableLength(path);
+                        path.style.strokeDasharray = `${length}`;
+                        path.style.strokeDashoffset = `${length}`;
                     });
                 }
                 break;
             case "uncreate":
                 // Uncreate animation: start visible with full stroke
                 element.style.opacity = "1";
-                if (element.tagName.toLowerCase() === "svg" || element.querySelector("path")) {
-                    const paths = element.querySelectorAll("path, circle, line, polyline");
-                    paths.forEach(path => {
+                if (this._getDrawableElements(element).length) {
+                    this._getDrawableElements(element).forEach(path => {
                         path.style.strokeDasharray = "";
                         path.style.strokeDashoffset = "0";
                     });
@@ -494,11 +586,11 @@ class AnimationEngine {
                 break;
             case "write":
                 // For write animation (SVG path), set initial state with no stroke
-                if (element.tagName.toLowerCase() === "svg" || element.querySelector("path")) {
-                    const paths = element.querySelectorAll("path, circle, line, polyline");
-                    paths.forEach(path => {
-                        path.style.strokeDasharray = path.getTotalLength?.() || "1000";
-                        path.style.strokeDashoffset = path.getTotalLength?.() || "1000";
+                if (this._getDrawableElements(element).length) {
+                    this._getDrawableElements(element).forEach(path => {
+                        const length = this._getDrawableLength(path);
+                        path.style.strokeDasharray = `${length}`;
+                        path.style.strokeDashoffset = `${length}`;
                     });
                 }
                 break;
@@ -524,10 +616,13 @@ class AnimationEngine {
                 element.style.opacity = String(animation.endOpacity ?? 1);
                 break;
             case "fadeOut":
-                element.style.opacity = "0";
+                element.style.opacity = String(animation.endOpacity ?? 0);
                 break;
             case "scaleInPlace":
-                this._setTransform(element, `scale3d(${animation.endScale}, ${animation.endScale}, 1)`);
+                this._setTransform(element, `scale3d(${animation.endScale ?? 1}, ${animation.endScale ?? 1}, 1)`);
+                if (this._hasOpacityAnimation(animation)) {
+                    element.style.opacity = String(animation.endOpacity ?? 1);
+                }
                 break;
             case "moveInPlace":
                 const endX = animation.endX ?? 0;
@@ -567,9 +662,8 @@ class AnimationEngine {
             case "create":
                 // Create animation: end fully visible with full stroke
                 element.style.opacity = "1";
-                if (element.tagName.toLowerCase() === "svg" || element.querySelector("path")) {
-                    const paths = element.querySelectorAll("path, circle, line, polyline");
-                    paths.forEach(path => {
+                if (this._getDrawableElements(element).length) {
+                    this._getDrawableElements(element).forEach(path => {
                         path.style.strokeDasharray = "";
                         path.style.strokeDashoffset = "0";
                     });
@@ -578,11 +672,11 @@ class AnimationEngine {
             case "uncreate":
                 // Uncreate animation: end fully hidden with no stroke
                 element.style.opacity = "0";
-                if (element.tagName.toLowerCase() === "svg" || element.querySelector("path")) {
-                    const paths = element.querySelectorAll("path, circle, line, polyline");
-                    paths.forEach(path => {
-                        path.style.strokeDasharray = path.getTotalLength?.() || "1000";
-                        path.style.strokeDashoffset = path.getTotalLength?.() || "1000";
+                if (this._getDrawableElements(element).length) {
+                    this._getDrawableElements(element).forEach(path => {
+                        const length = this._getDrawableLength(path);
+                        path.style.strokeDasharray = `${length}`;
+                        path.style.strokeDashoffset = `${length}`;
                     });
                 }
                 break;
@@ -598,9 +692,8 @@ class AnimationEngine {
                 break;
             case "write":
                 // For write animation (SVG path), set final state with full stroke
-                if (element.tagName.toLowerCase() === "svg" || element.querySelector("path")) {
-                    const paths = element.querySelectorAll("path, circle, line, polyline");
-                    paths.forEach(path => {
+                if (this._getDrawableElements(element).length) {
+                    this._getDrawableElements(element).forEach(path => {
                         path.style.strokeDasharray = "";
                         path.style.strokeDashoffset = "0";
                     });
@@ -665,10 +758,12 @@ class AnimationEngine {
         const startScale = animation.startScale ?? 0.8;
         const endScale = animation.endScale ?? 1;
         const scale = interpolate(startScale, endScale, progress);
-        const opacity = interpolate(animation.startOpacity ?? 0, animation.endOpacity ?? 1, progress);
 
         this._setTransform(element, `scale3d(${scale}, ${scale}, 1)`);
-        element.style.opacity = String(Math.max(0, Math.min(1, opacity)));
+        if (this._hasOpacityAnimation(animation)) {
+            const opacity = interpolate(animation.startOpacity ?? 1, animation.endOpacity ?? 1, progress);
+            element.style.opacity = String(Math.max(0, Math.min(1, opacity)));
+        }
     }
 
     _applyRotate(element, animation, progress) {
@@ -677,27 +772,13 @@ class AnimationEngine {
     }
 
     _applyWrite(element, animation, progress) {
-        // For SVG elements, use stroke-dasharray technique
-        if (element.tagName.toLowerCase() === "svg" || element.querySelector("svg")) {
-            const svg = element.tagName.toLowerCase() === "svg" ? element : element.querySelector("svg");
-            const paths = svg.querySelectorAll("path, circle, line, rect, polyline");
-
-            paths.forEach(path => {
-                const length = path.getTotalLength?.() || 0;
-                if (length > 0) {
-                    const drawLength = length * progress;
-                    path.style.strokeDasharray = `${drawLength} ${length}`;
-                    path.style.strokeDashoffset = "0";
-                }
-            });
-        } else if (element.tagName.toLowerCase() === "path") {
-            const length = element.getTotalLength?.() || 0;
-            if (length > 0) {
-                const drawLength = length * progress;
-                element.style.strokeDasharray = `${drawLength} ${length}`;
-                element.style.strokeDashoffset = "0";
-            }
-        }
+        const drawables = this._getDrawableElements(element);
+        drawables.forEach(path => {
+            const length = this._getDrawableLength(path);
+            const offset = length * (1 - Math.max(0, Math.min(1, progress)));
+            path.style.strokeDasharray = `${length}`;
+            path.style.strokeDashoffset = `${offset}`;
+        });
     }
 
     _applyCreate(element, animation, progress) {
@@ -756,12 +837,12 @@ class AnimationEngine {
 
         const strokeWidth = interpolate(startStrokeWidth, endStrokeWidth, progress);
 
-        if (element.tagName.toLowerCase() === "svg") {
-            const paths = element.querySelectorAll("path, circle, line, rect, polyline");
+        if (element.tagName.toLowerCase() === "svg" || element.querySelector("svg")) {
+            const paths = this._getDrawableElements(element);
             paths.forEach(path => {
                 path.style.strokeWidth = String(strokeWidth);
             });
-        } else if (element.tagName.toLowerCase() === "path") {
+        } else if (element.matches?.("path, circle, line, rect, polyline, polygon, ellipse")) {
             element.style.strokeWidth = String(strokeWidth);
         } else {
             element.style.borderWidth = String(strokeWidth) + "px";
@@ -896,9 +977,21 @@ class AnimationEngine {
     // ADVANCED: TextMorph - transform text content with animation
     _applyTextMorph(element, animation, progress) {
         const textHost = element.querySelector(".text-element-content") || element;
-        const originalText = textHost.textContent || "";
-        const startText = animation.startText || originalText;
-        const endText = animation.endText || "";
+        if (progress >= 1) {
+            this._applyTextMorphFinalContent(element, textHost, animation);
+            if (animation.endColor) {
+                element.style.color = animation.endColor;
+            }
+            if (Object.prototype.hasOwnProperty.call(animation, "endOpacity")) {
+                element.style.opacity = String(animation.endOpacity);
+            }
+            this._setTransform(element, `scale3d(${animation.endScale || 1}, ${animation.endScale || 1}, 1)`);
+            return;
+        }
+        const originalText = this._getTextMorphText(element, animation, "endText");
+        const startText =
+            typeof animation.startText === "string" && animation.startText.length > 0 ? animation.startText : "";
+        const endText = this._getTextMorphText(element, animation, "endText", originalText);
         const morphMode = animation.morphMode || "letter-by-letter";
 
         let displayText = "";
@@ -923,15 +1016,16 @@ class AnimationEngine {
             displayText = progress >= 0.5 ? endText : startText;
         }
 
-        // Update text content
         textHost.textContent = displayText;
 
         // Interpolate color and scale
-        const color = interpolateColor(animation.startColor || "#000000", animation.endColor || "#000000", progress);
         const scale = interpolate(animation.startScale || 1, animation.endScale || 1, progress);
         const opacity = interpolate(animation.startOpacity ?? 1, animation.endOpacity ?? 1, progress);
 
-        element.style.color = color;
+        if (animation.startColor || animation.endColor) {
+            const color = interpolateColor(animation.startColor || animation.endColor, animation.endColor || animation.startColor, progress);
+            element.style.color = color;
+        }
         this._setTransform(element, `scale3d(${scale}, ${scale}, 1)`);
         element.style.opacity = String(opacity);
     }
@@ -939,19 +1033,27 @@ class AnimationEngine {
     // Initial state for text morphing
     _applyTextMorphInitial(element, animation) {
         const textHost = element.querySelector(".text-element-content") || element;
-        const startText = animation.startText || "";
+        const startText =
+            typeof animation.startText === "string" && animation.startText.length > 0 ? animation.startText : "";
         textHost.textContent = startText;
-        element.style.color = animation.startColor || "#000000";
-        element.style.opacity = String(animation.startOpacity ?? 1);
+        if (animation.startColor) {
+            element.style.color = animation.startColor;
+        }
+        if (Object.prototype.hasOwnProperty.call(animation, "startOpacity")) {
+            element.style.opacity = String(animation.startOpacity);
+        }
     }
 
     // Final state for text morphing
     _applyTextMorphFinal(element, animation) {
         const textHost = element.querySelector(".text-element-content") || element;
-        const endText = animation.endText || "";
-        textHost.textContent = endText;
-        element.style.color = animation.endColor || "#000000";
-        element.style.opacity = String(animation.endOpacity ?? 1);
+        this._applyTextMorphFinalContent(element, textHost, animation);
+        if (animation.endColor) {
+            element.style.color = animation.endColor;
+        }
+        if (Object.prototype.hasOwnProperty.call(animation, "endOpacity")) {
+            element.style.opacity = String(animation.endOpacity);
+        }
     }
 
     // ADVANCED: AnimatedChart - progressive reveal of chart data
@@ -996,7 +1098,7 @@ class AnimationEngine {
                 line.style.strokeDashoffset = "0";
             } else {
                 line.style.opacity = "0";
-                line.style.strokeDashoffset = line.getTotalLength?.();
+                line.style.strokeDashoffset = String(this._getDrawableLength(line));
             }
         });
     }
@@ -1050,7 +1152,9 @@ class AnimationEngine {
         const intensity = animation.intensity || 0.2;
         const amplitude = animation.amplitude || 5;
         if (progress >= 1) {
-            element.style.opacity = String(animation.endOpacity ?? 1);
+            if (this._hasOpacityAnimation(animation)) {
+                element.style.opacity = String(animation.endOpacity ?? 1);
+            }
             this._setTransform(element, "");
             return;
         }
@@ -1143,16 +1247,39 @@ class AnimationEngine {
     // ADVANCED: Glow - Pulsing glow effect
     _applyGlow(element, animation, progress) {
         const glowColor = animation.glowColor || "#ffff00";
-        const startBlur = animation.startBlur || 5;
+        const startBlur = Math.max(0, Number(animation.startBlur) || 0);
         const peakBlur = animation.peakBlur || 20;
         const pulses = animation.pulses || 2;
+        const clampedProgress = Math.max(0, Math.min(1, progress));
+        const pulseWave = Math.abs(Math.sin(clampedProgress * pulses * Math.PI));
+        const envelope = Math.sin(clampedProgress * Math.PI);
+        const strength = Math.max(0, Math.min(1, pulseWave * envelope));
 
-        // Create pulsing effect
-        const cycleProgress = (progress * pulses) % 1;
-        const t = Math.sin(cycleProgress * Math.PI) * 0.5 + 0.5;
-        const blurAmount = startBlur + (peakBlur - startBlur) * t;
+        if (strength <= 0.001) {
+            element.style.filter = "";
+            return;
+        }
 
-        element.style.filter = `drop-shadow(0 0 ${blurAmount}px ${glowColor})`;
+        const blurAmount = startBlur + (peakBlur - startBlur) * strength;
+        const alpha = 0.22 + 0.78 * strength;
+        element.style.filter = `drop-shadow(0 0 ${blurAmount}px ${this._colorWithAlpha(glowColor, alpha)})`;
+    }
+
+    _colorWithAlpha(color, alpha) {
+        const hex = String(color || "").trim();
+        const match = hex.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+        if (!match) return color;
+        const value =
+            match[1].length === 3
+                ? match[1]
+                      .split("")
+                      .map(char => char + char)
+                      .join("")
+                : match[1];
+        const r = parseInt(value.slice(0, 2), 16);
+        const g = parseInt(value.slice(2, 4), 16);
+        const b = parseInt(value.slice(4, 6), 16);
+        return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, alpha))})`;
     }
 }
 
@@ -1229,12 +1356,22 @@ function playConfiguredSlideAnimations(slideIndex = 0, options = {}) {
 }
 
 // Helper to stop all animations
-function stopSlideAnimations() {
+function stopSlideAnimations(options = {}) {
     const engine = getAnimationEngine();
     window.clearTimeout(engine._autoStopTimeout);
     engine.pause();
-    engine.seek(0);
-    engine.restoreElements();
+    if (options.discardSnapshots) {
+        engine.clearAnimations();
+        engine.elementSnapshots.clear();
+        engine.playheadTime = 0;
+        return;
+    }
+    if (options.seekToStart !== false) {
+        engine.seek(0);
+    }
+    if (options.restoreElements !== false) {
+        engine.restoreElements();
+    }
 }
 
 // Export

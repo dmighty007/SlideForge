@@ -473,7 +473,7 @@ const ANIMATION_PRESETS = {
         delay: 0,
         easing: "easeOut",
         startText: "",
-        endText: "Text",
+        endText: "",
         morphMode: "letter-by-letter",
         startColor: "#000000",
         endColor: "#000000",

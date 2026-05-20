@@ -4691,6 +4691,7 @@ async function togglePlayMode() {
         });
     } else {
         _playModeExiting = true;
+        _resetAnimations();
         document.body.classList.remove("play-mode-active");
     }
 
@@ -4731,7 +4732,6 @@ async function togglePlayMode() {
         _ensurePresenterMessaging();
         _presentationRuntimeState.presenterStartTs = Date.now();
     } else {
-        _resetAnimations();
         resetPresentationTools();
         _clearPresentationViewportLayout();
         // Only request fullscreen exit if we're still in fullscreen
@@ -4797,7 +4797,7 @@ function _playSlideAnimations(slideIndex) {
 function _resetAnimations() {
     document.querySelectorAll(".canvas-element").forEach(el => _clearAnimationClasses(el));
     if (typeof stopSlideAnimations === "function") {
-        stopSlideAnimations();
+        stopSlideAnimations({ discardSnapshots: true, seekToStart: false, restoreElements: false });
     }
     _presentationRuntimeState.slideIndex = -1;
     _presentationRuntimeState.clickGroups = [];

@@ -4,6 +4,14 @@
  */
 
 // Helper: Build type-specific animation property inputs
+function escapeAnimationAttr(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+}
+
 function buildAnimationTypeSpecificProps(anim, elementId, timelineIdx, animIdx) {
     const id = `${elementId}_${timelineIdx}_${animIdx}`;
     let html = "";
@@ -335,6 +343,16 @@ function buildAnimationTypeSpecificProps(anim, elementId, timelineIdx, animIdx) 
                     `<option value="${m}" ${(anim.morphMode||'letter-by-letter')===m?'selected':''}>${m}</option>`
                   ).join('')}
                 </select>
+              </div>
+              <div class="prop">
+                <label>Start Text:</label>
+                <textarea rows="2" placeholder="Blank by default"
+                  onchange="updateAnimationProperty('${elementId}', ${timelineIdx}, ${animIdx}, 'startText', this.value)">${escapeAnimationAttr(anim.startText || "")}</textarea>
+              </div>
+              <div class="prop">
+                <label>End Text:</label>
+                <textarea rows="2" placeholder="Uses the current element text when blank"
+                  onchange="updateAnimationProperty('${elementId}', ${timelineIdx}, ${animIdx}, 'endText', this.value)">${escapeAnimationAttr(anim.endText || "")}</textarea>
               </div>
               <div class="prop-row">
                 <div class="prop">
@@ -684,7 +702,9 @@ function buildAnimationInspectorPanel(data) {
 .sf-anim-item-props .prop { display: flex; align-items: center; gap: 6px; font-size: 11px; }
 .sf-anim-item-props .prop label { flex: 0 0 68px; font-size: 10px; font-weight: 600; color: var(--text-sub,#64748b); }
 .sf-anim-item-props .prop input,
-.sf-anim-item-props .prop select { flex: 1; padding: 3px 6px; border: 1px solid rgba(148,163,184,0.3); border-radius: 5px; font-size: 11px; font-family: inherit; background: var(--surface,#fff); }
+.sf-anim-item-props .prop select,
+.sf-anim-item-props .prop textarea { flex: 1; padding: 3px 6px; border: 1px solid rgba(148,163,184,0.3); border-radius: 5px; font-size: 11px; font-family: inherit; background: var(--surface,#fff); color: var(--text-main,#0f172a); box-sizing: border-box; min-width: 0; }
+.sf-anim-item-props .prop textarea { resize: vertical; line-height: 1.35; min-height: 42px; }
 .sf-anim-item-props .prop .unit { flex: 0 0 20px; font-size: 10px; color: var(--text-sub,#94a3b8); }
 .sf-anim-item-props .prop-row { display: flex; gap: 10px; }
 .sf-anim-item-props .prop-row .prop { flex: 1; }
@@ -1058,6 +1078,8 @@ function updateAnimationProperty(elementId, timelineIdx, animIdx, property, valu
         case "emphasisType":
         case "destructionMode":
         case "morphMode":
+        case "startText":
+        case "endText":
         case "colorProperty":
         case "pathType":
         case "chartType":
