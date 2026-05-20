@@ -319,6 +319,9 @@
                     <button onclick="openShapePicker()" class="toolbar-btn insert-tool-btn" title="Shapes and Arrows" aria-label="Shapes and Arrows">
                         <i class="fa-regular fa-square"></i>
                     </button>
+                    <button onclick="toggleWhiteboardMode()" class="toolbar-btn insert-tool-btn text-indigo-600 bg-indigo-50 border border-indigo-200/50 hover:bg-indigo-100" id="btn-whiteboard-toggle" title="Whiteboard" aria-label="Whiteboard">
+                        <i class="fa-solid fa-chalkboard"></i>
+                    </button>
                 </div>
                 <div class="toolbar-cluster">
                     <button onclick="addConnector('line')" class="toolbar-btn insert-tool-btn" title="Line Connector" aria-label="Line Connector">
@@ -632,6 +635,97 @@
                     <i class="fa-regular fa-trash-can w-4"></i> Delete
                 </button>
             </div>
+
+            <!-- ══════ Whiteboard Overlay (positioned over the active slide) ══════ -->
+            <div id="whiteboard-overlay-container" class="fixed z-[9000] opacity-0 pointer-events-none transition-opacity duration-150" style="display: none;">
+                <canvas id="slideforge-whiteboard" class="w-full h-full block bg-transparent pointer-events-auto"></canvas>
+            </div>
+
+            <!-- Floating Whiteboard Toolbar -->
+            <div id="whiteboard-floating-toolbar" class="fixed top-4 left-1/2 -translate-x-1/2 z-[9010] bg-white/90 backdrop-blur-xl border border-slate-200/80 rounded-2xl px-4 py-2.5 shadow-2xl flex items-center gap-3 transition-all duration-300 ease-out transform scale-95 opacity-0 pointer-events-none">
+                <div class="flex items-center gap-1.5 border-r border-slate-200/80 pr-3">
+                    <span class="text-[10px] uppercase font-bold tracking-wider text-indigo-600 flex items-center gap-1">
+                        <i class="fa-solid fa-chalkboard"></i> Whiteboard
+                    </span>
+                </div>
+                <div class="flex items-center gap-1">
+                    <button onclick="setWhiteboardTool('select')" id="wb-tool-select" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-600 hover:bg-slate-100 transition-colors" title="Select / Move">
+                        <i class="fa-solid fa-arrow-pointer text-xs"></i>
+                    </button>
+                    <button onclick="setWhiteboardTool('pen')" id="wb-tool-pen" class="w-8 h-8 rounded-lg flex items-center justify-center text-indigo-600 bg-indigo-50/80 font-bold transition-colors" title="Smooth Pen">
+                        <i class="fa-solid fa-pen text-xs"></i>
+                    </button>
+                    <button onclick="setWhiteboardTool('rectangle')" id="wb-tool-rectangle" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-600 hover:bg-slate-100 transition-colors" title="Hand-Drawn Rectangle">
+                        <i class="fa-regular fa-square text-xs"></i>
+                    </button>
+                    <button onclick="setWhiteboardTool('diamond')" id="wb-tool-diamond" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-600 hover:bg-slate-100 transition-colors" title="Diamond">
+                        <i class="fa-regular fa-gem text-xs"></i>
+                    </button>
+                    <button onclick="setWhiteboardTool('ellipse')" id="wb-tool-ellipse" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-600 hover:bg-slate-100 transition-colors" title="Hand-Drawn Ellipse">
+                        <i class="fa-regular fa-circle text-xs"></i>
+                    </button>
+                    <button onclick="setWhiteboardTool('line')" id="wb-tool-line" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-600 hover:bg-slate-100 transition-colors" title="Line">
+                        <i class="fa-solid fa-minus text-xs"></i>
+                    </button>
+                    <button onclick="setWhiteboardTool('arrow')" id="wb-tool-arrow" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-600 hover:bg-slate-100 transition-colors" title="Hand-Drawn Connector Arrow">
+                        <i class="fa-solid fa-arrow-right text-xs"></i>
+                    </button>
+                    <button onclick="setWhiteboardTool('text')" id="wb-tool-text" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-600 hover:bg-slate-100 transition-colors" title="Text">
+                        <i class="fa-solid fa-font text-xs"></i>
+                    </button>
+                    <button onclick="setWhiteboardTool('eraser')" id="wb-tool-eraser" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-600 hover:bg-slate-100 transition-colors" title="Eraser">
+                        <i class="fa-solid fa-eraser text-xs"></i>
+                    </button>
+                </div>
+
+                <div class="w-px h-5 bg-slate-200/80"></div>
+
+                <div class="flex items-center gap-2">
+                    <button onclick="undoWhiteboard()" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors" title="Undo">
+                        <i class="fa-solid fa-rotate-left text-xs"></i>
+                    </button>
+                    <button onclick="redoWhiteboard()" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors" title="Redo">
+                        <i class="fa-solid fa-rotate-right text-xs"></i>
+                    </button>
+                    <button onclick="clearWhiteboard()" class="w-7 h-7 rounded-lg flex items-center justify-center text-rose-500 hover:bg-rose-50 transition-colors" title="Clear Canvas">
+                        <i class="fa-solid fa-trash-can text-xs"></i>
+                    </button>
+                </div>
+
+                <div class="w-px h-5 bg-slate-200/80"></div>
+
+                <div class="flex items-center gap-1.5">
+                    <button onclick="exportWhiteboardSVG()" class="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg text-[10px] font-bold border border-indigo-100 transition-all flex items-center gap-1">
+                        <i class="fa-solid fa-file-export"></i> Export SVG
+                    </button>
+                    <button onclick="exitWhiteboardMode()" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors" title="Exit Whiteboard Mode">
+                        <i class="fa-solid fa-xmark text-sm"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div id="whiteboard-style-panel" class="whiteboard-style-panel opacity-0 pointer-events-none" aria-label="Whiteboard style panel"></div>
+
+            <!-- Whiteboard Guide Card -->
+            <div id="whiteboard-guide-card" class="fixed bottom-6 left-6 z-[9010] bg-white/95 backdrop-blur-xl border border-slate-200/60 rounded-2xl p-4 shadow-2xl flex flex-col gap-2.5 transition-all duration-300 pointer-events-none opacity-0 transform translate-y-4" style="display: none;">
+                <div class="flex items-center gap-2 text-indigo-600 font-extrabold text-[10px] uppercase tracking-wider">
+                    <span class="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-pulse"></span>
+                    <i class="fa-solid fa-circle-info"></i> Whiteboard Controls
+                </div>
+                <div class="space-y-2 text-[11px] text-slate-500 font-semibold">
+                    <div class="flex items-center justify-between gap-4">
+                        <span class="text-slate-400">Draw on slide</span>
+                        <span class="flex gap-1">
+                            <kbd class="px-1.5 py-0.5 bg-slate-100 border border-slate-200/80 rounded text-[9px] font-mono shadow-sm">W</kbd>
+                        </span>
+                    </div>
+                    <div class="flex items-center justify-between gap-4">
+                        <span class="text-slate-400">Exit Mode</span>
+                        <kbd class="px-1.5 py-0.5 bg-slate-100 border border-slate-200/80 rounded text-[9px] font-mono shadow-sm">ESC Key</kbd>
+                    </div>
+                </div>
+            </div>
+
         </main>
 
         <!-- ══════════════════════════════════════ RIGHT PANEL (Properties) -->
@@ -909,6 +1003,10 @@
                             <span class="text-sm text-text-main">New Slide</span>
                             <span class="px-2 py-1 bg-surface border border-border rounded-md text-[10px] font-mono text-text-sub group-hover:border-primary/30 transition-colors">Ctrl + M</span>
                         </div>
+                        <div class="flex items-center justify-between group">
+                            <span class="text-sm text-text-main">Toggle Whiteboard</span>
+                            <span class="px-2 py-1 bg-surface border border-border rounded-md text-[10px] font-mono text-text-sub group-hover:border-primary/30 transition-colors">W Key</span>
+                        </div>
                     </div>
                 </section>
                 <section>
@@ -1037,6 +1135,9 @@
     <script src="js/editor/zoom.js?v=20260519-no-slide-bump"></script>
     <script src="js/editor/contextMenu.js"></script>
     <script src="js/core/main.js?v=20260519-no-slide-transition"></script>
+    <script type="module" src="js/drawing/loader.js"></script>
+    <script src="js/sketch/sketchRenderer.js"></script>
+    <script src="js/sketch/sketchMode.js"></script>
     <script src="js/animations/animation-interaction.js?v=20260519-no-slide-transition"></script>
     <script src="js/animations/animation-advanced-tests.js"></script>
     <script>

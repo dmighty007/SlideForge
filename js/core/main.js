@@ -1,4 +1,3 @@
-
 // ─── Global window bindings (Exposed immediately for inline HTML onclick) ─────
 
 window.onload = async () => {
@@ -99,19 +98,17 @@ window.onload = async () => {
         const path = e.composedPath();
         const isElement = path.some(n => n.classList?.contains("canvas-element"));
         const isGroupBound = path.some(n => n.id === "group-bound");
-        const isUi =
-            path.some(
-                n =>
-                    n.id === "properties-panel" ||
-                    n.id === "app-toolbar" ||
-                    n.id === "floating-text-toolbar" ||
-                    n.closest?.("#floating-text-toolbar"),
-            );
+        const isUi = path.some(
+            n =>
+                n.id === "properties-panel" ||
+                n.id === "app-toolbar" ||
+                n.id === "floating-text-toolbar" ||
+                n.closest?.("#floating-text-toolbar"),
+        );
         if (!isElement && !isGroupBound && !isUi && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
             clearSelection();
         }
     });
-
 
     syncPresentationThemeFromState?.({ persist: false });
 
@@ -137,7 +134,10 @@ window.onload = async () => {
         }
         if (typeof _resizePresentationChalkboard === "function") {
             requestAnimationFrame(() => {
-                if (typeof _syncPresentationViewportLayout === "function" && document.body.classList.contains("play-mode-active")) {
+                if (
+                    typeof _syncPresentationViewportLayout === "function" &&
+                    document.body.classList.contains("play-mode-active")
+                ) {
                     _syncPresentationViewportLayout();
                 } else {
                     _resizePresentationChalkboard();
@@ -178,6 +178,7 @@ function setPropertiesPanelVisible(visible, { persist = true } = {}) {
         }
     });
 }
+window.setPropertiesPanelVisible = setPropertiesPanelVisible;
 
 function togglePropertiesPanel() {
     const panel = document.getElementById("properties-panel");
@@ -227,8 +228,6 @@ function initLayersPopover() {
     });
 }
 
-
-
 // ─── Debounced preview refresh (used by properties.js via window) ─────────────
 
 let _previewTimer;
@@ -238,7 +237,8 @@ async function runAutosaveSmokeTest() {
 
     const resultEl = document.createElement("pre");
     resultEl.id = "autosave-smoke-result";
-    resultEl.style.cssText = "position:fixed;top:8px;left:8px;z-index:9999;background:#fff;color:#111;padding:12px;border:1px solid #ccc;max-width:420px;white-space:pre-wrap;";
+    resultEl.style.cssText =
+        "position:fixed;top:8px;left:8px;z-index:9999;background:#fff;color:#111;padding:12px;border:1px solid #ccc;max-width:420px;white-space:pre-wrap;";
     resultEl.textContent = "running";
     document.body.appendChild(resultEl);
 
@@ -253,7 +253,9 @@ async function runAutosaveSmokeTest() {
     };
 
     try {
-        const presentationId = await waitFor(() => currentPresentationId || localStorage.getItem("pptmaker_presentation_id"));
+        const presentationId = await waitFor(
+            () => currentPresentationId || localStorage.getItem("pptmaker_presentation_id"),
+        );
         const initial = await fetch(`/api/presentations/${presentationId}/`).then(r => r.json());
         addSlide();
         await waitFor(async () => {
@@ -288,32 +290,134 @@ async function runAutosaveSmokeTest() {
 // ─── Symbol Picker ─────────────────────────────────────────────────────────────
 
 const _symbols = [
-    'α','β','γ','δ','ε','ζ','η','θ','ι','κ','λ','μ',
-    'ν','ξ','π','ρ','σ','τ','υ','φ','χ','ψ','ω',
-    'Α','Β','Γ','Δ','Ε','Ζ','Η','Θ','Κ','Λ','Μ','Ν',
-    'Ξ','Π','Ρ','Σ','Τ','Υ','Φ','Χ','Ψ','Ω',
-    '∞','∂','∇','∫','∑','∏','√','∈','∉','∩','∪',
-    '⊂','⊃','⊆','⊇','≈','≠','≡','≤','≥','±','×','÷',
-    '→','←','↑','↓','↔','⇒','⇐','⇔',
-    '∀','∃','¬','∧','∨','⊕','⊗','ℝ','ℤ','ℕ','ℂ',
-    '°','′','″','‰','∝','∼','≃','≅','≇','⊥','∥',
-    'ℏ','ℓ','℃','℉','Å','μ','Ω',
+    "α",
+    "β",
+    "γ",
+    "δ",
+    "ε",
+    "ζ",
+    "η",
+    "θ",
+    "ι",
+    "κ",
+    "λ",
+    "μ",
+    "ν",
+    "ξ",
+    "π",
+    "ρ",
+    "σ",
+    "τ",
+    "υ",
+    "φ",
+    "χ",
+    "ψ",
+    "ω",
+    "Α",
+    "Β",
+    "Γ",
+    "Δ",
+    "Ε",
+    "Ζ",
+    "Η",
+    "Θ",
+    "Κ",
+    "Λ",
+    "Μ",
+    "Ν",
+    "Ξ",
+    "Π",
+    "Ρ",
+    "Σ",
+    "Τ",
+    "Υ",
+    "Φ",
+    "Χ",
+    "Ψ",
+    "Ω",
+    "∞",
+    "∂",
+    "∇",
+    "∫",
+    "∑",
+    "∏",
+    "√",
+    "∈",
+    "∉",
+    "∩",
+    "∪",
+    "⊂",
+    "⊃",
+    "⊆",
+    "⊇",
+    "≈",
+    "≠",
+    "≡",
+    "≤",
+    "≥",
+    "±",
+    "×",
+    "÷",
+    "→",
+    "←",
+    "↑",
+    "↓",
+    "↔",
+    "⇒",
+    "⇐",
+    "⇔",
+    "∀",
+    "∃",
+    "¬",
+    "∧",
+    "∨",
+    "⊕",
+    "⊗",
+    "ℝ",
+    "ℤ",
+    "ℕ",
+    "ℂ",
+    "°",
+    "′",
+    "″",
+    "‰",
+    "∝",
+    "∼",
+    "≃",
+    "≅",
+    "≇",
+    "⊥",
+    "∥",
+    "ℏ",
+    "ℓ",
+    "℃",
+    "℉",
+    "Å",
+    "μ",
+    "Ω",
 ];
 
 function openSymbolPicker() {
     captureInlineSelection?.();
     beginFormattingInteraction?.();
-    const modal = document.getElementById('symbol-picker-modal');
-    const grid = document.getElementById('symbol-grid');
+    const modal = document.getElementById("symbol-picker-modal");
+    const grid = document.getElementById("symbol-grid");
     if (!modal || !grid) return;
-    grid.innerHTML = '';
+    grid.innerHTML = "";
     _symbols.forEach(sym => {
-        const btn = document.createElement('button');
+        const btn = document.createElement("button");
         btn.textContent = sym;
         btn.title = sym;
-        btn.style.cssText = 'aspect-ratio:1;border:1px solid #E5E7EB;border-radius:6px;background:white;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.15s;color:#0F172A;padding:4px;';
-        btn.onmouseenter = () => { btn.style.background='#EFF6FF'; btn.style.borderColor='#2563EB'; };
-        btn.onmouseleave = () => { btn.style.background='white'; btn.style.borderColor='#E5E7EB'; };
+        btn.style.cssText =
+            "aspect-ratio:1;border:1px solid #E5E7EB;border-radius:6px;background:white;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.15s;color:#0F172A;padding:4px;";
+        btn.onmouseenter = () => {
+            btn.style.background = "#EFF6FF";
+            btn.style.borderColor = "#2563EB";
+        };
+        btn.onmouseleave = () => {
+            btn.style.background = "white";
+            btn.style.borderColor = "#E5E7EB";
+        };
         btn.onpointerdown = e => {
             e.preventDefault();
             restoreInlineSelection?.();
@@ -321,49 +425,51 @@ function openSymbolPicker() {
         btn.onclick = () => _insertSymbol(sym);
         grid.appendChild(btn);
     });
-    modal.style.display = 'flex';
+    modal.style.display = "flex";
 }
 
 function closeSymbolPicker() {
-    const modal = document.getElementById('symbol-picker-modal');
-    if (modal) modal.style.display = 'none';
+    const modal = document.getElementById("symbol-picker-modal");
+    if (modal) modal.style.display = "none";
     requestAnimationFrame(() => endFormattingInteraction?.());
 }
 
 function openShapePicker() {
-    const modal = document.getElementById('shape-picker-modal');
-    if (modal) modal.style.display = 'flex';
+    const modal = document.getElementById("shape-picker-modal");
+    if (modal) modal.style.display = "flex";
 }
 
 function closeShapePicker() {
-    const modal = document.getElementById('shape-picker-modal');
-    if (modal) modal.style.display = 'none';
+    const modal = document.getElementById("shape-picker-modal");
+    if (modal) modal.style.display = "none";
 }
 
 function insertShapeFromPicker(shapeType) {
-    if (typeof addShape === 'function') {
+    if (typeof addShape === "function") {
         addShape(shapeType);
     }
     closeShapePicker();
 }
 
 function insertConnectorFromPicker(connectorType) {
-    if (typeof addConnector === 'function') {
+    if (typeof addConnector === "function") {
         addConnector(connectorType);
     }
     closeShapePicker();
 }
 
 function _insertSymbol(sym) {
-    const activeIndex = typeof currentSlideIndex !== 'undefined' ? currentSlideIndex : 0;
-    const selectedTextEl = state.slides[activeIndex]?.elements.find(e => state.selectedIds.includes(e.id) && e.type === 'text');
+    const activeIndex = typeof currentSlideIndex !== "undefined" ? currentSlideIndex : 0;
+    const selectedTextEl = state.slides[activeIndex]?.elements.find(
+        e => state.selectedIds.includes(e.id) && e.type === "text",
+    );
     if (selectedTextEl) {
         const dom = document.getElementById(selectedTextEl.id);
-        const editor = dom?.querySelector('.text-element-content');
-        if (editor && editor.contentEditable === 'true') {
+        const editor = dom?.querySelector(".text-element-content");
+        if (editor && editor.contentEditable === "true") {
             saveStateToUndo();
             restoreInlineSelection?.();
-            const inserted = document.execCommand?.('insertText', false, sym);
+            const inserted = document.execCommand?.("insertText", false, sym);
             if (!inserted) {
                 const selection = window.getSelection?.();
                 if (selection && selection.rangeCount) {
@@ -389,21 +495,34 @@ function _insertSymbol(sym) {
         } else {
             // Append to end of content
             saveStateToUndo();
-            const cur = typeof selectedTextEl.content === 'string' ? selectedTextEl.content : '';
+            const cur = typeof selectedTextEl.content === "string" ? selectedTextEl.content : "";
             updateElementState(selectedTextEl.id, { content: cur + sym });
             renderSlidesFromState();
         }
     } else {
         // Create new text element with symbol
         saveStateToUndo();
-        const id = generateId('el');
-        const theme = typeof getPresentationTheme === 'function' ? getPresentationTheme() : { defaultTextColor: '#ffffff', bodyFont: 'Inter, sans-serif' };
+        const id = generateId("el");
+        const theme =
+            typeof getPresentationTheme === "function"
+                ? getPresentationTheme()
+                : { defaultTextColor: "#ffffff", bodyFont: "Inter, sans-serif" };
         state.slides[activeIndex].elements.push({
-            id, type: 'text', x: 200, y: 200,
-            width: '120px', height: 'auto', autoHeight: true,
-            textFitMode: 'autoHeight',
+            id,
+            type: "text",
+            x: 200,
+            y: 200,
+            width: "120px",
+            height: "auto",
+            autoHeight: true,
+            textFitMode: "autoHeight",
             content: sym,
-            styles: { color: theme.defaultTextColor, fontSize: '48px', fontFamily: theme.bodyFont, zIndex: getNextZIndex() },
+            styles: {
+                color: theme.defaultTextColor,
+                fontSize: "48px",
+                fontFamily: theme.bodyFont,
+                zIndex: getNextZIndex(),
+            },
         });
         renderSlidesFromState();
         selectElement(id);
@@ -416,7 +535,7 @@ function _insertSymbol(sym) {
 function groupSelected() {
     if (state.selectedIds.length < 2) return;
     saveStateToUndo();
-    const groupId = generateId('group');
+    const groupId = generateId("group");
     state.selectedIds.forEach(id => {
         updateElementState(id, { groupId });
     });
@@ -426,7 +545,7 @@ function groupSelected() {
 function ungroupSelected() {
     if (state.selectedIds.length === 0) return;
     saveStateToUndo();
-    
+
     // Collect all groupIds present in selection
     const groupIdsToClear = new Set();
     state.selectedIds.forEach(id => {
@@ -452,35 +571,35 @@ window.ungroupSelected = ungroupSelected;
 // ─── Equation Element ─────────────────────────────────────────────────────────
 
 function addEquationElement(latexSrc) {
-    const activeIndex = typeof currentSlideIndex !== 'undefined' ? currentSlideIndex : 0;
+    const activeIndex = typeof currentSlideIndex !== "undefined" ? currentSlideIndex : 0;
     saveStateToUndo();
-    const id = generateId('el');
-    const theme = typeof getPresentationTheme === 'function' ? getPresentationTheme() : { defaultTextColor: '#ffffff' };
+    const id = generateId("el");
+    const theme = typeof getPresentationTheme === "function" ? getPresentationTheme() : { defaultTextColor: "#ffffff" };
 
     // Render KaTeX to HTML string
     let renderedHtml = latexSrc;
     try {
-        if (typeof katex !== 'undefined') {
+        if (typeof katex !== "undefined") {
             renderedHtml = katex.renderToString(latexSrc, { throwOnError: false, displayMode: true });
         }
-    } catch(e) {
+    } catch (e) {
         renderedHtml = `<span style="color:red">${latexSrc}</span>`;
     }
 
     state.slides[activeIndex].elements.push({
         id,
-        type: 'equation',
+        type: "equation",
         latexSrc,
         x: 200,
         y: 200,
-        width: '400px',
-        height: 'auto',
+        width: "400px",
+        height: "auto",
         content: renderedHtml,
         styles: {
-            color: theme.defaultTextColor || '#ffffff',
-            fontSize: '24px',
+            color: theme.defaultTextColor || "#ffffff",
+            fontSize: "24px",
             zIndex: getNextZIndex(),
-            backgroundColor: 'transparent',
+            backgroundColor: "transparent",
         },
     });
     renderSlidesFromState();
@@ -489,17 +608,17 @@ function addEquationElement(latexSrc) {
 
 function switchSidebarTab(tabName) {
     const panels = {
-        'elements': document.getElementById('panel-elements'),
-        'slides': document.getElementById('panel-slides')
+        elements: document.getElementById("panel-elements"),
+        slides: document.getElementById("panel-slides"),
     };
     const tabs = {
-        'elements': document.getElementById('tab-elements'),
-        'slides': document.getElementById('tab-slides')
+        elements: document.getElementById("tab-elements"),
+        slides: document.getElementById("tab-slides"),
     };
 
     Object.keys(panels).forEach(key => {
-        if (panels[key]) panels[key].classList.toggle('hidden', key !== tabName);
-        if (tabs[key]) tabs[key].classList.toggle('sidebar-tab-active', key === tabName);
+        if (panels[key]) panels[key].classList.toggle("hidden", key !== tabName);
+        if (tabs[key]) tabs[key].classList.toggle("sidebar-tab-active", key === tabName);
     });
 }
 
@@ -509,6 +628,7 @@ window.duplicateCurrentSlide = duplicateCurrentSlide;
 window.deleteCurrentSlide = deleteCurrentSlide;
 window.addElement = addElement;
 window.addShape = addShape;
+window.addSketchElement = addSketchElement;
 window.addChart = addChart;
 window.addConnector = addConnector;
 window.addComponent = addComponent;
@@ -574,7 +694,7 @@ window.renderSlidePreviews = renderSlidePreviews;
 window.refreshActiveSlidePreview = refreshActiveSlidePreview;
 window.changePresentationPageSetup = changePresentationPageSetup;
 window.refreshPreviews = () => {
-    if (typeof _previewTimer !== 'undefined') clearTimeout(_previewTimer);
+    if (typeof _previewTimer !== "undefined") clearTimeout(_previewTimer);
     _previewTimer = setTimeout(() => {
         if (typeof refreshActiveSlidePreview === "function") {
             refreshActiveSlidePreview();

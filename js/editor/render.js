@@ -1,5 +1,3 @@
-
-
 const RENDER_REVEAL_FRAGMENT_CLASSES = [
     "fade-in",
     "fade-in-then-out",
@@ -27,7 +25,10 @@ let _suppressSlidePreviewClickUntil = 0;
 let _slidePreviewStructureSignature = "";
 
 function getSlidePreviewStructureSignature() {
-    const slideConfig = typeof getPresentationPageSetupConfig === "function" ? getPresentationPageSetupConfig() : { width: 1024, height: 768 };
+    const slideConfig =
+        typeof getPresentationPageSetupConfig === "function"
+            ? getPresentationPageSetupConfig()
+            : { width: 1024, height: 768 };
     const slideIds = (state.slides || []).map(slide => slide.id).join("|");
     return `${slideConfig.width}x${slideConfig.height}:${slideIds}`;
 }
@@ -84,7 +85,10 @@ function _setStructuredSelectionOffsets(el, start, end = start) {
 
     const fallbackNode = el.lastChild || el;
     range.setStart(startNode || fallbackNode, startNode ? startOffset : fallbackNode.textContent?.length || 0);
-    range.setEnd(endNode || startNode || fallbackNode, endNode ? endOffset : startNode ? startOffset : fallbackNode.textContent?.length || 0);
+    range.setEnd(
+        endNode || startNode || fallbackNode,
+        endNode ? endOffset : startNode ? startOffset : fallbackNode.textContent?.length || 0,
+    );
     selection.removeAllRanges();
     selection.addRange(range);
 }
@@ -239,11 +243,11 @@ function _handleStructuredListBackspace(host) {
     if (!item.contains(range.startContainer)) return false;
 
     const currentText = plainTextFromHtmlSnippet(item.innerHTML).trim();
-    const atStart = range.startOffset === 0 && (
-        range.startContainer === item ||
-        !range.startContainer.textContent ||
-        range.startContainer === item.firstChild
-    );
+    const atStart =
+        range.startOffset === 0 &&
+        (range.startContainer === item ||
+            !range.startContainer.textContent ||
+            range.startContainer === item.firstChild);
 
     if (currentText || !atStart) return false;
     const previous = item.previousElementSibling;
@@ -377,10 +381,10 @@ function _handleStructuredBackspace(el) {
 function _shouldAnimateBulletsIndividually(elData) {
     return Boolean(
         document.body.classList.contains("play-mode-active") &&
-            elData?.type === "text" &&
-            isStructuredBulletContent(elData.content) &&
-            elData.fragmentAnimation &&
-            elData.fragmentAnimation !== "none",
+        elData?.type === "text" &&
+        isStructuredBulletContent(elData.content) &&
+        elData.fragmentAnimation &&
+        elData.fragmentAnimation !== "none",
     );
 }
 
@@ -479,7 +483,10 @@ function syncActiveSlideMedia() {
                 iframe.dataset.mediaWasActive = isActive ? "true" : "false";
                 if (command && iframe.dataset.mediaLoaded === "true") {
                     try {
-                        iframe.contentWindow?.postMessage(JSON.stringify({ event: "command", func: command, args: [] }), "https://www.youtube-nocookie.com");
+                        iframe.contentWindow?.postMessage(
+                            JSON.stringify({ event: "command", func: command, args: [] }),
+                            "https://www.youtube-nocookie.com",
+                        );
                     } catch (_) {}
                 }
             } else if (/player\.vimeo\.com\/video\//i.test(src)) {
@@ -538,7 +545,8 @@ function requestMoleculeIframeViewState(iframe, timeoutMs = 350) {
         function onMessage(event) {
             const message = event.data || {};
             if (event.source !== iframe.contentWindow) return;
-            if (!message || message.type !== "pptmaker:molecule:view-state-response" || message.requestId !== requestId) return;
+            if (!message || message.type !== "pptmaker:molecule:view-state-response" || message.requestId !== requestId)
+                return;
             window.clearTimeout(timeout);
             window.removeEventListener("message", onMessage);
             resolve(message.viewState || null);
@@ -552,11 +560,13 @@ async function syncMoleculeViewStatesFromDom() {
     const frames = Array.from(document.querySelectorAll(".canvas-element[data-type='molecule'] .molecule-embed-frame"));
     if (!frames.length) return false;
     let changed = false;
-    await Promise.all(frames.map(async iframe => {
-        const elementId = iframe.closest(".canvas-element")?.id || "";
-        const viewState = await requestMoleculeIframeViewState(iframe);
-        if (updateMoleculeViewStateInState(elementId, viewState)) changed = true;
-    }));
+    await Promise.all(
+        frames.map(async iframe => {
+            const elementId = iframe.closest(".canvas-element")?.id || "";
+            const viewState = await requestMoleculeIframeViewState(iframe);
+            if (updateMoleculeViewStateInState(elementId, viewState)) changed = true;
+        }),
+    );
     return changed;
 }
 
@@ -596,7 +606,9 @@ function clearSlidePreviewDropState(container = document.getElementById("slide-p
         card.classList.remove("dragging", "drop-before", "drop-after");
     });
     if (_draggedSlidePreviewIndex != null) {
-        container.querySelector(`.slide-preview-card[data-slide-index="${_draggedSlidePreviewIndex}"]`)?.classList.add("dragging");
+        container
+            .querySelector(`.slide-preview-card[data-slide-index="${_draggedSlidePreviewIndex}"]`)
+            ?.classList.add("dragging");
     }
 }
 
@@ -643,9 +655,9 @@ function normalizeConnectorGeometry(elData, absolutePoints = null) {
     const padding = Math.max(28, strokeWidth * 4 + 12);
     const baseX = Number(elData.x) || 0;
     const baseY = Number(elData.y) || 0;
-    const absPoints = (absolutePoints || getConnectorPoints(elData).map(point => ({ x: baseX + point.x, y: baseY + point.y }))).map(
-        point => ({ x: Number(point.x) || 0, y: Number(point.y) || 0 }),
-    );
+    const absPoints = (
+        absolutePoints || getConnectorPoints(elData).map(point => ({ x: baseX + point.x, y: baseY + point.y }))
+    ).map(point => ({ x: Number(point.x) || 0, y: Number(point.y) || 0 }));
 
     const minX = Math.min(...absPoints.map(point => point.x));
     const minY = Math.min(...absPoints.map(point => point.y));
@@ -673,13 +685,19 @@ function buildConnectorPath(elData, startAdj = 0, endAdj = 0) {
         const dx = pts[1].x - pts[0].x;
         const dy = pts[1].y - pts[0].y;
         const len = Math.hypot(dx, dy);
-        if (len > startAdj) { pts[0].x += (dx / len) * startAdj; pts[0].y += (dy / len) * startAdj; }
+        if (len > startAdj) {
+            pts[0].x += (dx / len) * startAdj;
+            pts[0].y += (dy / len) * startAdj;
+        }
     }
     if (endAdj > 0 && n >= 2) {
         const dx = pts[n - 1].x - pts[n - 2].x;
         const dy = pts[n - 1].y - pts[n - 2].y;
         const len = Math.hypot(dx, dy);
-        if (len > endAdj) { pts[n - 1].x -= (dx / len) * endAdj; pts[n - 1].y -= (dy / len) * endAdj; }
+        if (len > endAdj) {
+            pts[n - 1].x -= (dx / len) * endAdj;
+            pts[n - 1].y -= (dy / len) * endAdj;
+        }
     }
     if (normalizeConnectorType(elData.connectorType) === "poly") {
         return `M ${pts.map(p => `${p.x} ${p.y}`).join(" L ")}`;
@@ -752,7 +770,10 @@ function _buildArrowheadEl(tipX, tipY, nx, ny, hw, hl, head, color, strokeWidth)
         const mx = bx + (hl / 2) * nx;
         const my = by + (hl / 2) * ny;
         const el = document.createElementNS(ns, "path");
-        el.setAttribute("d", `M ${tipX} ${tipY} L ${mx + px * hw} ${my + py * hw} L ${bx} ${by} L ${mx - px * hw} ${my - py * hw} Z`);
+        el.setAttribute(
+            "d",
+            `M ${tipX} ${tipY} L ${mx + px * hw} ${my + py * hw} L ${bx} ${by} L ${mx - px * hw} ${my - py * hw} Z`,
+        );
         el.setAttribute("fill", color);
         el.setAttribute("stroke-linejoin", "round");
         return el;
@@ -761,7 +782,10 @@ function _buildArrowheadEl(tipX, tipY, nx, ny, hw, hl, head, color, strokeWidth)
         const cx = tipX - nx * hw;
         const cy = tipY - ny * hw;
         const el = document.createElementNS(ns, "path");
-        el.setAttribute("d", `M ${cx + px * hw + nx * hw} ${cy + py * hw + ny * hw} L ${cx + px * hw - nx * hw} ${cy + py * hw - ny * hw} L ${cx - px * hw - nx * hw} ${cy - py * hw - ny * hw} L ${cx - px * hw + nx * hw} ${cy - py * hw + ny * hw} Z`);
+        el.setAttribute(
+            "d",
+            `M ${cx + px * hw + nx * hw} ${cy + py * hw + ny * hw} L ${cx + px * hw - nx * hw} ${cy + py * hw - ny * hw} L ${cx - px * hw - nx * hw} ${cy - py * hw - ny * hw} L ${cx - px * hw + nx * hw} ${cy - py * hw + ny * hw} Z`,
+        );
         el.setAttribute("fill", color);
         el.setAttribute("stroke-linejoin", "round");
         return el;
@@ -808,8 +832,28 @@ function renderConnectorContent(el, elData, { interactive = false } = {}) {
     path.setAttribute("stroke-linejoin", "round");
     svg.appendChild(path);
 
-    const startEl = _buildArrowheadEl(points[0].x, points[0].y, startDir.x, startDir.y, hw, hl, startHead, stroke, strokeWidth);
-    const endEl = _buildArrowheadEl(points[n - 1].x, points[n - 1].y, endDir.x, endDir.y, hw, hl, endHead, stroke, strokeWidth);
+    const startEl = _buildArrowheadEl(
+        points[0].x,
+        points[0].y,
+        startDir.x,
+        startDir.y,
+        hw,
+        hl,
+        startHead,
+        stroke,
+        strokeWidth,
+    );
+    const endEl = _buildArrowheadEl(
+        points[n - 1].x,
+        points[n - 1].y,
+        endDir.x,
+        endDir.y,
+        hw,
+        hl,
+        endHead,
+        stroke,
+        strokeWidth,
+    );
     if (startEl) svg.appendChild(startEl);
     if (endEl) svg.appendChild(endEl);
 
@@ -830,7 +874,9 @@ function renderConnectorContent(el, elData, { interactive = false } = {}) {
 }
 
 function syncConnectorDom(connectorId) {
-    const elData = state.slides[currentSlideIndex]?.elements?.find(item => item.id === connectorId && item.type === "connector");
+    const elData = state.slides[currentSlideIndex]?.elements?.find(
+        item => item.id === connectorId && item.type === "connector",
+    );
     const dom = document.getElementById(connectorId);
     if (!elData || !dom) return;
     normalizeConnectorGeometry(elData);
@@ -947,7 +993,12 @@ function _clampShapePercent(value, fallback, min, max) {
 function getShapeStyle(shape = "rectangle") {
     const shapeType = typeof shape === "string" ? shape : shape?.shapeType || "rectangle";
     const arrowHeadSize = _clampShapePercent(typeof shape === "string" ? undefined : shape?.arrowHeadSize, 38, 12, 80);
-    const arrowShaftSize = _clampShapePercent(typeof shape === "string" ? undefined : shape?.arrowShaftSize, 36, 12, 90);
+    const arrowShaftSize = _clampShapePercent(
+        typeof shape === "string" ? undefined : shape?.arrowShaftSize,
+        36,
+        12,
+        90,
+    );
     const shaftStart = (100 - arrowShaftSize) / 2;
     const shaftEnd = 100 - shaftStart;
     const headStart = 100 - arrowHeadSize;
@@ -962,21 +1013,111 @@ function getShapeStyle(shape = "rectangle") {
         case "parallelogram":
             return { clipPath: "polygon(20% 0%, 100% 0%, 80% 100%, 0% 100%)", borderRadius: "0px" };
         case "arrow-right":
-            return { clipPath: `polygon(0% ${shaftStart}%, ${headStart}% ${shaftStart}%, ${headStart}% 0%, 100% 50%, ${headStart}% 100%, ${headStart}% ${shaftEnd}%, 0% ${shaftEnd}%)`, borderRadius: "0px" };
+            return {
+                clipPath: `polygon(0% ${shaftStart}%, ${headStart}% ${shaftStart}%, ${headStart}% 0%, 100% 50%, ${headStart}% 100%, ${headStart}% ${shaftEnd}%, 0% ${shaftEnd}%)`,
+                borderRadius: "0px",
+            };
         case "arrow-left":
-            return { clipPath: `polygon(${headEnd}% 0%, ${headEnd}% ${shaftStart}%, 100% ${shaftStart}%, 100% ${shaftEnd}%, ${headEnd}% ${shaftEnd}%, ${headEnd}% 100%, 0% 50%)`, borderRadius: "0px" };
+            return {
+                clipPath: `polygon(${headEnd}% 0%, ${headEnd}% ${shaftStart}%, 100% ${shaftStart}%, 100% ${shaftEnd}%, ${headEnd}% ${shaftEnd}%, ${headEnd}% 100%, 0% 50%)`,
+                borderRadius: "0px",
+            };
         case "arrow-up":
-            return { clipPath: `polygon(50% 0%, 100% ${headEnd}%, ${shaftEnd}% ${headEnd}%, ${shaftEnd}% 100%, ${shaftStart}% 100%, ${shaftStart}% ${headEnd}%, 0% ${headEnd}%)`, borderRadius: "0px" };
+            return {
+                clipPath: `polygon(50% 0%, 100% ${headEnd}%, ${shaftEnd}% ${headEnd}%, ${shaftEnd}% 100%, ${shaftStart}% 100%, ${shaftStart}% ${headEnd}%, 0% ${headEnd}%)`,
+                borderRadius: "0px",
+            };
         case "arrow-down":
-            return { clipPath: `polygon(${shaftStart}% 0%, ${shaftEnd}% 0%, ${shaftEnd}% ${headStart}%, 100% ${headStart}%, 50% 100%, 0% ${headStart}%, ${shaftStart}% ${headStart}%)`, borderRadius: "0px" };
+            return {
+                clipPath: `polygon(${shaftStart}% 0%, ${shaftEnd}% 0%, ${shaftEnd}% ${headStart}%, 100% ${headStart}%, 50% 100%, 0% ${headStart}%, ${shaftStart}% ${headStart}%)`,
+                borderRadius: "0px",
+            };
         case "circle":
             return { clipPath: "none", borderRadius: "9999px" };
         default:
-            return { clipPath: "none", borderRadius: typeof shape === "string" ? "0px" : shape?.styles?.borderRadius || "0px" };
+            return {
+                clipPath: "none",
+                borderRadius: typeof shape === "string" ? "0px" : shape?.styles?.borderRadius || "0px",
+            };
     }
 }
 
 // ─── Slide Rendering ────────────────────────────────────────────────────────
+
+function _escapeWhiteboardAttr(value = "") {
+    return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;");
+}
+
+function _whiteboardStrokeAttrs(el = {}) {
+    const width = Number(el.strokeWidth) || 2;
+    const opacity = el.opacity ?? 1;
+    const dash =
+        el.strokeStyle === "dashed"
+            ? ` stroke-dasharray="${width * 5} ${width * 4}"`
+            : el.strokeStyle === "dotted"
+              ? ` stroke-dasharray="${width} ${width * 3}"`
+              : "";
+    return `stroke="${_escapeWhiteboardAttr(el.strokeColor || "#1f2937")}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round" opacity="${opacity}"${dash}`;
+}
+
+function _whiteboardFillAttrs(el = {}) {
+    const fill = el.fillStyle === "solid" && el.backgroundColor && el.backgroundColor !== "transparent" ? el.backgroundColor : "none";
+    return `fill="${_escapeWhiteboardAttr(fill)}"`;
+}
+
+function _createSlideWhiteboardLayer(slide, slideWidth, slideHeight) {
+    const elements = Array.isArray(slide?.whiteboardElements) ? slide.whiteboardElements : [];
+    if (!elements.length) return null;
+    const layer = document.createElement("div");
+    layer.className = "whiteboard-slide-layer";
+    const nodes = elements
+        .map(el => {
+            if (el.type === "freehand") {
+                const points = Array.isArray(el.points) ? el.points : [];
+                if (!points.length) return "";
+                const d = points.map((p, i) => `${i ? "L" : "M"} ${Number(p.x) || 0} ${Number(p.y) || 0}`).join(" ");
+                return `<path d="${_escapeWhiteboardAttr(d)}" ${_whiteboardStrokeAttrs(el)} fill="none"/>`;
+            }
+            if (el.type === "text") {
+                const fontSize = Number(el.fontSize) || 22;
+                const lines = String(el.text || "").split("\n");
+                return lines
+                    .map((line, index) => `<text x="${Number(el.x) || 0}" y="${(Number(el.y) || 0) + index * fontSize * 1.25}" fill="${_escapeWhiteboardAttr(el.strokeColor || "#1f2937")}" font-size="${fontSize}" font-family="Comic Sans MS, Segoe Print, cursive" opacity="${el.opacity ?? 1}">${_escapeWhiteboardAttr(line)}</text>`)
+                    .join("");
+            }
+            if (el.type !== "draw_shape") return "";
+            const x = Number(el.x) || 0;
+            const y = Number(el.y) || 0;
+            const w = Number(el.width) || 0;
+            const h = Number(el.height) || 0;
+            const attrs = `${_whiteboardStrokeAttrs(el)} ${_whiteboardFillAttrs(el)}`;
+            if (el.shapeType === "rectangle") return `<rect x="${Math.min(x, x + w)}" y="${Math.min(y, y + h)}" width="${Math.abs(w)}" height="${Math.abs(h)}" rx="10" ${attrs}/>`;
+            if (el.shapeType === "ellipse") return `<ellipse cx="${x + w / 2}" cy="${y + h / 2}" rx="${Math.abs(w / 2)}" ry="${Math.abs(h / 2)}" ${attrs}/>`;
+            if (el.shapeType === "diamond") {
+                const points = `${x + w / 2},${y} ${x + w},${y + h / 2} ${x + w / 2},${y + h} ${x},${y + h / 2}`;
+                return `<polygon points="${points}" ${attrs}/>`;
+            }
+            if (el.shapeType === "line") return `<line x1="${x}" y1="${y}" x2="${x + w}" y2="${y + h}" ${_whiteboardStrokeAttrs(el)}/>`;
+            if (el.shapeType === "arrow") {
+                const angle = Math.atan2(h, w);
+                const len = Math.min(24, Math.max(10, Math.hypot(w, h) * 0.22));
+                const leftX = x + w - Math.cos(angle - Math.PI / 6) * len;
+                const leftY = y + h - Math.sin(angle - Math.PI / 6) * len;
+                const rightX = x + w - Math.cos(angle + Math.PI / 6) * len;
+                const rightY = y + h - Math.sin(angle + Math.PI / 6) * len;
+                const stroke = _whiteboardStrokeAttrs(el);
+                return `<g><line x1="${x}" y1="${y}" x2="${x + w}" y2="${y + h}" ${stroke}/><line x1="${x + w}" y1="${y + h}" x2="${leftX}" y2="${leftY}" ${stroke}/><line x1="${x + w}" y1="${y + h}" x2="${rightX}" y2="${rightY}" ${stroke}/></g>`;
+            }
+            return "";
+        })
+        .join("");
+    layer.innerHTML = `<svg viewBox="0 0 ${slideWidth} ${slideHeight}" aria-hidden="true">${nodes}</svg>`;
+    return layer;
+}
 
 function renderSlidesFromState(options = {}) {
     const preserveState = Boolean(options.preserveState);
@@ -1004,9 +1145,13 @@ function renderSlidesFromState(options = {}) {
         const bgNode = createSlideBackgroundNode(slide.background, { slideIndex });
         if (bgNode) section.appendChild(bgNode);
         if (typeof buildMasterSlideElements === "function") {
-            buildMasterSlideElements(slide, slideIndex, theme).forEach(elData => section.appendChild(_createStaticNode(elData, { master: true })));
+            buildMasterSlideElements(slide, slideIndex, theme).forEach(elData =>
+                section.appendChild(_createStaticNode(elData, { master: true })),
+            );
         }
         slide.elements.forEach(elData => section.appendChild(createElementNode(elData, { slideIndex, preserveState })));
+        const whiteboardLayer = _createSlideWhiteboardLayer(slide, slideWidth, slideHeight);
+        if (whiteboardLayer) section.appendChild(whiteboardLayer);
         container.appendChild(section);
     });
     if (Reveal.isReady()) {
@@ -1034,6 +1179,7 @@ function renderSlidesFromState(options = {}) {
     if (typeof renderLayersList === "function") {
         renderLayersList();
     }
+    window.dispatchEvent(new CustomEvent("slideforge:render-complete", { detail: { currentSlideIndex } }));
 }
 
 function renderSlidePreviews(targetIndex = null, options = {}) {
@@ -1048,22 +1194,26 @@ function renderSlidePreviews(targetIndex = null, options = {}) {
         // Update only one specific slide thumbnail
         const card = container.querySelector(`.slide-preview-card[data-slide-index="${targetIndex}"]`);
         if (!card) return;
-        
+
         const slide = state.slides[targetIndex];
         const thumbnail = card.querySelector(".slide-thumbnail");
         if (!thumbnail || !slide) return;
 
         const previewSlide = document.createElement("div");
-        const previewBg = getComputedStyle(document.documentElement).getPropertyValue("--slide-bg").trim() || theme.cssVars["--slide-bg"];
+        const previewBg =
+            getComputedStyle(document.documentElement).getPropertyValue("--slide-bg").trim() ||
+            theme.cssVars["--slide-bg"];
         previewSlide.style.cssText = `width:${slideWidth}px;height:${slideHeight}px;position:relative;transform-origin:top left;background:${previewBg};color:${theme.defaultTextColor};font-family:${theme.bodyFont};`;
-        
+
         const previewBgNode = createSlideBackgroundNode(slide.background, { forPreview: true });
         if (previewBgNode) previewSlide.appendChild(previewBgNode);
         if (typeof buildMasterSlideElements === "function") {
-            buildMasterSlideElements(slide, targetIndex, theme).forEach(elData => previewSlide.appendChild(_createStaticNode(elData, { master: true, forPreview: true })));
+            buildMasterSlideElements(slide, targetIndex, theme).forEach(elData =>
+                previewSlide.appendChild(_createStaticNode(elData, { master: true, forPreview: true })),
+            );
         }
         slide.elements.forEach(elData => previewSlide.appendChild(_createStaticNode(elData)));
-        
+
         const scale = thumbnail.clientWidth / slideWidth;
         previewSlide.style.transform = `scale(${scale || 1})`;
 
@@ -1146,12 +1296,15 @@ function renderSlidePreviews(targetIndex = null, options = {}) {
         thumbnail.className = "slide-thumbnail";
         const previewSlide = document.createElement("div");
         const previewBg =
-            getComputedStyle(document.documentElement).getPropertyValue("--slide-bg").trim() || theme.cssVars["--slide-bg"];
+            getComputedStyle(document.documentElement).getPropertyValue("--slide-bg").trim() ||
+            theme.cssVars["--slide-bg"];
         previewSlide.style.cssText = `width:${slideWidth}px;height:${slideHeight}px;position:relative;transform-origin:top left;background:${previewBg};color:${theme.defaultTextColor};font-family:${theme.bodyFont};`;
         const previewBgNode = createSlideBackgroundNode(slide.background, { forPreview: true });
         if (previewBgNode) previewSlide.appendChild(previewBgNode);
         if (typeof buildMasterSlideElements === "function") {
-            buildMasterSlideElements(slide, index, theme).forEach(elData => previewSlide.appendChild(_createStaticNode(elData, { master: true, forPreview: true })));
+            buildMasterSlideElements(slide, index, theme).forEach(elData =>
+                previewSlide.appendChild(_createStaticNode(elData, { master: true, forPreview: true })),
+            );
         }
         slide.elements.forEach(elData => previewSlide.appendChild(_createStaticNode(elData)));
         thumbnail.appendChild(previewSlide);
@@ -1167,7 +1320,8 @@ function renderSlidePreviews(targetIndex = null, options = {}) {
 
         const duplicateBtn = document.createElement("button");
         duplicateBtn.type = "button";
-        duplicateBtn.className = "w-7 h-7 rounded-md bg-white/90 border border-slate-200 text-sky-600 shadow-sm hover:bg-sky-50";
+        duplicateBtn.className =
+            "w-7 h-7 rounded-md bg-white/90 border border-slate-200 text-sky-600 shadow-sm hover:bg-sky-50";
         duplicateBtn.title = "Duplicate slide";
         duplicateBtn.innerHTML = '<i class="fa-regular fa-clone text-[11px]"></i>';
         duplicateBtn.addEventListener("click", e => {
@@ -1178,7 +1332,8 @@ function renderSlidePreviews(targetIndex = null, options = {}) {
 
         const deleteBtn = document.createElement("button");
         deleteBtn.type = "button";
-        deleteBtn.className = "w-7 h-7 rounded-md bg-white/90 border border-slate-200 text-rose-500 shadow-sm hover:bg-rose-50";
+        deleteBtn.className =
+            "w-7 h-7 rounded-md bg-white/90 border border-slate-200 text-rose-500 shadow-sm hover:bg-rose-50";
         deleteBtn.title = "Delete slide";
         deleteBtn.innerHTML = '<i class="fa-solid fa-trash-can text-[11px]"></i>';
         deleteBtn.addEventListener("click", e => {
@@ -1205,7 +1360,7 @@ function renderSlidePreviews(targetIndex = null, options = {}) {
         setTimeout(() => {
             const activeCard = container.querySelector(".slide-preview-card.active");
             if (activeCard) {
-                activeCard.scrollIntoView({ behavior: 'auto', block: 'nearest' });
+                activeCard.scrollIntoView({ behavior: "auto", block: "nearest" });
             }
         }, 0);
     }
@@ -1230,19 +1385,28 @@ function refreshActiveSlidePreview() {
 function updateActiveSlidePreview(index) {
     const container = document.getElementById("slide-previews");
     if (!container) return;
-    
+
     container.querySelectorAll(".slide-preview-card").forEach((card, i) => {
         const isActive = i === index;
         card.classList.toggle("active", isActive);
         if (isActive) {
-            card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            card.scrollIntoView({ behavior: "smooth", block: "nearest" });
         }
     });
 }
 
 function _applyStylesToElement(el, styles) {
     if (!styles) return;
-    const textProps = ["color", "fontSize", "fontFamily", "fontWeight", "fontStyle", "textAlign", "lineHeight", "textShadow"];
+    const textProps = [
+        "color",
+        "fontSize",
+        "fontFamily",
+        "fontWeight",
+        "fontStyle",
+        "textAlign",
+        "lineHeight",
+        "textShadow",
+    ];
     const mediaTypesWithoutPadding = new Set(["image", "video"]);
     const paddingProps = new Set(["padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"]);
     const suppressPadding = mediaTypesWithoutPadding.has(el?.dataset?.type);
@@ -1379,7 +1543,8 @@ function _renderTableDom(container, elData, { interactive = true } = {}) {
             cell.dataset.row = String(rowIndex);
             cell.dataset.col = String(colIndex);
             const selection = tableData.selection;
-            const isSelectedCell = selection?.type === "cell" && selection.row === rowIndex && selection.col === colIndex;
+            const isSelectedCell =
+                selection?.type === "cell" && selection.row === rowIndex && selection.col === colIndex;
             const isSelectedRow = selection?.type === "row" && selection.row === rowIndex;
             const isSelectedCol = selection?.type === "col" && selection.col === colIndex;
             cell.classList.toggle("is-active", isSelectedCell);
@@ -1577,12 +1742,12 @@ function _renderChartDom(container, elData) {
 
     try {
         container._chartInstance = new Chart(canvas, {
-            type: elData.chartType || 'bar',
+            type: elData.chartType || "bar",
             data: elData.chartData,
             options: elData.chartOptions || {
                 responsive: true,
-                maintainAspectRatio: false
-            }
+                maintainAspectRatio: false,
+            },
         });
     } catch (err) {
         console.error("Chart.js Error:", err);
@@ -1730,7 +1895,10 @@ function _createStaticNode(elData, options = {}) {
     el.className = `canvas-element${options.master ? " master-slide-element" : ""}`;
     el.setAttribute("data-type", elData.type);
     const editableMaster = Boolean(
-        options.master && !options.forPreview && elData.type === "text" && ["footer", "logo"].includes(elData.masterRole),
+        options.master &&
+        !options.forPreview &&
+        elData.type === "text" &&
+        ["footer", "logo"].includes(elData.masterRole),
     );
     if (options.master) {
         el.setAttribute("data-master-element", "true");
@@ -1786,6 +1954,21 @@ function _createStaticNode(elData, options = {}) {
         if (!elData.styles?.borderRadius) {
             el.style.borderRadius = visual.borderRadius;
         }
+    } else if (elData.type === "whiteboard") {
+        const canvas = document.createElement("canvas");
+        canvas.className = "whiteboard-object-canvas";
+        canvas.style.width = "100%";
+        canvas.style.height = "100%";
+        canvas.style.display = "block";
+        el.appendChild(canvas);
+        const renderWhiteboardObject = (attempt = 0) => {
+            if (typeof window.renderWhiteboardDrawingElement === "function") {
+                window.renderWhiteboardDrawingElement(canvas, elData);
+            } else if (attempt < 8) {
+                requestAnimationFrame(() => renderWhiteboardObject(attempt + 1));
+            }
+        };
+        requestAnimationFrame(renderWhiteboardObject);
     }
     return el;
 }
@@ -1914,7 +2097,10 @@ function _applyTypeContent(el, elData, options = {}) {
                 contentHost.dataset.structuredEditBulletStyle = elData.bulletStyle || "default";
                 contentHost.dataset.structuredEditPreviousTextAlign = contentHost.style.textAlign || "";
                 contentHost.style.setProperty("text-align", "left", "important");
-                contentHost.innerHTML = buildStructuredBulletEditorHtml(elData.content, elData.bulletStyle || "default");
+                contentHost.innerHTML = buildStructuredBulletEditorHtml(
+                    elData.content,
+                    elData.bulletStyle || "default",
+                );
             }
             contentHost.contentEditable = true;
             if (!isStructured) {
@@ -1973,7 +2159,7 @@ function _applyTypeContent(el, elData, options = {}) {
                 elData.height = `${layout.height}px`;
             }
         });
-        contentHost.addEventListener("blur", (e) => {
+        contentHost.addEventListener("blur", e => {
             if (shouldKeepInlineEditorOpen(e)) {
                 return;
             }
@@ -1982,8 +2168,13 @@ function _applyTypeContent(el, elData, options = {}) {
                     _getStructuredEditorMode(contentHost) === "list"
                         ? parseStructuredBulletEditorHtml(contentHost)
                         : parseEditableStructuredText(contentHost.textContent || "", elData.content);
-                const nextContent = nextStructured.length ? nextStructured : [normalizeStructuredBulletItem({ html: "List item", level: 0 })];
-                if (JSON.stringify(nextContent) !== JSON.stringify(elData.content) && contentHost.dataset.undoSnapshotCaptured !== "true") {
+                const nextContent = nextStructured.length
+                    ? nextStructured
+                    : [normalizeStructuredBulletItem({ html: "List item", level: 0 })];
+                if (
+                    JSON.stringify(nextContent) !== JSON.stringify(elData.content) &&
+                    contentHost.dataset.undoSnapshotCaptured !== "true"
+                ) {
                     saveStateToUndo();
                     contentHost.dataset.undoSnapshotCaptured = "true";
                 }
@@ -2036,13 +2227,20 @@ function _applyTypeContent(el, elData, options = {}) {
                     const hasNaturalRatio = Number.isFinite(naturalRatio) && naturalRatio > 0;
                     if (hasNaturalRatio && !elData.imageAspectRatio) {
                         elData.imageAspectRatio = naturalRatio;
-                        updateElementState(elData.id, { imageAspectRatio: naturalRatio, lockAspectRatio: elData.lockAspectRatio ?? true });
+                        updateElementState(elData.id, {
+                            imageAspectRatio: naturalRatio,
+                            lockAspectRatio: elData.lockAspectRatio ?? true,
+                        });
                     }
                     if (hasNaturalRatio && !elData.cropTransform && !elData.heightSetManually) {
                         const currentWidth = parseFloat(el.style.width) || el.offsetWidth;
                         const newHeight = currentWidth / naturalRatio;
                         el.style.height = `${newHeight}px`;
-                        updateElementState(elData.id, { height: `${newHeight}px`, imageAspectRatio: naturalRatio, lockAspectRatio: elData.lockAspectRatio ?? true });
+                        updateElementState(elData.id, {
+                            height: `${newHeight}px`,
+                            imageAspectRatio: naturalRatio,
+                            lockAspectRatio: elData.lockAspectRatio ?? true,
+                        });
                         if (state.selectedIds.includes(elData.id)) updateGroupBound();
                     }
                 };
@@ -2075,7 +2273,8 @@ function _applyTypeContent(el, elData, options = {}) {
                 playsinline: 1,
                 enablejsapi: 1,
             });
-            if (window.location.origin && window.location.origin !== "null") params.set("origin", window.location.origin);
+            if (window.location.origin && window.location.origin !== "null")
+                params.set("origin", window.location.origin);
             if (elData.loop) params.set("playlist", videoInfo.id);
             videoNode.src = `https://www.youtube-nocookie.com/embed/${videoInfo.id}?${params.toString()}`;
             setMediaIframePermissions(videoNode, "autoplay; encrypted-media; picture-in-picture");
@@ -2109,7 +2308,8 @@ function _applyTypeContent(el, elData, options = {}) {
                 let errOverlay = el.querySelector(".video-error-overlay");
                 if (!errOverlay) {
                     errOverlay = document.createElement("div");
-                    errOverlay.className = "video-error-overlay absolute inset-0 bg-slate-950/85 backdrop-blur-[4px] rounded-[inherit] flex flex-col items-center justify-center p-4 gap-2.5 z-20 text-center text-slate-300 font-medium";
+                    errOverlay.className =
+                        "video-error-overlay absolute inset-0 bg-slate-950/85 backdrop-blur-[4px] rounded-[inherit] flex flex-col items-center justify-center p-4 gap-2.5 z-20 text-center text-slate-300 font-medium";
                     errOverlay.innerHTML = `
                         <i class="fa-solid fa-circle-exclamation text-rose-500 text-lg"></i>
                         <span class="text-xs font-semibold text-slate-100">Unsupported Format or Corrupted Video</span>
@@ -2142,12 +2342,14 @@ function _applyTypeContent(el, elData, options = {}) {
         el.appendChild(overlay);
         const badge = document.createElement("span");
         badge.innerHTML = `<i class="fa-solid fa-film mr-1"></i> Video`;
-        badge.className = "absolute top-2 left-2 px-2 py-1 bg-gray-900/80 text-white text-[10px] rounded border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none";
+        badge.className =
+            "absolute top-2 left-2 px-2 py-1 bg-gray-900/80 text-white text-[10px] rounded border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none";
         el.appendChild(badge);
 
         if (elData.uploading) {
             const progressOverlay = document.createElement("div");
-            progressOverlay.className = "upload-progress-overlay absolute inset-0 bg-slate-950/70 backdrop-blur-[2px] rounded-[inherit] flex flex-col items-center justify-center gap-2.5 z-20 text-white font-medium transition-all duration-300";
+            progressOverlay.className =
+                "upload-progress-overlay absolute inset-0 bg-slate-950/70 backdrop-blur-[2px] rounded-[inherit] flex flex-col items-center justify-center gap-2.5 z-20 text-white font-medium transition-all duration-300";
             progressOverlay.innerHTML = `
                 <div class="flex items-center gap-2">
                     <i class="fa-solid fa-spinner fa-spin text-[#38bdf8] text-sm"></i>
@@ -2176,7 +2378,8 @@ function _applyTypeContent(el, elData, options = {}) {
 
         const badge = document.createElement("span");
         badge.innerHTML = `<i class="fa-solid fa-code mr-1"></i> HTML`;
-        badge.className = "html-embed-badge absolute top-2 left-2 px-2 py-1 bg-gray-900/80 text-white text-[10px] rounded border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity";
+        badge.className =
+            "html-embed-badge absolute top-2 left-2 px-2 py-1 bg-gray-900/80 text-white text-[10px] rounded border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity";
         el.appendChild(badge);
     } else if (elData.type === "molecule") {
         el.classList.toggle("molecule-interactive", Boolean(elData.moleculeInteractive));
@@ -2184,26 +2387,31 @@ function _applyTypeContent(el, elData, options = {}) {
 
         const wrapper = document.createElement("div");
         wrapper.className = "molecule-embed-wrapper";
-        wrapper.style.backgroundColor = typeof normalizeMoleculeBackgroundColor === "function"
-            ? normalizeMoleculeBackgroundColor(elData.styles?.backgroundColor || "#020617")
-            : (elData.styles?.backgroundColor || "#020617");
+        wrapper.style.backgroundColor =
+            typeof normalizeMoleculeBackgroundColor === "function"
+                ? normalizeMoleculeBackgroundColor(elData.styles?.backgroundColor || "#020617")
+                : elData.styles?.backgroundColor || "#020617";
 
         const iframe = document.createElement("iframe");
         const moleculeActive =
             document.visibilityState !== "hidden" &&
             document.hasFocus() &&
             Number(options.slideIndex) === getActiveSlideMediaIndex();
-        iframe.srcdoc = typeof buildMoleculeEmbedSrcdoc === "function"
-            ? buildMoleculeEmbedSrcdoc({
-                  ...elData,
-                  moleculePresentationMode: document.body.classList.contains("play-mode-active"),
-                  moleculeActive,
-              })
-            : "";
+        iframe.srcdoc =
+            typeof buildMoleculeEmbedSrcdoc === "function"
+                ? buildMoleculeEmbedSrcdoc({
+                      ...elData,
+                      moleculePresentationMode: document.body.classList.contains("play-mode-active"),
+                      moleculeActive,
+                  })
+                : "";
         if (typeof applyMoleculeEmbedSandbox === "function") applyMoleculeEmbedSandbox(iframe);
         iframe.className = "w-full h-full molecule-embed-frame";
         iframe.style.border = "0";
-        iframe.setAttribute("title", elData.moleculeIsTrajectory ? "Molecular trajectory viewer" : "Molecular structure viewer");
+        iframe.setAttribute(
+            "title",
+            elData.moleculeIsTrajectory ? "Molecular trajectory viewer" : "Molecular structure viewer",
+        );
         iframe.addEventListener("load", () => requestAnimationFrame(syncActiveSlideMedia));
         if (typeof attachMoleculeDataBridge === "function") attachMoleculeDataBridge(iframe, elData);
         wrapper.appendChild(iframe);
@@ -2237,13 +2445,17 @@ function _applyTypeContent(el, elData, options = {}) {
                 const next = !el.classList.contains("molecule-interactive");
                 if (typeof saveStateToUndo === "function") saveStateToUndo();
                 elData.moleculeInteractive = next;
-                if (typeof updateElementState === "function") updateElementState(elData.id, { moleculeInteractive: next });
+                if (typeof updateElementState === "function")
+                    updateElementState(elData.id, { moleculeInteractive: next });
                 el.classList.toggle("molecule-interactive", next);
                 el.setAttribute("data-molecule-interactive", next ? "true" : "false");
                 shield.hidden = next;
                 toggle.classList.toggle("active", next);
                 toggle.title = next ? "Switch to select and resize mode" : "Enable 3D orbit mode";
-                toggle.setAttribute("aria-label", next ? "Switch molecule to select and resize mode" : "Enable molecule 3D orbit mode");
+                toggle.setAttribute(
+                    "aria-label",
+                    next ? "Switch molecule to select and resize mode" : "Enable molecule 3D orbit mode",
+                );
                 const icon = toggle.querySelector("i");
                 if (icon) icon.className = `fa-solid ${next ? "fa-cube" : "fa-arrow-pointer"}`;
                 const label = toggle.querySelector("span");
@@ -2255,7 +2467,8 @@ function _applyTypeContent(el, elData, options = {}) {
 
         const badge = document.createElement("span");
         badge.innerHTML = `<i class="fa-solid fa-atom mr-1"></i> ${elData.moleculeIsTrajectory ? "Trajectory" : "PDB"}`;
-        badge.className = "molecule-embed-badge absolute top-2 left-2 px-2 py-1 bg-gray-900/80 text-white text-[10px] rounded border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none";
+        badge.className =
+            "molecule-embed-badge absolute top-2 left-2 px-2 py-1 bg-gray-900/80 text-white text-[10px] rounded border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none";
         el.appendChild(badge);
     } else if (elData.type === "pdf") {
         el.classList.toggle("pdf-interactive", Boolean(elData.pdfInteractive));
@@ -2275,15 +2488,16 @@ function _applyTypeContent(el, elData, options = {}) {
 
         const badge = document.createElement("span");
         badge.innerHTML = `<i class="fa-regular fa-file-pdf mr-1"></i> PDF`;
-        badge.className = "pdf-embed-badge absolute top-2 left-2 px-2 py-1 bg-gray-900/80 text-white text-[10px] rounded border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity";
+        badge.className =
+            "pdf-embed-badge absolute top-2 left-2 px-2 py-1 bg-gray-900/80 text-white text-[10px] rounded border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity";
         el.appendChild(badge);
     } else if (elData.type === "equation") {
         const container = document.createElement("div");
         container.className = "equation-container";
-        
+
         const color = elData.styles?.color || "#ffffff";
         const fontSize = elData.styles?.fontSize || "24px";
-        
+
         container.style.cssText = `width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:4px;color:${color};font-size:${fontSize};line-height:1;`;
         container.innerHTML = elData.content || elData.latexSrc || "";
         el.appendChild(container);
@@ -2301,6 +2515,43 @@ function _applyTypeContent(el, elData, options = {}) {
         if (!elData.styles?.borderRadius) {
             el.style.borderRadius = visual.borderRadius;
         }
+    } else if (elData.type === "whiteboard") {
+        const canvas = document.createElement("canvas");
+        canvas.className = "whiteboard-object-canvas";
+        canvas.style.width = "100%";
+        canvas.style.height = "100%";
+        canvas.style.display = "block";
+        canvas.style.pointerEvents = "none";
+        el.appendChild(canvas);
+        const renderWhiteboardObject = (attempt = 0) => {
+            if (typeof window.renderWhiteboardDrawingElement === "function") {
+                window.renderWhiteboardDrawingElement(canvas, elData);
+            } else if (attempt < 8) {
+                requestAnimationFrame(() => renderWhiteboardObject(attempt + 1));
+            }
+        };
+        requestAnimationFrame(renderWhiteboardObject);
+    } else if (elData.type === "sketch") {
+        const canvas = document.createElement("canvas");
+        canvas.className = "sketch-canvas";
+        canvas.style.width = "100%";
+        canvas.style.height = "100%";
+        canvas.style.display = "block";
+        canvas.style.touchAction = "none";
+        el.appendChild(canvas);
+
+        // Render strokes to canvas
+        requestAnimationFrame(() => {
+            const rect = canvas.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            const ctx = canvas.getContext("2d");
+            if (ctx) {
+                ctx.scale(dpr, dpr);
+                renderSketchStrokes(ctx, elData.strokes || [], rect.width, rect.height);
+            }
+        });
     } else if (elData.type === "connector") {
         renderConnectorContent(el, elData, { interactive: true });
     }
@@ -2342,7 +2593,8 @@ function buildPdfEmbedSrc(url) {
 function _buildPdfAnnotationNode(annotation, isSelected) {
     const node = document.createElement(annotation.type === "note" ? "button" : "div");
     if (annotation.type === "note") node.type = "button";
-    node.className = `pdf-annotation pdf-annotation-${annotation.type || "highlight"} ${isSelected ? "pdf-annotation-selected" : ""}`.trim();
+    node.className =
+        `pdf-annotation pdf-annotation-${annotation.type || "highlight"} ${isSelected ? "pdf-annotation-selected" : ""}`.trim();
     node.style.left = `${annotation.x || 0}%`;
     node.style.top = `${annotation.y || 0}%`;
     node.style.width = `${annotation.width || 0}%`;
@@ -2387,7 +2639,10 @@ function _renderPdfAnnotations(el, elData) {
                 const nextAnnotations = (elData.pdfAnnotations || []).map(item =>
                     item.id === annotation.id ? { ...item, text: nextText } : item,
                 );
-                updateElementState(elData.id, { pdfAnnotations: nextAnnotations, pdfSelectedAnnotationId: annotation.id });
+                updateElementState(elData.id, {
+                    pdfAnnotations: nextAnnotations,
+                    pdfSelectedAnnotationId: annotation.id,
+                });
                 schedulePresentationAutosave?.(150);
                 renderSlidesFromState?.();
                 buildPropertiesPanel();

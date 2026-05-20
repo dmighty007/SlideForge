@@ -369,7 +369,7 @@
 
 /* ── Selection ── */
 .canvas-element.selected {
-    outline: 2px solid #2563EB;
+    outline: 2px solid #2563eb;
     outline-offset: 2px;
     box-shadow:
         0 0 0 4px rgba(37, 99, 235, 0.1),
@@ -421,8 +421,8 @@
     position: absolute;
     width: 12px;
     height: 12px;
-    background: linear-gradient(135deg, #2563EB, #1D4ED8);
-    border: 2px solid #FFFFFF;
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    border: 2px solid #ffffff;
     border-radius: 50%;
     z-index: 120;
     box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
@@ -1043,8 +1043,12 @@ body.play-mode-active {
    ───────────────────────────────────────────────────────────── */
 
 @keyframes slideforgeFadeIn {
-    0%   { opacity: 0; }
-    100% { opacity: 1; }
+    0% {
+        opacity: 0;
+    }
+    100% {
+        opacity: 1;
+    }
 }
 
 /* Slide family: fade + translate, exits fully opaque */
@@ -1106,9 +1110,9 @@ body.play-mode-active {
 
 /* Pop In: spring overshoot — starts at 70%, bounces to 104%, settles at 100% */
 @keyframes slideforgePopIn {
-    0%  {
+    0% {
         opacity: 0;
-        transform: var(--sf-base-transform, none) scale(var(--sf-anim-scale, 0.70));
+        transform: var(--sf-base-transform, none) scale(var(--sf-anim-scale, 0.7));
     }
     60% {
         opacity: 1;
@@ -1142,7 +1146,7 @@ body.play-mode-active {
 
 /* Pulse: gentle scale oscillation — 3 stops for smooth sine feel */
 @keyframes slideforgePulse {
-    0%   {
+    0% {
         transform: var(--sf-base-transform, none) scale(1);
     }
     30% {
@@ -1159,24 +1163,16 @@ body.play-mode-active {
 /* Glow: layered drop-shadow build-up for depth */
 @keyframes slideforgeGlow {
     0% {
-        filter:
-            drop-shadow(0 0 0px rgba(56, 189, 248, 0))
-            drop-shadow(0 0 0px rgba(99, 102, 241, 0));
+        filter: drop-shadow(0 0 0px rgba(56, 189, 248, 0)) drop-shadow(0 0 0px rgba(99, 102, 241, 0));
     }
     40% {
-        filter:
-            drop-shadow(0 0 12px rgba(56, 189, 248, 0.7))
-            drop-shadow(0 0 28px rgba(99, 102, 241, 0.35));
+        filter: drop-shadow(0 0 12px rgba(56, 189, 248, 0.7)) drop-shadow(0 0 28px rgba(99, 102, 241, 0.35));
     }
     70% {
-        filter:
-            drop-shadow(0 0 20px rgba(56, 189, 248, 0.5))
-            drop-shadow(0 0 40px rgba(99, 102, 241, 0.2));
+        filter: drop-shadow(0 0 20px rgba(56, 189, 248, 0.5)) drop-shadow(0 0 40px rgba(99, 102, 241, 0.2));
     }
     100% {
-        filter:
-            drop-shadow(0 0 0px rgba(56, 189, 248, 0))
-            drop-shadow(0 0 0px rgba(99, 102, 241, 0));
+        filter: drop-shadow(0 0 0px rgba(56, 189, 248, 0)) drop-shadow(0 0 0px rgba(99, 102, 241, 0));
     }
 }
 
@@ -1933,8 +1929,12 @@ body.play-mode-active {
 }
 
 @keyframes fadeIn {
-    0%   { opacity: 0; }
-    100% { opacity: 1; }
+    0% {
+        opacity: 0;
+    }
+    100% {
+        opacity: 1;
+    }
 }
 
 @keyframes scaleIn {
@@ -1997,4 +1997,180 @@ aside {
 }
 .element-locked * {
     pointer-events: none !important;
+}
+
+/* ═══════════════════════════════════════════════════════
+   SKETCH ELEMENTS
+   ═══════════════════════════════════════════════════════ */
+.sketch-canvas {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    cursor: crosshair;
+    background: white;
+    border-radius: 8px;
+}
+
+.canvas-element[data-type="sketch"] {
+    background: white;
+    border: 2px solid #e2e8f0;
+}
+
+.canvas-element[data-type="sketch"].sketch-mode-active {
+    box-shadow:
+        inset 0 0 0 2px #4f46e5,
+        0 0 12px rgba(79, 70, 229, 0.3);
+    border-color: #4f46e5;
+}
+
+.whiteboard-slide-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 9990;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.whiteboard-slide-layer svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+body.whiteboard-mode-active .reveal .slides section.present .whiteboard-slide-layer {
+    opacity: 0;
+}
+
+.whiteboard-object-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+#slideforge-whiteboard {
+    touch-action: none;
+    user-select: none;
+}
+
+.whiteboard-text-editor {
+    position: absolute;
+    z-index: 2;
+    box-sizing: border-box;
+    max-width: calc(100% - 12px);
+    padding: 4px 6px;
+    resize: none;
+    overflow: hidden;
+    border: 1px solid rgba(99, 102, 241, 0.65);
+    border-radius: 4px;
+    outline: none;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.14);
+    pointer-events: auto;
+}
+
+body.whiteboard-mode-active .reveal .slides section.present .canvas-element[data-type="whiteboard"] {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.whiteboard-style-panel {
+    position: fixed;
+    left: 14px;
+    top: 66px;
+    z-index: 9010;
+    width: 202px;
+    max-height: calc(100vh - 88px);
+    overflow-y: auto;
+    padding: 12px;
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 12px 34px rgba(15, 23, 42, 0.14);
+    transition: opacity 0.18s ease;
+}
+
+.wb-panel-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px 0;
+}
+
+.wb-panel-section + .wb-panel-section {
+    border-top: 1px solid rgba(226, 232, 240, 0.85);
+}
+
+.wb-panel-label {
+    color: #334155;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.wb-swatch-row,
+.wb-option-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.wb-swatch,
+.wb-option {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: #f8fafc;
+    color: #111827;
+    cursor: pointer;
+}
+
+.wb-swatch {
+    background: var(--swatch);
+}
+
+.wb-swatch-transparent {
+    background:
+        linear-gradient(45deg, #e5e7eb 25%, transparent 25%),
+        linear-gradient(-45deg, #e5e7eb 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #e5e7eb 75%),
+        linear-gradient(-45deg, transparent 75%, #e5e7eb 75%);
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+    background-size: 16px 16px;
+}
+
+.wb-option {
+    background: #f1f5f9;
+    font-size: 12px;
+}
+
+.wb-swatch.is-active,
+.wb-option.is-active {
+    border-color: #6366f1;
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.16);
+    background-color: #eef2ff;
+}
+
+.wb-line-sample {
+    width: 16px;
+    height: 2px;
+    border-radius: 99px;
+    background: currentColor;
+}
+
+.wb-line-sample.dashed {
+    background: repeating-linear-gradient(90deg, currentColor 0 5px, transparent 5px 8px);
+}
+
+.wb-line-sample.dotted {
+    background: repeating-linear-gradient(90deg, currentColor 0 2px, transparent 2px 6px);
+}
+
+.wb-range {
+    width: 100%;
+    accent-color: #6366f1;
 }

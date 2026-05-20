@@ -1058,9 +1058,13 @@ function _buildSlideWorkspacePanel(panel) {
 
         // Redirect innerHTML operations to the content div so backward-compatible append works flawlessly
         Object.defineProperty(wrap, "innerHTML", {
-            get() { return content.innerHTML; },
-            set(val) { content.innerHTML = val; },
-            configurable: true
+            get() {
+                return content.innerHTML;
+            },
+            set(val) {
+                content.innerHTML = val;
+            },
+            configurable: true,
         });
 
         return wrap;
@@ -1810,6 +1814,12 @@ function buildPropertiesPanel() {
     panel.innerHTML = "";
     updateFloatingToolbars();
 
+    if (document.body.classList.contains("whiteboard-mode-active") && typeof window.renderWhiteboardPropertiesPanel === "function") {
+        window.renderWhiteboardPropertiesPanel(panel);
+        restorePropertiesScroll();
+        return;
+    }
+
     if (state.selectedIds.length === 0) {
         _buildSlideWorkspacePanel(panel);
         restorePropertiesScroll();
@@ -2244,17 +2254,23 @@ function buildPropertiesPanel() {
         // For now, keep this group for type-specific controls.
         if (data.type === "video") {
             const grp = createGroup("Video Settings");
-            
+
             // Format nice human-readable source label
             let displaySource = "";
             let isLocal = false;
             if (data.content) {
-                if (data.content.startsWith("data:") || data.content.startsWith("/media/") || data.content.startsWith("blob:") || data.content.startsWith("/")) {
+                if (
+                    data.content.startsWith("data:") ||
+                    data.content.startsWith("/media/") ||
+                    data.content.startsWith("blob:") ||
+                    data.content.startsWith("/")
+                ) {
                     isLocal = true;
                     const parts = data.content.split("/");
                     displaySource = parts[parts.length - 1];
                     if (displaySource.length > 25) {
-                        displaySource = displaySource.substring(0, 10) + "..." + displaySource.substring(displaySource.length - 10);
+                        displaySource =
+                            displaySource.substring(0, 10) + "..." + displaySource.substring(displaySource.length - 10);
                     }
                 } else {
                     displaySource = data.content;
@@ -2272,20 +2288,20 @@ function buildPropertiesPanel() {
                             ${isLocal ? '<i class="fa-solid fa-file-video mr-1"></i> Local File' : '<i class="fa-solid fa-globe mr-1"></i> External URL'}
                         </span>
                     </div>
-                    
+
                     <div class="relative">
-                        <input type="text" id="prop-video-url" 
-                            class="w-full text-xs bg-white border border-slate-200 rounded-lg pl-3 pr-8 py-2 text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none transition-all placeholder-slate-400" 
-                            value="${data.content?.startsWith("data:") ? "Local File (Base64)" : data.content || ""}" 
+                        <input type="text" id="prop-video-url"
+                            class="w-full text-xs bg-white border border-slate-200 rounded-lg pl-3 pr-8 py-2 text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none transition-all placeholder-slate-400"
+                            value="${data.content?.startsWith("data:") ? "Local File (Base64)" : data.content || ""}"
                             placeholder="Paste URL or absolute local path...">
                         <i class="fa-solid fa-link absolute right-3 top-2.5 text-slate-400 text-xs"></i>
                     </div>
-                    
-                    <button onclick="const input=document.getElementById('video-file-upload'); input.dataset.targetVideoId='${data.id}'; input.click()" 
+
+                    <button onclick="const input=document.getElementById('video-file-upload'); input.dataset.targetVideoId='${data.id}'; input.click()"
                         class="w-full py-2 px-3 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-sm hover:shadow transition-all flex items-center justify-center gap-2 border border-indigo-500/20">
                         <i class="fa-solid fa-upload"></i> ${data.content ? "Replace Video File" : "Upload Video File"}
                     </button>
-                    
+
                     ${
                         isLocal
                             ? `
@@ -2306,13 +2322,13 @@ function buildPropertiesPanel() {
                         <span class="text-[9px] uppercase font-bold tracking-wider text-slate-500">Live Editor Preview</span>
                         <span id="player-time-display" class="font-mono text-[10px] text-slate-400 tracking-wide">0:00 / 0:00</span>
                     </div>
-                    
+
                     <!-- Timeline scrubber -->
                     <div class="relative flex items-center group/slider">
                         <input type="range" id="player-timeline-scrub" min="0" max="100" value="0" step="0.1"
                             class="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-400 transition-all focus:outline-none">
                     </div>
-                    
+
                     <!-- Controls row -->
                     <div class="flex items-center justify-between gap-2 mt-1">
                         <div class="flex items-center gap-2">
@@ -2326,7 +2342,7 @@ function buildPropertiesPanel() {
                                 <i class="fa-solid fa-forward-step text-[9px]"></i>
                             </button>
                         </div>
-                        
+
                         <div class="flex items-center gap-1.5 bg-slate-850 rounded-lg px-2 py-1">
                             <button id="player-btn-mute" class="text-slate-450 hover:text-white transition-colors cursor-pointer">
                                 <i class="fa-solid fa-volume-high text-[10px]"></i>
@@ -2343,7 +2359,7 @@ function buildPropertiesPanel() {
                 <!-- Playback Options Container -->
                 <div class="bg-slate-50 border border-slate-200/80 rounded-xl p-3 shadow-sm flex flex-col gap-3">
                     <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">Playback Behavior</span>
-                    
+
                     <div class="flex items-center justify-between py-0.5">
                         <div class="flex items-center gap-2.5">
                             <div class="w-7 h-7 rounded-lg bg-slate-200/60 border border-slate-300/40 flex items-center justify-center text-slate-600">
@@ -2359,7 +2375,7 @@ function buildPropertiesPanel() {
                             <div class="w-9 h-5 bg-slate-250 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600 transition-colors"></div>
                         </label>
                     </div>
-                    
+
                     <div class="flex items-center justify-between py-0.5">
                         <div class="flex items-center gap-2.5">
                             <div class="w-7 h-7 rounded-lg bg-slate-200/60 border border-slate-300/40 flex items-center justify-center text-slate-600">
@@ -2375,7 +2391,7 @@ function buildPropertiesPanel() {
                             <div class="w-9 h-5 bg-slate-250 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600 transition-colors"></div>
                         </label>
                     </div>
-                    
+
                     <div class="flex items-center justify-between py-0.5">
                         <div class="flex items-center gap-2.5">
                             <div class="w-7 h-7 rounded-lg bg-slate-200/60 border border-slate-300/40 flex items-center justify-center text-slate-600">
@@ -2652,6 +2668,41 @@ function buildPropertiesPanel() {
                 </div>
             `;
             panel.appendChild(eqGrp);
+        }
+
+        if (data.type === "sketch") {
+            const sketchGrp = createGroup("Sketch Tools");
+            sketchGrp.innerHTML += `
+                <div class="flex flex-col gap-3">
+                    <div class="flex flex-col gap-1">
+                        <label class="text-xs font-bold text-slate-700 uppercase tracking-wide">Stroke Color</label>
+                        <input type="color" id="prop-sketch-color" class="w-full h-8 cursor-pointer rounded bg-transparent p-0 border-none" value="${data.sketchStrokeColor || "#000000"}">
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-xs font-bold text-slate-700 uppercase tracking-wide">Stroke Width</label>
+                        <select id="prop-sketch-width" class="w-full text-xs">
+                            <option value="1" ${(data.sketchStrokeWidth || 2) === 1 ? "selected" : ""}>1px</option>
+                            <option value="2" ${(data.sketchStrokeWidth || 2) === 2 ? "selected" : ""}>2px</option>
+                            <option value="3" ${(data.sketchStrokeWidth || 2) === 3 ? "selected" : ""}>3px</option>
+                            <option value="4" ${(data.sketchStrokeWidth || 2) === 4 ? "selected" : ""}>4px</option>
+                            <option value="6" ${(data.sketchStrokeWidth || 2) === 6 ? "selected" : ""}>6px</option>
+                            <option value="8" ${(data.sketchStrokeWidth || 2) === 8 ? "selected" : ""}>8px</option>
+                        </select>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button id="prop-sketch-clear" class="py-2 rounded bg-red-50 border border-red-200 text-red-600 text-xs font-semibold hover:bg-red-100 transition-colors">
+                            <i class="fa-solid fa-trash mr-1"></i>Clear
+                        </button>
+                        <button id="prop-sketch-activate" class="py-2 rounded bg-primary text-white text-xs font-semibold hover:bg-primary-hover transition-colors">
+                            <i class="fa-solid fa-pen-nib mr-1"></i>Draw
+                        </button>
+                    </div>
+                    <div class="text-xs text-slate-500 text-center py-2 border-t border-slate-200">
+                        Click "Draw" to sketch, or select element and draw directly.
+                    </div>
+                </div>
+            `;
+            panel.appendChild(sketchGrp);
         }
 
         if (typeof buildAnimationInspectorPanel === "function") {
@@ -3323,7 +3374,10 @@ function buildPropertiesPanel() {
                                 updates.imageAspectRatio = ratio;
                                 updates.lockAspectRatio = data.lockAspectRatio ?? true;
                                 if (data.lockAspectRatio !== false) {
-                                    const currentW = parseFloat(data.width) || parseFloat(document.getElementById(data.id)?.style.width) || 300;
+                                    const currentW =
+                                        parseFloat(data.width) ||
+                                        parseFloat(document.getElementById(data.id)?.style.width) ||
+                                        300;
                                     const nextH = currentW / ratio;
                                     updates.height = `${nextH}px`;
                                     updates.heightSetManually = true;
@@ -3871,6 +3925,45 @@ function buildPropertiesPanel() {
                 }
             }
 
+            if (data.type === "sketch") {
+                const colorPicker = document.getElementById("prop-sketch-color");
+                if (colorPicker) {
+                    colorPicker.oninput = e => {
+                        saveStateToUndo();
+                        updateElementState(data.id, { sketchStrokeColor: e.target.value });
+                        data.sketchStrokeColor = e.target.value;
+                    };
+                }
+
+                const widthSelect = document.getElementById("prop-sketch-width");
+                if (widthSelect) {
+                    widthSelect.onchange = e => {
+                        saveStateToUndo();
+                        updateElementState(data.id, { sketchStrokeWidth: Number(e.target.value) });
+                        data.sketchStrokeWidth = Number(e.target.value);
+                    };
+                }
+
+                const clearBtn = document.getElementById("prop-sketch-clear");
+                if (clearBtn) {
+                    clearBtn.onclick = () => {
+                        saveStateToUndo();
+                        updateElementState(data.id, { strokes: [] });
+                        data.strokes = [];
+                        if (window.renderSlidesFromState) window.renderSlidesFromState();
+                    };
+                }
+
+                const activateBtn = document.getElementById("prop-sketch-activate");
+                if (activateBtn) {
+                    activateBtn.onclick = () => {
+                        if (typeof initSketchMode === "function") {
+                            initSketchMode(data.id);
+                        }
+                    };
+                }
+            }
+
             if (data.type === "pdf") {
                 const urlField = document.getElementById("prop-pdf-url");
                 if (urlField) {
@@ -4001,36 +4094,36 @@ function buildPropertiesPanel() {
                             fetch("/api/assets/upload/", {
                                 method: "POST",
                                 body: formData,
-                                headers: headers
+                                headers: headers,
                             })
-                            .then(response => {
-                                if (!response.ok) {
-                                    return response.json().then(json => {
-                                        throw new Error(json.error || `Failed with status ${response.status}`);
+                                .then(response => {
+                                    if (!response.ok) {
+                                        return response.json().then(json => {
+                                            throw new Error(json.error || `Failed with status ${response.status}`);
+                                        });
+                                    }
+                                    return response.json();
+                                })
+                                .then(dataResponse => {
+                                    onCommit(() => {
+                                        updateElementState(data.id, {
+                                            content: dataResponse.url,
+                                            videoType: "local",
+                                            localMimeType: dataResponse.contentType || "video/mp4",
+                                        });
+                                        if (window.renderSlidesFromState) window.renderSlidesFromState();
+                                        buildPropertiesPanel();
+                                        if (typeof setProjectSaveHint === "function") {
+                                            setProjectSaveHint("Local file imported successfully", "success");
+                                        }
                                     });
-                                }
-                                return response.json();
-                            })
-                            .then(dataResponse => {
-                                onCommit(() => {
-                                    updateElementState(data.id, {
-                                        content: dataResponse.url,
-                                        videoType: "local",
-                                        localMimeType: dataResponse.contentType || "video/mp4",
-                                    });
-                                    if (window.renderSlidesFromState) window.renderSlidesFromState();
-                                    buildPropertiesPanel();
+                                })
+                                .catch(err => {
+                                    console.error("Local file import failed:", err);
                                     if (typeof setProjectSaveHint === "function") {
-                                        setProjectSaveHint("Local file imported successfully", "success");
+                                        setProjectSaveHint(`Import failed: ${err.message}`, "danger");
                                     }
                                 });
-                            })
-                            .catch(err => {
-                                console.error("Local file import failed:", err);
-                                if (typeof setProjectSaveHint === "function") {
-                                    setProjectSaveHint(`Import failed: ${err.message}`, "danger");
-                                }
-                            });
 
                             return;
                         }
@@ -4038,7 +4131,8 @@ function buildPropertiesPanel() {
                         onCommit(() => {
                             updateElementState(data.id, {
                                 content: nextUrl,
-                                videoType: typeof _inferVideoType === "function" ? _inferVideoType(nextUrl) : data.videoType,
+                                videoType:
+                                    typeof _inferVideoType === "function" ? _inferVideoType(nextUrl) : data.videoType,
                             });
                             if (window.renderSlidesFromState) window.renderSlidesFromState();
                             buildPropertiesPanel();
@@ -4069,7 +4163,7 @@ function buildPropertiesPanel() {
                     if (chk) {
                         chk.onchange = () => {
                             const nextVal = chk.checked;
-                            
+
                             // 1. Dynamic UI icon update
                             if (iconId) {
                                 const iconEl = document.getElementById(iconId);
@@ -4077,7 +4171,7 @@ function buildPropertiesPanel() {
                                     iconEl.className = `fa-solid ${nextVal ? checkedClass : uncheckedClass} text-xs`;
                                 }
                             }
-                            
+
                             // 2. Direct Canvas update for seamless playback!
                             const canvasVideo = document.querySelector(`#${data.id} video`);
                             if (canvasVideo) {
@@ -4085,16 +4179,16 @@ function buildPropertiesPanel() {
                                 if (stateKey === "loop") canvasVideo.loop = nextVal;
                                 if (stateKey === "autoplay") canvasVideo.autoplay = nextVal;
                             }
-                            
+
                             // 3. Update persistent state
                             updateElementState(data.id, { [stateKey]: nextVal });
-                            
+
                             // 4. Update the live controllers if mute button is clicked
                             if (stateKey === "muted") {
                                 const liveMuteBtn = document.getElementById("player-btn-mute");
                                 if (liveMuteBtn) {
-                                    liveMuteBtn.innerHTML = nextVal 
-                                        ? '<i class="fa-solid fa-volume-xmark text-xs text-rose-400"></i>' 
+                                    liveMuteBtn.innerHTML = nextVal
+                                        ? '<i class="fa-solid fa-volume-xmark text-xs text-rose-400"></i>'
                                         : '<i class="fa-solid fa-volume-high text-xs"></i>';
                                 }
                                 const liveVolScrub = document.getElementById("player-volume-scrub");
@@ -4102,7 +4196,7 @@ function buildPropertiesPanel() {
                                     liveVolScrub.value = nextVal ? 0 : 100;
                                 }
                             }
-                            
+
                             if (window.refreshPreviews) window.refreshPreviews();
                         };
                     }
@@ -4122,8 +4216,8 @@ function buildPropertiesPanel() {
                     // Set initial volume/muted states
                     if (volumeScrub) volumeScrub.value = canvasVideo.muted ? 0 : Math.round(canvasVideo.volume * 100);
                     if (muteBtn) {
-                        muteBtn.innerHTML = canvasVideo.muted 
-                            ? '<i class="fa-solid fa-volume-xmark text-xs text-rose-400"></i>' 
+                        muteBtn.innerHTML = canvasVideo.muted
+                            ? '<i class="fa-solid fa-volume-xmark text-xs text-rose-400"></i>'
                             : '<i class="fa-solid fa-volume-high text-xs"></i>';
                     }
 
@@ -4164,20 +4258,20 @@ function buildPropertiesPanel() {
                             const vol = parseFloat(volumeScrub.value) / 100;
                             canvasVideo.volume = vol;
                             canvasVideo.muted = vol === 0;
-                            
+
                             // Sync state
                             updateElementState(data.id, { muted: canvasVideo.muted });
                             const muteChk = document.getElementById("prop-video-mute");
                             if (muteChk) muteChk.checked = canvasVideo.muted;
-                            
+
                             const muteIcon = document.getElementById("prop-video-mute-icon");
                             if (muteIcon) {
                                 muteIcon.className = `fa-solid ${canvasVideo.muted ? "fa-volume-xmark text-rose-400" : "fa-volume-high"} text-xs`;
                             }
-                            
+
                             if (muteBtn) {
-                                muteBtn.innerHTML = canvasVideo.muted 
-                                    ? '<i class="fa-solid fa-volume-xmark text-xs text-rose-400"></i>' 
+                                muteBtn.innerHTML = canvasVideo.muted
+                                    ? '<i class="fa-solid fa-volume-xmark text-xs text-rose-400"></i>'
                                     : '<i class="fa-solid fa-volume-high text-xs"></i>';
                             }
                         };
@@ -4189,25 +4283,25 @@ function buildPropertiesPanel() {
                             const nextMuted = !canvasVideo.muted;
                             canvasVideo.muted = nextMuted;
                             if (volumeScrub) volumeScrub.value = nextMuted ? 0 : Math.round(canvasVideo.volume * 100);
-                            
+
                             // Sync state
                             updateElementState(data.id, { muted: nextMuted });
                             const muteChk = document.getElementById("prop-video-mute");
                             if (muteChk) muteChk.checked = nextMuted;
-                            
+
                             const muteIcon = document.getElementById("prop-video-mute-icon");
                             if (muteIcon) {
                                 muteIcon.className = `fa-solid ${nextMuted ? "fa-volume-xmark text-rose-400" : "fa-volume-high"} text-xs`;
                             }
-                            
-                            muteBtn.innerHTML = nextMuted 
-                                ? '<i class="fa-solid fa-volume-xmark text-xs text-rose-400"></i>' 
+
+                            muteBtn.innerHTML = nextMuted
+                                ? '<i class="fa-solid fa-volume-xmark text-xs text-rose-400"></i>'
                                 : '<i class="fa-solid fa-volume-high text-xs"></i>';
                         };
                     }
 
                     // ─── Real-time update loop ───
-                    const formatTime = (secs) => {
+                    const formatTime = secs => {
                         if (!Number.isFinite(secs) || isNaN(secs)) return "0:00";
                         const m = Math.floor(secs / 60);
                         const s = Math.floor(secs % 60);
@@ -4217,11 +4311,11 @@ function buildPropertiesPanel() {
                     const updatePlayerDashboard = () => {
                         // Check if elements are still in DOM
                         if (!document.getElementById("video-live-player")) return;
-                        
+
                         // Sync Play/Pause button style
                         if (playBtn) {
-                            playBtn.innerHTML = canvasVideo.paused 
-                                ? '<i class="fa-solid fa-play text-[10px]"></i>' 
+                            playBtn.innerHTML = canvasVideo.paused
+                                ? '<i class="fa-solid fa-play text-[10px]"></i>'
                                 : '<i class="fa-solid fa-pause text-[10px]"></i>';
                             playBtn.classList.toggle("bg-emerald-600/20", !canvasVideo.paused);
                             playBtn.classList.toggle("text-emerald-400", !canvasVideo.paused);
@@ -4238,7 +4332,9 @@ function buildPropertiesPanel() {
 
                         // Sync scrubber progress
                         if (timelineScrub && document.activeElement !== timelineScrub) {
-                            const progress = canvasVideo.duration ? (canvasVideo.currentTime / canvasVideo.duration) * 100 : 0;
+                            const progress = canvasVideo.duration
+                                ? (canvasVideo.currentTime / canvasVideo.duration) * 100
+                                : 0;
                             timelineScrub.value = progress;
                         }
 
@@ -4655,6 +4751,7 @@ function getElementDisplayName(el) {
         return shapeType.charAt(0).toUpperCase() + shapeType.slice(1);
     }
     if (el.type === "connector") return "Connector";
+    if (el.type === "whiteboard") return "Whiteboard";
     if (el.type === "video") return "Video";
     if (el.type === "table") return "Table";
     if (el.type === "molecule") return "Molecule";
@@ -4721,3 +4818,5 @@ window.renderLayersList = renderLayersList;
 window.layerItemClicked = layerItemClicked;
 window.toggleLayerVisibility = toggleLayerVisibility;
 window.moveSelectedLayer = moveSelectedLayer;
+window.buildPropertiesPanel = buildPropertiesPanel;
+window.selectElement = selectElement;

@@ -279,6 +279,14 @@ function addElement(type, options = {}) {
                   localMimeType: "application/pdf",
               }
             : {}),
+        ...(type === "sketch"
+            ? {
+                  strokes: [],
+                  sketchStrokeColor: "#000000",
+                  sketchStrokeWidth: 2,
+                  sketchIsDrawing: false,
+              }
+            : {}),
         x: 100,
         y: 100,
         width:
@@ -298,7 +306,9 @@ function addElement(type, options = {}) {
                           ? "520px"
                           : type === "molecule"
                             ? "620px"
-                            : "auto",
+                            : type === "sketch"
+                              ? "400px"
+                              : "auto",
         height:
             type === "shape"
                 ? isArrowShape
@@ -314,7 +324,9 @@ function addElement(type, options = {}) {
                         ? "360px"
                         : type === "molecule"
                           ? "420px"
-                          : "auto",
+                          : type === "sketch"
+                            ? "300px"
+                            : "auto",
         content:
             type === "text"
                 ? "Double click to edit text"
@@ -342,7 +354,7 @@ function addElement(type, options = {}) {
                       ? "8px"
                       : "0px",
             backgroundColor:
-                type === "molecule" ? "#020617" : type === "shape" ? theme.defaultShapeColor : "transparent",
+                type === "molecule" ? "#020617" : type === "sketch" ? "#ffffff" : type === "shape" ? theme.defaultShapeColor : "transparent",
         },
         ...(type === "text" ? { textFitMode: "autoHeight" } : {}),
         animation: null,
@@ -353,6 +365,10 @@ function addElement(type, options = {}) {
 
 function addShape(shapeType = "rectangle") {
     addElement("shape", { shapeType });
+}
+
+function addSketchElement() {
+    addElement("sketch");
 }
 
 function addChart(chartType = "bar") {
@@ -1001,8 +1017,12 @@ function _getImageInsertPlacement(origWidth, origHeight, { x = 100, y = 100, cen
     const scale = Math.min(maxW / naturalW, maxH / naturalH, 1);
     const width = Math.max(24, Math.round(naturalW * scale));
     const height = Math.max(24, Math.round(naturalH * scale));
-    const nextX = center ? Math.round((bounds.slideW - width) / 2) : Math.min(Math.max(bounds.margin, x), bounds.slideW - width - bounds.margin);
-    const nextY = center ? Math.round((bounds.slideH - height) / 2) : Math.min(Math.max(bounds.margin, y), bounds.slideH - height - bounds.margin);
+    const nextX = center
+        ? Math.round((bounds.slideW - width) / 2)
+        : Math.min(Math.max(bounds.margin, x), bounds.slideW - width - bounds.margin);
+    const nextY = center
+        ? Math.round((bounds.slideH - height) / 2)
+        : Math.min(Math.max(bounds.margin, y), bounds.slideH - height - bounds.margin);
     return {
         x: Math.max(0, nextX),
         y: Math.max(0, nextY),
@@ -1112,7 +1132,13 @@ async function _pasteFromSystemClipboard(activeIndex) {
                     try {
                         dimensions = await _getImageSourceDimensions(dataUrl);
                     } catch (_err) {}
-                    const imageEl = _createClipboardImageElement(dataUrl, dimensions.width, dimensions.height, 100, 100);
+                    const imageEl = _createClipboardImageElement(
+                        dataUrl,
+                        dimensions.width,
+                        dimensions.height,
+                        100,
+                        100,
+                    );
                     saveStateToUndo();
                     state.slides[activeIndex].elements.push(imageEl);
                     renderSlidesFromState();
@@ -1325,7 +1351,9 @@ async function handleImageFileInsert(event) {
         const { dataUrl, origWidth, origHeight } = await optimizeImageToWebP(file);
         const activeIndex = ensureActiveSlideSync();
         const slide = state.slides[activeIndex];
-        const existingImage = targetImageId ? slide?.elements?.find(el => el.id === targetImageId && el.type === "image") : null;
+        const existingImage = targetImageId
+            ? slide?.elements?.find(el => el.id === targetImageId && el.type === "image")
+            : null;
         saveStateToUndo();
         const id = existingImage?.id || generateId("el");
         const placement = _getImageInsertPlacement(origWidth, origHeight, { center: true });
@@ -1599,7 +1627,7 @@ function _uploadAssetFileWithProgress(file, onProgress, { presentationId = curre
             xhr.setRequestHeader("X-CSRFToken", csrfToken);
         }
 
-        xhr.upload.onprogress = (e) => {
+        xhr.upload.onprogress = e => {
             if (e.lengthComputable) {
                 const percent = (e.loaded / e.total) * 100;
                 onProgress(percent);
@@ -1672,7 +1700,7 @@ async function _insertUploadedVideo(file, { targetId = "" } = {}) {
         setProjectSaveHint("Uploading video to media...", "warn");
     }
 
-    _uploadAssetFileWithProgress(file, (progress) => {
+    _uploadAssetFileWithProgress(file, progress => {
         const slide = state.slides[activeIndex];
         if (!slide) return;
         const elData = slide.elements.find(e => e.id === id);
@@ -1683,49 +1711,56 @@ async function _insertUploadedVideo(file, { targetId = "" } = {}) {
             if (badge) badge.textContent = `Uploading... ${Math.round(progress)}%`;
             if (bar) bar.style.width = `${progress}%`;
         }
-    }).then(upload => {
-        const slide = state.slides[activeIndex];
-        if (!slide) return;
-        const elData = slide.elements.find(e => e.id === id);
-        if (elData) {
-            elData.content = upload.url;
-            elData.localMimeType = upload.contentType || elData.localMimeType;
-            elData.videoType = "local";
-            delete elData.uploading;
-            delete elData.uploadProgress;
-            renderSlidesFromState();
-            selectElement(id);
-            schedulePresentationAutosave?.(150);
-            if (typeof setProjectSaveHint === "function") {
-                setProjectSaveHint("Video uploaded successfully", "success");
-            }
-        }
-    }).catch(err => {
-        console.error("Video background upload failed:", err);
-        const slide = state.slides[activeIndex];
-        if (!slide) return;
-        const elData = slide.elements.find(e => e.id === id);
-        if (elData) {
-            delete elData.uploading;
-            delete elData.uploadProgress;
-            if (_isSessionOnlyAssetFallbackError(err)) {
-                elData.content = _createSessionObjectUrl(file);
+    })
+        .then(upload => {
+            const slide = state.slides[activeIndex];
+            if (!slide) return;
+            const elData = slide.elements.find(e => e.id === id);
+            if (elData) {
+                elData.content = upload.url;
+                elData.localMimeType = upload.contentType || elData.localMimeType;
                 elData.videoType = "local";
-                elData.localMimeType = file.type || "video/mp4";
+                delete elData.uploading;
+                delete elData.uploadProgress;
+                renderSlidesFromState();
+                selectElement(id);
+                schedulePresentationAutosave?.(150);
+                if (typeof setProjectSaveHint === "function") {
+                    setProjectSaveHint("Video uploaded successfully", "success");
+                }
             }
-            renderSlidesFromState();
-            selectElement(id);
-            schedulePresentationAutosave?.(150);
-        }
-        if (typeof setProjectSaveHint === "function") {
-            const isTooLarge = err?.message?.toLowerCase().includes("too large") || String(err).toLowerCase().includes("too large");
-            if (_isSessionOnlyAssetFallbackError(err)) {
-                setProjectSaveHint("Video stored for this session only", "warn");
-            } else {
-                setProjectSaveHint(isTooLarge ? "Video exceeds maximum size (500MB)" : "Video upload failed", "error");
+        })
+        .catch(err => {
+            console.error("Video background upload failed:", err);
+            const slide = state.slides[activeIndex];
+            if (!slide) return;
+            const elData = slide.elements.find(e => e.id === id);
+            if (elData) {
+                delete elData.uploading;
+                delete elData.uploadProgress;
+                if (_isSessionOnlyAssetFallbackError(err)) {
+                    elData.content = _createSessionObjectUrl(file);
+                    elData.videoType = "local";
+                    elData.localMimeType = file.type || "video/mp4";
+                }
+                renderSlidesFromState();
+                selectElement(id);
+                schedulePresentationAutosave?.(150);
             }
-        }
-    });
+            if (typeof setProjectSaveHint === "function") {
+                const isTooLarge =
+                    err?.message?.toLowerCase().includes("too large") ||
+                    String(err).toLowerCase().includes("too large");
+                if (_isSessionOnlyAssetFallbackError(err)) {
+                    setProjectSaveHint("Video stored for this session only", "warn");
+                } else {
+                    setProjectSaveHint(
+                        isTooLarge ? "Video exceeds maximum size (500MB)" : "Video upload failed",
+                        "error",
+                    );
+                }
+            }
+        });
 }
 function _dataUrlToFile(dataUrl, filename = "video.mp4") {
     const parts = String(dataUrl || "").split(",", 2);
@@ -4198,7 +4233,7 @@ function _showAnimatedEntry(entry, { animate = true } = {}) {
     dom.classList.add("sf-anim-playing");
 
     // Add professional cleanup once animation ends to free GPU memory
-    const onAnimEnd = (e) => {
+    const onAnimEnd = e => {
         if (e.target !== dom) return;
         dom.classList.remove("sf-anim-playing");
         dom.classList.add("sf-anim-done");

@@ -81,6 +81,15 @@ function initKeyboard() {
             return;
         }
 
+        // 'w' Key: Toggle whiteboard mode
+        if (key === "w" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            e.preventDefault();
+            if (typeof toggleWhiteboardMode === "function") {
+                toggleWhiteboardMode();
+            }
+            return;
+        }
+
         // Ctrl+A: Select all elements
         if ((e.ctrlKey || e.metaKey) && key === "a") {
             e.preventDefault();
