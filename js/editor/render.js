@@ -1066,7 +1066,8 @@ function _whiteboardStrokeAttrs(el = {}) {
 
 function _whiteboardFillAttrs(el = {}) {
     const fill = el.fillStyle === "solid" && el.backgroundColor && el.backgroundColor !== "transparent" ? el.backgroundColor : "none";
-    return `fill="${_escapeWhiteboardAttr(fill)}"`;
+    const opacity = fill === "none" ? 1 : 0.58;
+    return `fill="${_escapeWhiteboardAttr(fill)}"${fill === "none" ? "" : ` fill-opacity="${opacity}"`}`;
 }
 
 function _createSlideWhiteboardLayer(slide, slideWidth, slideHeight) {
@@ -1095,13 +1096,49 @@ function _createSlideWhiteboardLayer(slide, slideWidth, slideHeight) {
             const w = Number(el.width) || 0;
             const h = Number(el.height) || 0;
             const attrs = `${_whiteboardStrokeAttrs(el)} ${_whiteboardFillAttrs(el)}`;
-            if (el.shapeType === "rectangle") return `<rect x="${Math.min(x, x + w)}" y="${Math.min(y, y + h)}" width="${Math.abs(w)}" height="${Math.abs(h)}" rx="10" ${attrs}/>`;
+            if (el.shapeType === "rectangle") {
+                const radius = Math.min(Math.abs(w), Math.abs(h), 64) * 0.18;
+                return `<rect x="${Math.min(x, x + w)}" y="${Math.min(y, y + h)}" width="${Math.abs(w)}" height="${Math.abs(h)}" rx="${radius}" ${attrs}/>`;
+            }
             if (el.shapeType === "ellipse") return `<ellipse cx="${x + w / 2}" cy="${y + h / 2}" rx="${Math.abs(w / 2)}" ry="${Math.abs(h / 2)}" ${attrs}/>`;
             if (el.shapeType === "diamond") {
                 const points = `${x + w / 2},${y} ${x + w},${y + h / 2} ${x + w / 2},${y + h} ${x},${y + h / 2}`;
                 return `<polygon points="${points}" ${attrs}/>`;
             }
+            if (el.shapeType === "triangle") {
+                const points = `${x + w / 2},${y} ${x + w},${y + h} ${x},${y + h}`;
+                return `<polygon points="${points}" ${attrs}/>`;
+            }
+            if (el.shapeType === "star") {
+                const cx = x + w / 2;
+                const cy = y + h / 2;
+                const outer = Math.min(Math.abs(w), Math.abs(h)) / 2;
+                const inner = outer * 0.382;
+                const points = Array.from({ length: 10 }, (_, index) => {
+                    const radius = index % 2 === 0 ? outer : inner;
+                    const angle = (Math.PI * 2 * index) / 10 - Math.PI / 2;
+                    return `${cx + Math.cos(angle) * radius},${cy + Math.sin(angle) * radius}`;
+                }).join(" ");
+                return `<polygon points="${points}" ${attrs}/>`;
+            }
             if (el.shapeType === "line") return `<line x1="${x}" y1="${y}" x2="${x + w}" y2="${y + h}" ${_whiteboardStrokeAttrs(el)}/>`;
+            if (el.shapeType === "curve" || el.shapeType === "curve_arrow") {
+                const x2 = x + w;
+                const y2 = y + h;
+                const length = Math.max(1, Math.hypot(w, h));
+                const cx = (x + x2) / 2 - (h / length) * length * 0.25;
+                const cy = (y + y2) / 2 + (w / length) * length * 0.25;
+                const stroke = _whiteboardStrokeAttrs(el);
+                const path = `<path d="M ${x} ${y} Q ${cx} ${cy} ${x2} ${y2}" ${stroke} fill="none"/>`;
+                if (el.shapeType !== "curve_arrow") return path;
+                const angle = Math.atan2(y2 - cy, x2 - cx);
+                const len = Math.min(24, Math.max(10, Math.hypot(w, h) * 0.22));
+                const leftX = x2 - Math.cos(angle - Math.PI / 6) * len;
+                const leftY = y2 - Math.sin(angle - Math.PI / 6) * len;
+                const rightX = x2 - Math.cos(angle + Math.PI / 6) * len;
+                const rightY = y2 - Math.sin(angle + Math.PI / 6) * len;
+                return `<g>${path}<line x1="${x2}" y1="${y2}" x2="${leftX}" y2="${leftY}" ${stroke}/><line x1="${x2}" y1="${y2}" x2="${rightX}" y2="${rightY}" ${stroke}/></g>`;
+            }
             if (el.shapeType === "arrow") {
                 const angle = Math.atan2(h, w);
                 const len = Math.min(24, Math.max(10, Math.hypot(w, h) * 0.22));
@@ -1119,6 +1156,40 @@ function _createSlideWhiteboardLayer(slide, slideWidth, slideHeight) {
     return layer;
 }
 
+function formatSlideFooterNumber(slideIndex) {
+    return String(Math.max(0, Number(slideIndex) || 0) + 1).padStart(2, "0");
+}
+
+function syncSlideFooterNumber(slide, slideIndex) {
+    if (!slide || !Array.isArray(slide.elements)) return false;
+    const nextNumber = formatSlideFooterNumber(slideIndex);
+    let changed = false;
+    slide.elements.forEach(element => {
+        if (!element || element.footerRole !== "slide-number") return;
+        if (element.content !== nextNumber) {
+            element.content = nextNumber;
+            changed = true;
+        }
+        if (element.type === "text") {
+            element.autoHeight = false;
+            element.textFitMode = "fixed";
+            element.styles = {
+                ...(element.styles || {}),
+                textAlign: "center",
+            };
+        }
+    });
+    return changed;
+}
+
+function syncAllSlideFooterNumbers() {
+    let changed = false;
+    (state.slides || []).forEach((slide, index) => {
+        if (syncSlideFooterNumber(slide, index)) changed = true;
+    });
+    return changed;
+}
+
 function renderSlidesFromState(options = {}) {
     const preserveState = Boolean(options.preserveState);
     const container = document.getElementById("slides-container");
@@ -1129,8 +1200,10 @@ function renderSlidesFromState(options = {}) {
     const slideConfig = getPresentationPageSetupConfig();
     const slideWidth = Number(slideConfig.width) || 1024;
     const slideHeight = Number(slideConfig.height) || 768;
+    syncAllSlideFooterNumbers();
     if (!preserveState && typeof ensureEditableMasterFooterElements === "function") {
         state.slides.forEach((slide, slideIndex) => ensureEditableMasterFooterElements(slide, slideIndex, theme));
+        syncAllSlideFooterNumbers();
     }
     container.innerHTML = "";
     state.slides.forEach((slide, slideIndex) => {
@@ -1190,6 +1263,34 @@ function renderSlidePreviews(targetIndex = null, options = {}) {
     const slideHeight = Number(slideConfig.height) || 768;
     if (!container) return;
 
+    const buildPreviewSlide = (slide, index) => {
+        syncSlideFooterNumber(slide, index);
+        const previewSlide = document.createElement("div");
+        const previewBg =
+            getComputedStyle(document.documentElement).getPropertyValue("--slide-bg").trim() ||
+            theme.cssVars["--slide-bg"];
+        previewSlide.style.cssText = `width:${slideWidth}px;height:${slideHeight}px;position:relative;transform-origin:top left;background:${previewBg};color:${theme.defaultTextColor};font-family:${theme.bodyFont};`;
+
+        const previewBgNode = createSlideBackgroundNode(slide.background, { forPreview: true, slideIndex: index });
+        if (previewBgNode) previewSlide.appendChild(previewBgNode);
+        if (typeof buildMasterSlideElements === "function") {
+            buildMasterSlideElements(slide, index, theme).forEach(elData =>
+                previewSlide.appendChild(_createStaticNode(elData, { master: true, forPreview: true })),
+            );
+        }
+        slide.elements.forEach(elData => previewSlide.appendChild(_createStaticNode(elData, { forPreview: true })));
+        return previewSlide;
+    };
+
+    const scalePreviewSlide = (thumbnail, previewSlide) => {
+        const immediateWidth = thumbnail.getBoundingClientRect().width || thumbnail.clientWidth || 1;
+        previewSlide.style.transform = `scale(${immediateWidth / slideWidth})`;
+        requestAnimationFrame(() => {
+            const width = thumbnail.getBoundingClientRect().width || thumbnail.clientWidth || 1;
+            previewSlide.style.transform = `scale(${width / slideWidth})`;
+        });
+    };
+
     if (targetIndex !== null) {
         // Update only one specific slide thumbnail
         const card = container.querySelector(`.slide-preview-card[data-slide-index="${targetIndex}"]`);
@@ -1199,23 +1300,7 @@ function renderSlidePreviews(targetIndex = null, options = {}) {
         const thumbnail = card.querySelector(".slide-thumbnail");
         if (!thumbnail || !slide) return;
 
-        const previewSlide = document.createElement("div");
-        const previewBg =
-            getComputedStyle(document.documentElement).getPropertyValue("--slide-bg").trim() ||
-            theme.cssVars["--slide-bg"];
-        previewSlide.style.cssText = `width:${slideWidth}px;height:${slideHeight}px;position:relative;transform-origin:top left;background:${previewBg};color:${theme.defaultTextColor};font-family:${theme.bodyFont};`;
-
-        const previewBgNode = createSlideBackgroundNode(slide.background, { forPreview: true });
-        if (previewBgNode) previewSlide.appendChild(previewBgNode);
-        if (typeof buildMasterSlideElements === "function") {
-            buildMasterSlideElements(slide, targetIndex, theme).forEach(elData =>
-                previewSlide.appendChild(_createStaticNode(elData, { master: true, forPreview: true })),
-            );
-        }
-        slide.elements.forEach(elData => previewSlide.appendChild(_createStaticNode(elData)));
-
-        const scale = thumbnail.clientWidth / slideWidth;
-        previewSlide.style.transform = `scale(${scale || 1})`;
+        const previewSlide = buildPreviewSlide(slide, targetIndex);
 
         // Surgical replacement to avoid "abrupt" resets
         const existing = thumbnail.firstElementChild;
@@ -1224,6 +1309,10 @@ function renderSlidePreviews(targetIndex = null, options = {}) {
         } else {
             thumbnail.appendChild(previewSlide);
         }
+        card.classList.toggle("active", targetIndex === currentSlideIndex);
+        const number = card.querySelector(".slide-preview-number");
+        if (number) number.innerText = String(targetIndex + 1);
+        scalePreviewSlide(thumbnail, previewSlide);
         return;
     }
 
@@ -1294,19 +1383,7 @@ function renderSlidePreviews(targetIndex = null, options = {}) {
 
         const thumbnail = document.createElement("div");
         thumbnail.className = "slide-thumbnail";
-        const previewSlide = document.createElement("div");
-        const previewBg =
-            getComputedStyle(document.documentElement).getPropertyValue("--slide-bg").trim() ||
-            theme.cssVars["--slide-bg"];
-        previewSlide.style.cssText = `width:${slideWidth}px;height:${slideHeight}px;position:relative;transform-origin:top left;background:${previewBg};color:${theme.defaultTextColor};font-family:${theme.bodyFont};`;
-        const previewBgNode = createSlideBackgroundNode(slide.background, { forPreview: true });
-        if (previewBgNode) previewSlide.appendChild(previewBgNode);
-        if (typeof buildMasterSlideElements === "function") {
-            buildMasterSlideElements(slide, index, theme).forEach(elData =>
-                previewSlide.appendChild(_createStaticNode(elData, { master: true, forPreview: true })),
-            );
-        }
-        slide.elements.forEach(elData => previewSlide.appendChild(_createStaticNode(elData)));
+        const previewSlide = buildPreviewSlide(slide, index);
         thumbnail.appendChild(previewSlide);
         card.appendChild(thumbnail);
 
@@ -1346,8 +1423,7 @@ function renderSlidePreviews(targetIndex = null, options = {}) {
         actions.appendChild(deleteBtn);
         card.appendChild(actions);
         container.appendChild(card);
-        const scale = thumbnail.clientWidth / slideWidth;
-        previewSlide.style.transform = `scale(${scale || 1})`;
+        scalePreviewSlide(thumbnail, previewSlide);
     });
 
     _slidePreviewStructureSignature = getSlidePreviewStructureSignature();
@@ -2041,6 +2117,10 @@ function createElementNode(elData, options = {}) {
     }
 
     _applyTypeContent(el, elData, options);
+    _applyTimelineInitialStateForPlayMode(el, elData, timelineAnimationConfig);
+    if (elData.type === "text" && !elData.iconMode && typeof bindTextHoverToolbarElement === "function") {
+        requestAnimationFrame(() => bindTextHoverToolbarElement(elData.id));
+    }
     if (elData.type === "connector") {
         el.style.transform = `translate(${elData.x}px, ${elData.y}px)`;
         el.setAttribute("data-x", elData.x);
@@ -2069,13 +2149,93 @@ function createElementNode(elData, options = {}) {
     return el;
 }
 
+function _applyTimelineInitialStateForPlayMode(el, elData, timelineAnimationConfig = null) {
+    if (!document.body.classList.contains("play-mode-active")) return;
+    if (!el || !timelineAnimationConfig || !Array.isArray(timelineAnimationConfig.timelines)) return;
+    if (typeof getAnimationEngine !== "function") return;
+    const animations = timelineAnimationConfig.timelines
+        .flatMap(timeline => timeline.animations || [])
+        .filter(animation => animation && (animation.trigger === "on-click" || animation.trigger === "on-slide"))
+        .sort((a, b) => {
+            const aStart = Number(a.startTime ?? a.delay) || 0;
+            const bStart = Number(b.startTime ?? b.delay) || 0;
+            if (aStart !== bStart) return aStart - bStart;
+            return (Number(a.duration) || 0) - (Number(b.duration) || 0);
+        });
+    const firstAnimation = animations[0];
+    if (!firstAnimation) return;
+    const engine = getAnimationEngine();
+    if (typeof engine._applyAnimationInitial === "function") {
+        engine._applyAnimationInitial(el, firstAnimation);
+    }
+}
+
+function refreshCanvasBackedElements() {
+    const slide = state.slides?.[currentSlideIndex];
+    if (!slide) return;
+    (slide.elements || []).forEach(elData => {
+        const dom = document.getElementById(elData.id);
+        if (!dom) return;
+        if (elData.type === "whiteboard") {
+            const canvas = dom.querySelector("canvas.whiteboard-object-canvas");
+            if (canvas && typeof window.renderWhiteboardDrawingElement === "function") {
+                window.renderWhiteboardDrawingElement(canvas, elData);
+            }
+        } else if (elData.type === "sketch") {
+            const canvas = dom.querySelector("canvas.sketch-canvas");
+            if (!canvas || typeof renderSketchStrokes !== "function") return;
+            const rect = canvas.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = Math.max(1, Math.round(rect.width * dpr));
+            canvas.height = Math.max(1, Math.round(rect.height * dpr));
+            const ctx = canvas.getContext("2d");
+            if (!ctx) return;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            renderSketchStrokes(ctx, elData.strokes || [], rect.width, rect.height);
+        }
+    });
+}
+window.refreshCanvasBackedElements = refreshCanvasBackedElements;
+
+function getIconClassFromElementData(elData) {
+    const raw = String(elData?.iconClass || elData?.content || "");
+    const classMatch =
+        raw.match(/class\s*=\s*["']([^"']+)["']/i) ||
+        raw.match(/class\s*=\s*&quot;([^&]+)&quot;/i);
+    const classSource = classMatch ? classMatch[1] : raw;
+    const safeClasses = classSource
+        .split(/\s+/)
+        .map(cls => cls.trim())
+        .filter(cls => /^fa-/.test(cls) || /^fa[srltdbk]?$/.test(cls));
+    return safeClasses.length ? safeClasses.join(" ") : "fa-solid fa-icons";
+}
+
+function renderIconContentHost(contentHost, elData) {
+    const iconClass = getIconClassFromElementData(elData);
+    elData.iconClass = iconClass;
+    elData.content = `<i class="${iconClass}"></i>`;
+    contentHost.innerHTML = "";
+    const icon = document.createElement("i");
+    icon.className = iconClass;
+    icon.setAttribute("aria-hidden", "true");
+    contentHost.appendChild(icon);
+}
+
 function _applyTypeContent(el, elData, options = {}) {
     if (elData.type === "text") {
         _installStructuredEditorShortcuts();
         const contentHost = document.createElement("div");
         contentHost.className = "text-element-content";
+        if (elData.iconMode) {
+            contentHost.classList.add("icon-mode-content");
+            el.classList.add("icon-mode-element");
+        }
         contentHost.tabIndex = 0;
-        contentHost.innerHTML = renderTextContent(elData);
+        if (elData.iconMode) {
+            renderIconContentHost(contentHost, elData);
+        } else {
+            contentHost.innerHTML = renderTextContent(elData);
+        }
         _applyBulletFragmentAnimation(contentHost, elData);
         el.appendChild(contentHost);
         requestAnimationFrame(() => {
@@ -2088,6 +2248,7 @@ function _applyTypeContent(el, elData, options = {}) {
 
         el.addEventListener("dblclick", event => {
             if (document.body.classList.contains("play-mode-active")) return;
+            if (elData.iconMode) return; // Icons are not editable as text
             event.stopPropagation();
             selectElement(elData.id, "replace");
             let isStructured = isStructuredBulletContent(elData.content);
@@ -2538,7 +2699,14 @@ function _applyTypeContent(el, elData, options = {}) {
         canvas.style.height = "100%";
         canvas.style.display = "block";
         canvas.style.touchAction = "none";
+        canvas.tabIndex = 0;
         el.appendChild(canvas);
+        el.addEventListener("dblclick", event => {
+            if (document.body.classList.contains("play-mode-active")) return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (typeof initSketchMode === "function") initSketchMode(elData.id);
+        });
 
         // Render strokes to canvas
         requestAnimationFrame(() => {

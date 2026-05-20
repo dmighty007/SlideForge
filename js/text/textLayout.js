@@ -12,8 +12,9 @@ function isTextAutoHeightEnabled(data, dom) {
 
 function getTextFitMode(data, dom) {
     if (data?.textFitMode === "autofit") return "autofit";
-    if (data?.textFitMode === "fixed") return "fixed";
     if (dom?.dataset?.textFitMode === "autofit") return "autofit";
+    if (data?.autoHeight === true || dom?.dataset?.autoHeight === "true") return "autoHeight";
+    if (data?.textFitMode === "fixed") return "fixed";
     return isTextAutoHeightEnabled(data, dom) ? "autoHeight" : "fixed";
 }
 
@@ -111,12 +112,15 @@ function syncTextBoxLayout(dom, data = null) {
 
     const previousHeight = dom.style.height;
     const previousHostHeight = contentHost.style.height;
+    const previousOverflow = contentHost.style.overflow;
     dom.style.height = "auto";
     contentHost.style.height = "auto";
+    contentHost.style.overflow = "visible";
 
     const measured = Math.max(minHeight, Math.ceil(contentHost.scrollHeight + verticalInsets));
     dom.style.height = `${measured}px`;
     contentHost.style.height = "";
+    contentHost.style.overflow = previousOverflow || "";
 
     return {
         autoHeight,

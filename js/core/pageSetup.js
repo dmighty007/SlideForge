@@ -29,27 +29,117 @@ function ensurePresentationPageSetup(source = null) {
 
 function _scaleLengthValue(value, ratio) {
     if (typeof value === "number" && Number.isFinite(value)) {
-        return `${Math.round(value * ratio)}px`;
+        return `${_layoutNumber(value * ratio)}px`;
     }
     if (typeof value !== "string") return value;
     const trimmed = value.trim();
     if (!trimmed || trimmed === "auto") return value;
     const match = trimmed.match(/^(-?\d+(?:\.\d+)?)px$/i);
     if (!match) return value;
-    return `${Math.round(Number(match[1]) * ratio)}px`;
+    return `${_layoutNumber(Number(match[1]) * ratio)}px`;
+}
+
+function _layoutNumber(value) {
+    const rounded = Number(Number(value || 0).toFixed(4));
+    const integer = Math.round(rounded);
+    return Math.abs(rounded - integer) < 0.001 ? integer : rounded;
+}
+
+function _pxNumber(value) {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value !== "string") return NaN;
+    const match = value.trim().match(/^(-?\d+(?:\.\d+)?)px$/i);
+    return match ? Number(match[1]) : NaN;
 }
 
 function _scaleNumericArray(values, ratio) {
     if (!Array.isArray(values)) return values;
-    return values.map(value => Math.round((Number(value) || 0) * ratio));
+    return values.map(value => _layoutNumber((Number(value) || 0) * ratio));
 }
 
-function _scaleElementStylesForPageSetup(styles, scale) {
+function _scaleElementStylesForPageSetup(styles, metricScale, fontScale = 1) {
     if (!styles || typeof styles !== "object") return styles;
     const next = { ...styles };
-    ["fontSize", "padding", "borderRadius", "borderWidth", "letterSpacing"].forEach(key => {
-        if (next[key] !== undefined) next[key] = _scaleLengthValue(next[key], scale);
+    ["padding", "borderRadius", "borderWidth"].forEach(key => {
+        if (next[key] !== undefined) next[key] = _scaleLengthValue(next[key], metricScale);
     });
+    ["fontSize", "letterSpacing"].forEach(key => {
+        if (next[key] !== undefined) next[key] = _scaleLengthValue(next[key], fontScale);
+    });
+    return next;
+}
+
+function _scaleElementFrameForPageSetup(element, scaleX, scaleY, sizeScale) {
+    const next = { ...element };
+    const x = Number(next.x);
+    const y = Number(next.y);
+    const width = _pxNumber(next.width);
+    const height = _pxNumber(next.height);
+    const hasFrame = Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(width) && Number.isFinite(height);
+
+    if (hasFrame) {
+        const nextWidth = Math.max(1, _layoutNumber(width * sizeScale));
+        const nextHeight = Math.max(1, _layoutNumber(height * sizeScale));
+        next.x = _layoutNumber((x + width / 2) * scaleX - nextWidth / 2);
+        next.y = _layoutNumber((y + height / 2) * scaleY - nextHeight / 2);
+        next.width = `${nextWidth}px`;
+        next.height = `${nextHeight}px`;
+        return next;
+    }
+
+    if (Number.isFinite(x)) next.x = _layoutNumber(x * scaleX);
+    if (Number.isFinite(y)) next.y = _layoutNumber(y * scaleY);
+    next.width = _scaleLengthValue(next.width, sizeScale);
+    if (!(typeof next.height === "string" && next.height.trim() === "auto")) {
+        next.height = _scaleLengthValue(next.height, sizeScale);
+    }
+    return next;
+}
+
+function _scaleConnectorPointsForPageSetup(points, scaleX, scaleY, sizeScale) {
+    if (!Array.isArray(points) || !points.length) return points;
+    const normalized = points.map(point => ({
+        x: Number(point?.x || 0),
+        y: Number(point?.y || 0),
+    }));
+    const minX = Math.min(...normalized.map(point => point.x));
+    const maxX = Math.max(...normalized.map(point => point.x));
+    const minY = Math.min(...normalized.map(point => point.y));
+    const maxY = Math.max(...normalized.map(point => point.y));
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    const nextCenterX = centerX * scaleX;
+    const nextCenterY = centerY * scaleY;
+    return normalized.map(point => ({
+        x: _layoutNumber(nextCenterX + (point.x - centerX) * sizeScale),
+        y: _layoutNumber(nextCenterY + (point.y - centerY) * sizeScale),
+    }));
+}
+
+function _scaleDrawingObjectForPageSetup(element, scaleX, scaleY, sizeScale) {
+    if (!element || typeof element !== "object") return element;
+    if (element.type === "freehand" && Array.isArray(element.points)) {
+        return {
+            ...element,
+            points: _scaleConnectorPointsForPageSetup(element.points, scaleX, scaleY, sizeScale),
+        };
+    }
+    const next = { ...element };
+    const x = Number(next.x);
+    const y = Number(next.y);
+    const width = Number(next.width);
+    const height = Number(next.height);
+    if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(width) && Number.isFinite(height)) {
+        const nextWidth = width * sizeScale;
+        const nextHeight = height * sizeScale;
+        next.x = _layoutNumber((x + width / 2) * scaleX - nextWidth / 2);
+        next.y = _layoutNumber((y + height / 2) * scaleY - nextHeight / 2);
+        next.width = Math.max(1, _layoutNumber(nextWidth));
+        next.height = Math.max(1, _layoutNumber(nextHeight));
+    } else {
+        if (Number.isFinite(x)) next.x = _layoutNumber(x * scaleX);
+        if (Number.isFinite(y)) next.y = _layoutNumber(y * scaleY);
+    }
     return next;
 }
 
@@ -57,33 +147,35 @@ function scaleSlideElementsForPageSetup(slide, fromConfig, toConfig, options = {
     if (!slide || !Array.isArray(slide.elements)) return slide;
     const scaleX = toConfig.width / fromConfig.width;
     const scaleY = toConfig.height / fromConfig.height;
-    const scaleText = options.preserveTextSize ? 1 : Math.min(scaleX, scaleY);
+    // Use a reversible uniform scale for object sizes and stroke-like style values.
+    // `min(scaleX, scaleY)` causes recursive shrink when toggling between
+    // aspect ratios because at least one axis is often below 1 on every change.
+    // Text is intentionally preserved by default; rounded pixel font sizes can
+    // otherwise ratchet down after repeated layout switches.
+    const sizeScale = Math.sqrt(Math.max(0.0001, scaleX * scaleY));
+    const fontScale = options.preserveTextSize === false ? sizeScale : 1;
     const nextSlide = JSON.parse(JSON.stringify(slide));
     nextSlide.elements = nextSlide.elements.map(element => {
-        const next = { ...element };
-        if (Number.isFinite(Number(next.x))) next.x = Math.round(Number(next.x) * scaleX);
-        if (Number.isFinite(Number(next.y))) next.y = Math.round(Number(next.y) * scaleY);
-        next.width = _scaleLengthValue(next.width, scaleX);
-        if (!(typeof next.height === "string" && next.height.trim() === "auto")) {
-            next.height = _scaleLengthValue(next.height, scaleY);
-        }
-        next.styles = _scaleElementStylesForPageSetup(next.styles, scaleText);
+        const next = _scaleElementFrameForPageSetup(element, scaleX, scaleY, sizeScale);
+        next.styles = _scaleElementStylesForPageSetup(next.styles, sizeScale, fontScale);
         if (next.tableData && typeof next.tableData === "object") {
             next.tableData = {
                 ...next.tableData,
-                cellPadding: Math.round((Number(next.tableData.cellPadding) || 0) * scaleText),
-                rowHeights: _scaleNumericArray(next.tableData.rowHeights, scaleY),
-                colWidths: _scaleNumericArray(next.tableData.colWidths, scaleX),
+                cellPadding: _layoutNumber((Number(next.tableData.cellPadding) || 0) * sizeScale),
+                rowHeights: _scaleNumericArray(next.tableData.rowHeights, sizeScale),
+                colWidths: _scaleNumericArray(next.tableData.colWidths, sizeScale),
             };
         }
         if (next.type === "connector" && Array.isArray(next.points)) {
-            next.points = next.points.map(point => ({
-                x: Math.round(Number(point?.x || 0) * scaleX),
-                y: Math.round(Number(point?.y || 0) * scaleY),
-            }));
+            next.points = _scaleConnectorPointsForPageSetup(next.points, scaleX, scaleY, sizeScale);
         }
         return next;
     });
+    if (Array.isArray(nextSlide.whiteboardElements)) {
+        nextSlide.whiteboardElements = nextSlide.whiteboardElements.map(element =>
+            _scaleDrawingObjectForPageSetup(element, scaleX, scaleY, sizeScale)
+        );
+    }
     return nextSlide;
 }
 

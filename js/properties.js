@@ -1382,7 +1382,7 @@ function updateFloatingToolbars() {
     if (!dom) return;
 
     let toolbarId = null;
-    if (data.type === "text") toolbarId = "floating-text-toolbar";
+    if (data.type === "text" && !data.iconMode) toolbarId = "floating-text-toolbar";
     else if (data.type === "shape") toolbarId = "floating-shape-toolbar";
     else if (data.type === "image") toolbarId = "floating-image-toolbar";
 
@@ -1392,14 +1392,14 @@ function updateFloatingToolbars() {
     if (!toolbar) return;
 
     const rect = dom.getBoundingClientRect();
-    positionFloatingToolbar(toolbar, rect);
+    positionFloatingToolbar(toolbar, rect, { placement: data.type === "text" ? "top" : "auto" });
 
     if (data.type === "text") _bindFloatingTextToolbar(data, toolbar);
     else if (data.type === "shape") _bindFloatingShapeToolbar(data, toolbar);
     else if (data.type === "image") _bindFloatingImageToolbar(data, toolbar);
 }
 
-function positionFloatingToolbar(toolbar, targetRect) {
+function positionFloatingToolbar(toolbar, targetRect, options = {}) {
     if (!toolbar || !targetRect) return;
 
     const previousVisibility = toolbar.style.visibility;
@@ -1438,8 +1438,12 @@ function positionFloatingToolbar(toolbar, targetRect) {
     const hasRoomAbove = topAbove >= minTop;
     const hasRoomBelow = topBelow <= maxTop;
 
+    const preferTop = options.placement === "top";
+
     let top;
-    if (hasRoomAbove) {
+    if (preferTop) {
+        top = Math.max(minTop, Math.min(maxTop, topAbove));
+    } else if (hasRoomAbove) {
         top = topAbove;
     } else if (hasRoomBelow) {
         top = topBelow;
@@ -1452,10 +1456,93 @@ function positionFloatingToolbar(toolbar, targetRect) {
 
     toolbar.style.left = `${left}px`;
     toolbar.style.top = `${top}px`;
+    const renderedRect = toolbar.getBoundingClientRect();
+    const dx = renderedRect.left - left;
+    const dy = renderedRect.top - top;
+    if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+        toolbar.style.left = `${left - dx}px`;
+        toolbar.style.top = `${top - dy}px`;
+    }
     toolbar.style.visibility = previousVisibility || "";
 }
 
 let _imageHoverToolbarHideTimer = null;
+let _textHoverToolbarHideTimer = null;
+
+function _getToolbarTargetTextData(toolbar, fallbackData = null) {
+    const id = toolbar?.dataset?.hoverTextId || fallbackData?.id || state.selectedIds?.[0];
+    return state.slides[currentSlideIndex]?.elements?.find(el => el.id === id && el.type === "text") || fallbackData;
+}
+
+function _ensureTextToolbarTargetSelected(toolbar, fallbackData = null) {
+    const target = _getToolbarTargetTextData(toolbar, fallbackData);
+    if (!target) return null;
+    if (state.selectedIds.length !== 1 || state.selectedIds[0] !== target.id) {
+        selectElement(target.id, "replace");
+    }
+    return state.slides[currentSlideIndex]?.elements?.find(el => el.id === target.id) || target;
+}
+
+function showTextHoverToolbar(id) {
+    if (document.body.classList.contains("play-mode-active")) return;
+
+    const data = state.slides[currentSlideIndex]?.elements?.find(el => el.id === id);
+    const dom = document.getElementById(id);
+    const toolbar = document.getElementById("floating-text-toolbar");
+    if (!data || data.type !== "text" || data.iconMode || data.hidden || !dom || !toolbar) return;
+    if (dom.classList.contains("editing-text")) return;
+
+    clearTimeout(_textHoverToolbarHideTimer);
+    ["floating-shape-toolbar", "floating-image-toolbar"].forEach(toolbarId => {
+        document.getElementById(toolbarId)?.classList.add("hidden");
+    });
+
+    const rect = dom.getBoundingClientRect();
+    positionFloatingToolbar(toolbar, rect, { placement: "top" });
+    toolbar.dataset.hoverTextId = id;
+    toolbar.dataset.hoverMode = state.selectedIds.includes(id) ? "selected" : "hover";
+    _bindFloatingTextToolbar(data, toolbar);
+    requestAnimationFrame(() => {
+        if (toolbar.dataset.hoverTextId !== id || state.selectedIds.includes(id)) return;
+        positionFloatingToolbar(toolbar, dom.getBoundingClientRect(), { placement: "top" });
+        toolbar.classList.remove("hidden");
+    });
+}
+
+function scheduleTextHoverToolbarHide(id) {
+    clearTimeout(_textHoverToolbarHideTimer);
+    _textHoverToolbarHideTimer = setTimeout(() => {
+        const toolbar = document.getElementById("floating-text-toolbar");
+        const dom = document.getElementById(id);
+        if (!toolbar || state.selectedIds.includes(id)) return;
+        if (toolbar.matches(":hover") || dom?.matches(":hover")) return;
+        toolbar.classList.add("hidden");
+        delete toolbar.dataset.hoverTextId;
+        delete toolbar.dataset.hoverMode;
+    }, 180);
+}
+
+function bindTextHoverToolbarElement(id) {
+    const dom = document.getElementById(id);
+    const toolbar = document.getElementById("floating-text-toolbar");
+    if (!dom || !toolbar || dom.dataset.textHoverToolbarBound === "true") return;
+    const data = state.slides[currentSlideIndex]?.elements?.find(el => el.id === id);
+    if (!data || data.type !== "text" || data.iconMode) return;
+    dom.dataset.textHoverToolbarBound = "true";
+    dom.addEventListener("mouseenter", () => showTextHoverToolbar(id));
+    dom.addEventListener("mouseleave", () => scheduleTextHoverToolbarHide(id));
+    if (toolbar.dataset.textHoverToolbarBound !== "true") {
+        toolbar.dataset.textHoverToolbarBound = "true";
+        toolbar.addEventListener("mouseenter", () => clearTimeout(_textHoverToolbarHideTimer));
+        toolbar.addEventListener("mouseleave", () => {
+            const hoverId = toolbar.dataset.hoverTextId;
+            if (hoverId) scheduleTextHoverToolbarHide(hoverId);
+        });
+        toolbar.addEventListener("pointerdown", () => clearTimeout(_textHoverToolbarHideTimer));
+    }
+}
+
+window.bindTextHoverToolbarElement = bindTextHoverToolbarElement;
 
 function showImageHoverToolbar(id) {
     if (document.body.classList.contains("play-mode-active")) return;
@@ -1521,9 +1608,13 @@ function _bindFloatingTextToolbar(data, toolbar) {
     const insertEquationBtn = document.getElementById("floating-insert-equation");
 
     const applyFloatingTextFormatting = (prop, value, options = {}) => {
+        const target = _ensureTextToolbarTargetSelected(toolbar, data);
+        if (!target) return;
         applyTextFormatting(prop, value, options);
         requestAnimationFrame(() => {
-            updateFloatingToolbars();
+            if (!isControlBeingEdited(document.activeElement)) {
+                updateFloatingToolbars();
+            }
             updateUIFromSelection?.();
         });
     };
@@ -1632,7 +1723,10 @@ function _bindFloatingTextToolbar(data, toolbar) {
     }
     if (clearBtn) {
         bindInlineFormattingGuard(clearBtn);
-        clearBtn.onclick = () => clearTextFormatting(data);
+        clearBtn.onclick = () => {
+            const target = _ensureTextToolbarTargetSelected(toolbar, data);
+            if (target) clearTextFormatting(target);
+        };
     }
 
     if (insertSymbolBtn) {
@@ -2712,38 +2806,6 @@ function buildPropertiesPanel() {
         }
     }
 
-    if (!data && state.selectedIds.length > 1) {
-        const multiAnimGrp = createGroup("Animation");
-        multiAnimGrp.innerHTML += `
-            <div class="space-y-2">
-                <label class="flex items-center gap-2 cursor-pointer">
-                    <input id="prop-multi-anim-enabled" type="checkbox" class="rounded">
-                    <span class="text-xs text-slate-700 font-medium">Apply animation to selection</span>
-                </label>
-                <div id="prop-multi-anim-controls" class="space-y-2 hidden">
-                    <select id="prop-multi-anim-effect" class="w-full text-xs">
-                        ${PRESENTATION_ANIMATION_EFFECTS.map(effect => `<option value="${effect}">${describeAnimationEffect(effect)}</option>`).join("")}
-                    </select>
-                    <select id="prop-multi-anim-trigger" class="w-full text-xs">
-                        <option value="on-slide">With Slide</option>
-                        <option value="on-click">On Click</option>
-                    </select>
-                    <div class="grid grid-cols-2 gap-2">
-                        <input type="number" id="prop-multi-anim-duration" class="w-full text-xs" min="100" step="50" value="800" placeholder="Duration">
-                        <input type="number" id="prop-multi-anim-delay" class="w-full text-xs" min="0" step="50" value="0" placeholder="Delay">
-                    </div>
-                    <select id="prop-multi-anim-easing" class="w-full text-xs">
-                        <option value="ease-out">Ease Out</option>
-                        <option value="ease-in-out">Ease In-Out</option>
-                        <option value="linear">Linear</option>
-                    </select>
-                    <button id="prop-multi-anim-apply" class="w-full py-2 rounded bg-primary text-white text-xs font-semibold">Apply To Selection</button>
-                </div>
-            </div>
-        `;
-        panel.appendChild(multiAnimGrp);
-    }
-
     {
         const slide = state.slides[currentSlideIndex] || { notes: "", elements: [] };
         const notesGrp = createGroup("Slide Notes");
@@ -2754,31 +2816,6 @@ function buildPropertiesPanel() {
             </div>
         `;
         panel.appendChild(notesGrp);
-    }
-
-    {
-        const slideEntries = getSlideAnimationEntries();
-        const listGrp = createGroup("Slide Animation Order");
-        listGrp.innerHTML += slideEntries.length
-            ? `<div class="space-y-2">${slideEntries
-                  .map(
-                      entry => `
-                    <div class="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2">
-                        <div class="flex items-center justify-between gap-2">
-                            <div class="min-w-0">
-                                <div class="text-[11px] font-semibold text-slate-700">${describeAnimationEffect(entry.animation.effect)}</div>
-                                <div class="text-xs text-slate-600">${entry.animation.trigger === "on-click" ? `On click #${entry.animation.order}` : "With slide"}</div>
-                            </div>
-                            <div class="flex items-center gap-1">
-                                <button class="prop-anim-move-up rounded border border-slate-200 bg-white px-2 py-1 text-[10px]" data-anim-id="${entry.el.id}" title="Move earlier">Up</button>
-                                <button class="prop-anim-move-down rounded border border-slate-200 bg-white px-2 py-1 text-[10px]" data-anim-id="${entry.el.id}" title="Move later">Down</button>
-                            </div>
-                        </div>
-                    </div>`,
-                  )
-                  .join("")}</div>`
-            : `<div class="text-[11px] text-slate-500">No slide animations yet.</div>`;
-        panel.appendChild(listGrp);
     }
 
     // Listeners
@@ -2815,36 +2852,6 @@ function buildPropertiesPanel() {
                 saveStateToUndo();
                 updateCurrentSlideNotes(e.target.value);
                 lastNotesValue = e.target.value;
-            };
-        }
-
-        document.querySelectorAll(".prop-anim-move-up").forEach(button => {
-            button.onclick = () => moveElementAnimationOrder(button.dataset.animId, -1);
-        });
-        document.querySelectorAll(".prop-anim-move-down").forEach(button => {
-            button.onclick = () => moveElementAnimationOrder(button.dataset.animId, 1);
-        });
-
-        const multiAnimEnabled = document.getElementById("prop-multi-anim-enabled");
-        const multiAnimControls = document.getElementById("prop-multi-anim-controls");
-        const multiAnimApply = document.getElementById("prop-multi-anim-apply");
-        if (multiAnimEnabled && multiAnimControls) {
-            multiAnimEnabled.onchange = () => {
-                multiAnimControls.classList.toggle("hidden", !multiAnimEnabled.checked);
-            };
-        }
-        if (multiAnimApply) {
-            multiAnimApply.onclick = () => {
-                const effect = document.getElementById("prop-multi-anim-effect")?.value || "fade-in";
-                const trigger =
-                    document.getElementById("prop-multi-anim-trigger")?.value === "on-click" ? "on-click" : "on-slide";
-                const durationMs = parseInt(document.getElementById("prop-multi-anim-duration")?.value, 10) || 800;
-                const delayMs = parseInt(document.getElementById("prop-multi-anim-delay")?.value, 10) || 0;
-                const easing = document.getElementById("prop-multi-anim-easing")?.value || "ease-out";
-                applyAnimationConfigToSelection(
-                    { effect, trigger, durationMs, delayMs, easing, order: 0 },
-                    { assignSequentialOrder: trigger === "on-click" },
-                );
             };
         }
 
@@ -4732,6 +4739,10 @@ function getElementIcon(type) {
             return "fa-solid fa-dna";
         case "pdf":
             return "fa-regular fa-file-pdf";
+        case "whiteboard":
+            return "fa-solid fa-chalkboard";
+        case "sketch":
+            return "fa-solid fa-pen-nib";
         default:
             return "fa-solid fa-cube";
     }
@@ -4752,6 +4763,7 @@ function getElementDisplayName(el) {
     }
     if (el.type === "connector") return "Connector";
     if (el.type === "whiteboard") return "Whiteboard";
+    if (el.type === "sketch") return "Sketch";
     if (el.type === "video") return "Video";
     if (el.type === "table") return "Table";
     if (el.type === "molecule") return "Molecule";

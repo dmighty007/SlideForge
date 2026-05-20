@@ -3,7 +3,7 @@ import { PathSimplifier } from "./PathSimplifier.js";
 import { RoughRenderer } from "./RoughRenderer.js";
 import { StrokeRenderer } from "./StrokeRenderer.js";
 
-const DRAWING_TOOLS = new Set(["pen", "rectangle", "diamond", "ellipse", "line", "arrow", "text"]);
+const DRAWING_TOOLS = new Set(["pen", "rectangle", "diamond", "ellipse", "triangle", "star", "line", "arrow", "curve", "curve_arrow", "text"]);
 
 export class DrawingEngine {
     constructor(canvasId, options = {}) {
@@ -20,22 +20,27 @@ export class DrawingEngine {
         this.isDrawing = false;
         this.isPanning = false;
         this.isMovingSelection = false;
+        this.isResizingSelection = false;
+        this.isErasing = false;
         this.panStart = { x: 0, y: 0 };
         this.moveStart = null;
+        this.resizeStart = null;
         this.currentStroke = null;
         this.textEditor = null;
         this.capturedPointerId = null;
         this.selectedElementId = null;
+        this.hoverElementId = null;
         this._handlersAttached = false;
         this._renderLoopStarted = false;
+        this._needsRender = true;
         this._spaceDown = false;
 
         this.strokeColor = "#1f2937";
         this.backgroundColor = "#fff1a8";
-        this.fillStyle = "hachure";
+        this.fillStyle = "solid";
         this.strokeWidth = 2;
         this.strokeStyle = "solid";
-        this.roughness = 1.4;
+        this.roughness = 1.6;
         this.bowing = 1.0;
         this.opacity = 1;
         this.fontFamily = '"Virgil", "Comic Sans MS", "Segoe Print", cursive';
@@ -45,6 +50,10 @@ export class DrawingEngine {
         this.boundHandlers = {};
         this.setupEventHandlers();
         this.startRenderLoop();
+    }
+
+    requestRender() {
+        this._needsRender = true;
     }
 
     setOptions(options = {}) {
@@ -61,6 +70,7 @@ export class DrawingEngine {
         this.selectedElementId = null;
         this.currentStroke = null;
         this.history = new HistoryManager();
+        this.requestRender();
         this.emitChange();
     }
 
@@ -129,6 +139,7 @@ export class DrawingEngine {
         this.activeTool = tool;
         if (tool !== "select") this.selectedElementId = null;
         this.updateCursor();
+        this.requestRender();
         this.emitChange();
     }
 
@@ -140,6 +151,7 @@ export class DrawingEngine {
         const selected = this.getSelectedElement();
         if (selected) Object.assign(selected, updates);
         Object.assign(this, this.normalizeStyleUpdates(updates));
+        this.requestRender();
         this.emitChange();
     }
 
@@ -165,11 +177,28 @@ export class DrawingEngine {
 
         if (this.activeTool === "eraser") {
             this.history.pushState(this.elements);
-            this.handleEraser(worldPt);
+            this.isErasing = true;
+            this.capturePointer(e);
+            this.handleEraser(worldPt, { emit: false });
             return;
         }
 
         if (this.activeTool === "select") {
+            const handle = this.hitResizeHandle(worldPt);
+            if (handle) {
+                const selected = this.getSelectedElement();
+                this.history.pushState(this.elements);
+                this.isResizingSelection = true;
+                this.resizeStart = {
+                    handle,
+                    pointer: worldPt,
+                    element: JSON.parse(JSON.stringify(selected)),
+                    bounds: this.getElementBounds(selected),
+                };
+                this.capturePointer(e);
+                this.requestRender();
+                return;
+            }
             const hit = this.hitTest(worldPt);
             this.selectedElementId = hit?.id || null;
             if (hit) {
@@ -181,6 +210,7 @@ export class DrawingEngine {
                 };
                 this.capturePointer(e);
             }
+            this.requestRender();
             this.emitChange();
             return;
         }
@@ -212,6 +242,7 @@ export class DrawingEngine {
             });
             this.shapeStartPt = { ...worldPt };
         }
+        this.requestRender();
     }
 
     handlePointerMove(e) {
@@ -221,35 +252,63 @@ export class DrawingEngine {
             this.viewport.panX += dx;
             this.viewport.panY += dy;
             this.panStart = { x: e.clientX, y: e.clientY };
-            this.emitChange();
+            this.requestRender();
             return;
         }
 
         const worldPt = this.screenToWorld(e.clientX, e.clientY);
+        if (this.isErasing) {
+            this.handleEraser(worldPt, { emit: false });
+            return;
+        }
+        if (!this.isDrawing && !this.isMovingSelection && !this.isResizingSelection && this.activeTool === "select") {
+            const handle = this.hitResizeHandle(worldPt);
+            if (handle) {
+                this.canvas.style.cursor = `${handle}-resize`;
+                return;
+            }
+            const hit = this.hitTest(worldPt);
+            const nextHoverId = hit?.id || null;
+            if (nextHoverId !== this.hoverElementId) {
+                this.hoverElementId = nextHoverId;
+                this.requestRender();
+            }
+        }
+
         if (this.isMovingSelection && this.moveStart) {
             const selected = this.getSelectedElement();
             if (!selected) return;
             const dx = worldPt.x - this.moveStart.pointer.x;
             const dy = worldPt.y - this.moveStart.pointer.y;
             this.moveElementTo(selected, this.moveStart.element, dx, dy);
+            this.requestRender();
+            return;
+        }
+
+        if (this.isResizingSelection && this.resizeStart) {
+            const selected = this.getSelectedElement();
+            if (!selected) return;
+            this.resizeElementFromHandle(selected, this.resizeStart, worldPt, e);
+            this.requestRender();
             return;
         }
 
         if (!this.isDrawing || !this.currentStroke) return;
         if (this.currentStroke.type === "freehand") {
-            this.currentStroke.points.push(this.createPoint(worldPt, e));
+            this.addPointerPointsToCurrentStroke(e);
         } else if (this.currentStroke.type === "draw_shape") {
             const dx = worldPt.x - this.shapeStartPt.x;
             const dy = worldPt.y - this.shapeStartPt.y;
-            if (e.shiftKey && ["rectangle", "diamond", "ellipse"].includes(this.currentStroke.shapeType)) {
+            if (e.shiftKey && ["rectangle", "diamond", "ellipse", "triangle", "star"].includes(this.currentStroke.shapeType)) {
                 const size = Math.max(Math.abs(dx), Math.abs(dy));
                 this.currentStroke.x = dx < 0 ? this.shapeStartPt.x - size : this.shapeStartPt.x;
                 this.currentStroke.y = dy < 0 ? this.shapeStartPt.y - size : this.shapeStartPt.y;
                 this.currentStroke.width = size;
                 this.currentStroke.height = size;
-            } else if (["line", "arrow"].includes(this.currentStroke.shapeType)) {
-                this.currentStroke.width = dx;
-                this.currentStroke.height = dy;
+            } else if (["line", "arrow", "curve", "curve_arrow"].includes(this.currentStroke.shapeType)) {
+                const constrained = e.shiftKey ? this.constrainLinearDelta(dx, dy) : { dx, dy };
+                this.currentStroke.width = constrained.dx;
+                this.currentStroke.height = constrained.dy;
             } else {
                 this.currentStroke.x = dx < 0 ? worldPt.x : this.shapeStartPt.x;
                 this.currentStroke.y = dy < 0 ? worldPt.y : this.shapeStartPt.y;
@@ -257,6 +316,7 @@ export class DrawingEngine {
                 this.currentStroke.height = Math.abs(dy);
             }
         }
+        this.requestRender();
     }
 
     handlePointerUp(e) {
@@ -265,9 +325,22 @@ export class DrawingEngine {
             this.releasePointer(e);
             return;
         }
+        if (this.isErasing) {
+            this.isErasing = false;
+            this.releasePointer(e);
+            this.emitChange();
+            return;
+        }
         if (this.isMovingSelection) {
             this.isMovingSelection = false;
             this.moveStart = null;
+            this.releasePointer(e);
+            this.emitChange();
+            return;
+        }
+        if (this.isResizingSelection) {
+            this.isResizingSelection = false;
+            this.resizeStart = null;
             this.releasePointer(e);
             this.emitChange();
             return;
@@ -283,9 +356,29 @@ export class DrawingEngine {
 
     handleKeyDown(e) {
         if (this.textEditor) return;
+        if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+            const toolKeys = {
+                v: "select",
+                p: "pen",
+                r: "rectangle",
+                o: "ellipse",
+                d: "diamond",
+                l: "line",
+                a: "arrow",
+                t: "text",
+                e: "eraser",
+            };
+            const nextTool = toolKeys[e.key.toLowerCase()];
+            if (nextTool) {
+                e.preventDefault();
+                this.setTool(nextTool);
+                return;
+            }
+        }
         if (this.options.allowPanZoom && e.code === "Space") {
             this._spaceDown = true;
             this.updateCursor();
+            this.requestRender();
         }
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
             e.preventDefault();
@@ -302,6 +395,12 @@ export class DrawingEngine {
                 this.deleteSelected();
             }
         }
+        if (e.key === "Escape" && this.selectedElementId) {
+            this.selectedElementId = null;
+            this.hoverElementId = null;
+            this.requestRender();
+            this.emitChange();
+        }
     }
 
     handleKeyUp(e) {
@@ -309,7 +408,30 @@ export class DrawingEngine {
         if (e.code === "Space") {
             this._spaceDown = false;
             this.updateCursor();
+            this.requestRender();
         }
+    }
+
+    addPointerPointsToCurrentStroke(e) {
+        const events = typeof e.getCoalescedEvents === "function" ? e.getCoalescedEvents() : [e];
+        events.forEach(event => {
+            const pt = this.screenToWorld(event.clientX, event.clientY);
+            const next = this.createPoint(pt, event);
+            const points = this.currentStroke.points;
+            const last = points[points.length - 1];
+            const minDistance = Math.max(0.35, 0.8 / this.viewport.zoom);
+            if (!last || Math.hypot(next.x - last.x, next.y - last.y) >= minDistance) {
+                points.push(next);
+            }
+        });
+    }
+
+    constrainLinearDelta(dx, dy) {
+        const length = Math.hypot(dx, dy);
+        if (!length) return { dx, dy };
+        const step = Math.PI / 12;
+        const angle = Math.round(Math.atan2(dy, dx) / step) * step;
+        return { dx: Math.cos(angle) * length, dy: Math.sin(angle) * length };
     }
 
     createPoint(worldPt, e) {
@@ -356,14 +478,16 @@ export class DrawingEngine {
         this.viewport.zoom = finalZoom;
         this.viewport.panX = canvasX - mouseWorld.x * finalZoom;
         this.viewport.panY = canvasY - mouseWorld.y * finalZoom;
-        this.emitChange();
+        this.requestRender();
     }
 
-    handleEraser(worldPt) {
+    handleEraser(worldPt, options = {}) {
         const eraserRadius = 24 / this.viewport.zoom;
+        const before = this.elements.length;
         this.elements = this.elements.filter(el => !this.elementIntersectsPoint(el, worldPt, eraserRadius));
         if (!this.elements.some(el => el.id === this.selectedElementId)) this.selectedElementId = null;
-        this.emitChange();
+        this.requestRender();
+        if (options.emit !== false && before !== this.elements.length) this.emitChange();
     }
 
     hitTest(point) {
@@ -372,6 +496,100 @@ export class DrawingEngine {
             if (this.elementIntersectsPoint(el, point, 8 / this.viewport.zoom)) return el;
         }
         return null;
+    }
+
+    getSelectionHandles(el = this.getSelectedElement()) {
+        const b = this.getElementBounds(el);
+        if (!b) return [];
+        const pad = 6 / this.viewport.zoom;
+        const x1 = b.x - pad;
+        const y1 = b.y - pad;
+        const x2 = b.x + b.width + pad;
+        const y2 = b.y + b.height + pad;
+        const cx = (x1 + x2) / 2;
+        const cy = (y1 + y2) / 2;
+        return [
+            { id: "nw", x: x1, y: y1 },
+            { id: "n", x: cx, y: y1 },
+            { id: "ne", x: x2, y: y1 },
+            { id: "e", x: x2, y: cy },
+            { id: "se", x: x2, y: y2 },
+            { id: "s", x: cx, y: y2 },
+            { id: "sw", x: x1, y: y2 },
+            { id: "w", x: x1, y: cy },
+        ];
+    }
+
+    hitResizeHandle(point) {
+        const selected = this.getSelectedElement();
+        if (!selected) return null;
+        const radius = 8 / this.viewport.zoom;
+        const handle = this.getSelectionHandles(selected).find(h => Math.hypot(point.x - h.x, point.y - h.y) <= radius);
+        return handle?.id || null;
+    }
+
+    resizeElementFromHandle(el, resizeStart, worldPt, event) {
+        const bounds = resizeStart.bounds;
+        if (!bounds) return;
+        const minSize = 8;
+        let left = bounds.x;
+        let right = bounds.x + bounds.width;
+        let top = bounds.y;
+        let bottom = bounds.y + bounds.height;
+        const handle = resizeStart.handle;
+        if (handle.includes("w")) left = worldPt.x;
+        if (handle.includes("e")) right = worldPt.x;
+        if (handle.includes("n")) top = worldPt.y;
+        if (handle.includes("s")) bottom = worldPt.y;
+        if (event.shiftKey) {
+            const size = Math.max(Math.abs(right - left), Math.abs(bottom - top), minSize);
+            if (handle.includes("w")) left = right - size;
+            else right = left + size;
+            if (handle.includes("n")) top = bottom - size;
+            else bottom = top + size;
+        }
+        if (Math.abs(right - left) < minSize) {
+            if (handle.includes("w")) left = right - minSize;
+            else right = left + minSize;
+        }
+        if (Math.abs(bottom - top) < minSize) {
+            if (handle.includes("n")) top = bottom - minSize;
+            else bottom = top + minSize;
+        }
+        const nextBounds = {
+            x: Math.min(left, right),
+            y: Math.min(top, bottom),
+            width: Math.abs(right - left),
+            height: Math.abs(bottom - top),
+        };
+        this.applyElementBounds(el, resizeStart.element, bounds, nextBounds);
+    }
+
+    applyElementBounds(el, startEl, startBounds, nextBounds) {
+        const sx = nextBounds.width / Math.max(1, startBounds.width);
+        const sy = nextBounds.height / Math.max(1, startBounds.height);
+        if (el.type === "freehand") {
+            el.points = (startEl.points || []).map(p => ({
+                ...p,
+                x: nextBounds.x + (p.x - startBounds.x) * sx,
+                y: nextBounds.y + (p.y - startBounds.y) * sy,
+            }));
+            return;
+        }
+        if (el.type === "draw_shape") {
+            const relX = startEl.x - startBounds.x;
+            const relY = startEl.y - startBounds.y;
+            el.x = nextBounds.x + relX * sx;
+            el.y = nextBounds.y + relY * sy;
+            el.width = startEl.width * sx;
+            el.height = startEl.height * sy;
+            return;
+        }
+        if (el.type === "text") {
+            el.x = nextBounds.x + (startEl.x - startBounds.x) * sx;
+            el.y = nextBounds.y + (startEl.y - startBounds.y) * sy;
+            el.fontSize = Math.max(8, (startEl.fontSize || this.fontSize) * Math.max(sx, sy));
+        }
     }
 
     elementIntersectsPoint(el, point, tolerance = 8) {
@@ -408,8 +626,9 @@ export class DrawingEngine {
             const y2 = el.y + el.height;
             const strokePad = (Number(el.strokeWidth) || 2) / 2;
             const roughPad = Math.max(4, (Number(el.roughness) || 1.4) * 6);
-            const arrowPad = el.shapeType === "arrow" ? 12 + (Number(el.strokeWidth) || 2) * 2.4 : 0;
-            const pad = Math.ceil(strokePad + roughPad + arrowPad);
+            const arrowPad = ["arrow", "curve_arrow"].includes(el.shapeType) ? 12 + (Number(el.strokeWidth) || 2) * 2.4 : 0;
+            const curvePad = ["curve", "curve_arrow"].includes(el.shapeType) ? Math.hypot(Number(el.width) || 0, Number(el.height) || 0) * 0.28 : 0;
+            const pad = Math.ceil(strokePad + roughPad + arrowPad + curvePad);
             return {
                 x: Math.min(el.x, x2) - pad,
                 y: Math.min(el.y, y2) - pad,
@@ -483,6 +702,7 @@ export class DrawingEngine {
         });
         this.elements.push(element);
         this.selectedElementId = element.id;
+        this.requestRender();
         this.emitChange();
     }
 
@@ -514,6 +734,7 @@ export class DrawingEngine {
         }
         this.currentStroke = null;
         this.isDrawing = false;
+        this.requestRender();
         return didAdd;
     }
 
@@ -549,6 +770,7 @@ export class DrawingEngine {
         const [item] = this.elements.splice(index, 1);
         let nextIndex = delta === Infinity ? this.elements.length : delta === -Infinity ? 0 : Math.max(0, Math.min(this.elements.length, index + delta));
         this.elements.splice(nextIndex, 0, item);
+        this.requestRender();
         this.emitChange();
     }
 
@@ -562,6 +784,7 @@ export class DrawingEngine {
         this.moveElementTo(copy, copy, 24, 24);
         this.elements.push(copy);
         this.selectedElementId = copy.id;
+        this.requestRender();
         this.emitChange();
     }
 
@@ -570,6 +793,8 @@ export class DrawingEngine {
         this.history.pushState(this.elements);
         this.elements = this.elements.filter(el => el.id !== this.selectedElementId);
         this.selectedElementId = null;
+        this.hoverElementId = null;
+        this.requestRender();
         this.emitChange();
     }
 
@@ -578,6 +803,8 @@ export class DrawingEngine {
         if (prev) {
             this.elements = prev;
             this.selectedElementId = null;
+            this.hoverElementId = null;
+            this.requestRender();
             this.emitChange();
         }
     }
@@ -587,6 +814,8 @@ export class DrawingEngine {
         if (next) {
             this.elements = next;
             this.selectedElementId = null;
+            this.hoverElementId = null;
+            this.requestRender();
             this.emitChange();
         }
     }
@@ -595,10 +824,13 @@ export class DrawingEngine {
         this.history.pushState(this.elements);
         this.elements = [];
         this.selectedElementId = null;
+        this.hoverElementId = null;
+        this.requestRender();
         this.emitChange();
     }
 
     emitChange() {
+        this.requestRender();
         window.dispatchEvent(new CustomEvent("slideforge:whiteboard-change", { detail: { engine: this } }));
     }
 
@@ -606,6 +838,8 @@ export class DrawingEngine {
         if (!this.canvas) return;
         if (this.isPanning || (this.options.allowPanZoom && this._spaceDown)) this.canvas.style.cursor = "grab";
         else if (this.isMovingSelection) this.canvas.style.cursor = "grabbing";
+        else if (this.isResizingSelection) this.canvas.style.cursor = "nwse-resize";
+        else if (this.isErasing) this.canvas.style.cursor = "cell";
         else if (this.activeTool === "select") this.canvas.style.cursor = "default";
         else if (this.activeTool === "eraser") this.canvas.style.cursor = "cell";
         else if (this.activeTool === "pan") this.canvas.style.cursor = "grab";
@@ -624,8 +858,14 @@ export class DrawingEngine {
             if (this.canvas.width !== nextW || this.canvas.height !== nextH) {
                 this.canvas.width = nextW;
                 this.canvas.height = nextH;
+                this.requestRender();
             }
             this.updateCursor();
+            if (!this._needsRender) {
+                requestAnimationFrame(render);
+                return;
+            }
+            this._needsRender = false;
             this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
             this.ctx.clearRect(0, 0, rect.width, rect.height);
             this.ctx.save();
@@ -634,6 +874,8 @@ export class DrawingEngine {
             if (this.options.showGrid) this.renderGrid(rect.width, rect.height);
             this.elements.forEach(el => this.renderElement(el));
             if (this.currentStroke) this.renderElement(this.currentStroke);
+            const hover = this.elements.find(el => el.id === this.hoverElementId && el.id !== this.selectedElementId);
+            if (hover) this.renderSelection(hover, { hover: true });
             const selected = this.getSelectedElement();
             if (selected) this.renderSelection(selected);
             this.ctx.restore();
@@ -664,7 +906,7 @@ export class DrawingEngine {
         return {
             ...el,
             random: RoughRenderer.seededRandom(el.seed || 1),
-            fillOpacity: el.fillStyle === "solid" ? 1 : 0.35,
+            fillOpacity: el.fillStyle === "solid" ? 0.58 : 0.35,
         };
     }
 
@@ -685,26 +927,34 @@ export class DrawingEngine {
             if (el.shapeType === "rectangle") RoughRenderer.drawRoughRect(this.ctx, el.x, el.y, el.width, el.height, style);
             else if (el.shapeType === "diamond") RoughRenderer.drawRoughDiamond(this.ctx, el.x, el.y, el.width, el.height, style);
             else if (el.shapeType === "ellipse") RoughRenderer.drawRoughEllipse(this.ctx, el.x + el.width / 2, el.y + el.height / 2, Math.abs(el.width / 2), Math.abs(el.height / 2), style);
+            else if (el.shapeType === "triangle") RoughRenderer.drawRoughTriangle(this.ctx, el.x, el.y, el.width, el.height, style);
+            else if (el.shapeType === "star") RoughRenderer.drawRoughStar(this.ctx, el.x, el.y, el.width, el.height, style);
             else if (el.shapeType === "line") RoughRenderer.drawRoughLine(this.ctx, el.x, el.y, el.x + el.width, el.y + el.height, style);
             else if (el.shapeType === "arrow") RoughRenderer.drawRoughArrow(this.ctx, el.x, el.y, el.x + el.width, el.y + el.height, style);
+            else if (el.shapeType === "curve") RoughRenderer.drawRoughCurve(this.ctx, el.x, el.y, el.x + el.width, el.y + el.height, style);
+            else if (el.shapeType === "curve_arrow") RoughRenderer.drawRoughCurveArrow(this.ctx, el.x, el.y, el.x + el.width, el.y + el.height, style);
         }
         this.ctx.restore();
     }
 
-    renderSelection(el) {
+    renderSelection(el, options = {}) {
         const b = this.getElementBounds(el);
         if (!b) return;
         const pad = 6 / this.viewport.zoom;
         this.ctx.save();
-        this.ctx.strokeStyle = "#a5b4fc";
-        this.ctx.lineWidth = 1.5 / this.viewport.zoom;
-        this.ctx.setLineDash([8 / this.viewport.zoom, 6 / this.viewport.zoom]);
+        this.ctx.strokeStyle = options.hover ? "rgba(99, 102, 241, 0.45)" : "#a5b4fc";
+        this.ctx.lineWidth = (options.hover ? 1 : 1.5) / this.viewport.zoom;
+        this.ctx.setLineDash(options.hover ? [4 / this.viewport.zoom, 4 / this.viewport.zoom] : [8 / this.viewport.zoom, 6 / this.viewport.zoom]);
         this.ctx.strokeRect(b.x - pad, b.y - pad, b.width + pad * 2, b.height + pad * 2);
+        if (options.hover) {
+            this.ctx.restore();
+            return;
+        }
         this.ctx.setLineDash([]);
         this.ctx.fillStyle = "#ffffff";
         this.ctx.strokeStyle = "#6366f1";
         const size = 8 / this.viewport.zoom;
-        [[b.x - pad, b.y - pad], [b.x + b.width + pad, b.y - pad], [b.x + b.width + pad, b.y + b.height + pad], [b.x - pad, b.y + b.height + pad]].forEach(([x, y]) => {
+        this.getSelectionHandles(el).forEach(({ x, y }) => {
             this.ctx.beginPath();
             this.ctx.rect(x - size / 2, y - size / 2, size, size);
             this.ctx.fill();

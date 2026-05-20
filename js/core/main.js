@@ -290,111 +290,13 @@ async function runAutosaveSmokeTest() {
 // ─── Symbol Picker ─────────────────────────────────────────────────────────────
 
 const _symbols = [
-    "α",
-    "β",
-    "γ",
-    "δ",
-    "ε",
-    "ζ",
-    "η",
-    "θ",
-    "ι",
-    "κ",
-    "λ",
-    "μ",
-    "ν",
-    "ξ",
-    "π",
-    "ρ",
-    "σ",
-    "τ",
-    "υ",
-    "φ",
-    "χ",
-    "ψ",
-    "ω",
-    "Α",
-    "Β",
-    "Γ",
-    "Δ",
-    "Ε",
-    "Ζ",
-    "Η",
-    "Θ",
-    "Κ",
-    "Λ",
-    "Μ",
-    "Ν",
-    "Ξ",
-    "Π",
-    "Ρ",
-    "Σ",
-    "Τ",
-    "Υ",
-    "Φ",
-    "Χ",
-    "Ψ",
-    "Ω",
-    "∞",
-    "∂",
-    "∇",
-    "∫",
-    "∑",
-    "∏",
-    "√",
-    "∈",
-    "∉",
-    "∩",
-    "∪",
-    "⊂",
-    "⊃",
-    "⊆",
-    "⊇",
-    "≈",
-    "≠",
-    "≡",
-    "≤",
-    "≥",
-    "±",
-    "×",
-    "÷",
-    "→",
-    "←",
-    "↑",
-    "↓",
-    "↔",
-    "⇒",
-    "⇐",
-    "⇔",
-    "∀",
-    "∃",
-    "¬",
-    "∧",
-    "∨",
-    "⊕",
-    "⊗",
-    "ℝ",
-    "ℤ",
-    "ℕ",
-    "ℂ",
-    "°",
-    "′",
-    "″",
-    "‰",
-    "∝",
-    "∼",
-    "≃",
-    "≅",
-    "≇",
-    "⊥",
-    "∥",
-    "ℏ",
-    "ℓ",
-    "℃",
-    "℉",
-    "Å",
-    "μ",
-    "Ω",
+    "α", "β", "γ", "δ", "ε", "ζ", "η", "θ", "ι", "κ", "λ", "μ", "ν", "ξ", "π", "ρ", "σ", "τ", "υ", "φ", "χ", "ψ", "ω",
+    "Α", "Β", "Γ", "Δ", "Ε", "Ζ", "Η", "Θ", "Κ", "Λ", "Μ", "Ν", "Ξ", "Π", "Ρ", "Σ", "Τ", "Υ", "Φ", "Χ", "Ψ", "Ω",
+    "∞", "∂", "∇", "∫", "∬", "∭", "∮", "∑", "∏", "√", "∛", "∜", "∈", "∉", "∩", "∪", "⊂", "⊃", "⊆", "⊇", "≈", "≠", "≡", "≤", "≥", "±", "×", "÷",
+    "→", "←", "↑", "↓", "↔", "⇒", "⇐", "⇔", "⇑", "⇓", "↗", "↘", "↖", "↙", "∀", "∃", "∄", "¬", "∧", "∨", "⊕", "⊗", "∅", "∝", "∠", "⊥", "∥",
+    "ℝ", "ℤ", "ℕ", "ℂ", "ℚ", "°", "′", "″", "‰", "‱", "∼", "≃", "≅", "≇", "ℏ", "ℓ", "℃", "℉", "Å", "Ω", "μ", "π",
+    "€", "£", "¥", "₹", "₽", "₩", "₿", "$", "¢", "©", "®", "™", "✓", "✗", "★", "☆", "♥", "♦", "♣", "♠", "✓", "✔", "✕", "✖",
+    "✝", "☪", "✡", "☯", "♿", "♻", "⚠", "⚡"
 ];
 
 function openSymbolPicker() {
@@ -703,3 +605,234 @@ window.refreshPreviews = () => {
         }
     }, 300);
 };
+
+// ─── Icon Picker ─────────────────────────────────────────────────────────────
+
+const _icons = [
+    { name: "user", class: "fa-solid fa-user" },
+    { name: "home", class: "fa-solid fa-house" },
+    { name: "settings", class: "fa-solid fa-gear" },
+    { name: "heart", class: "fa-solid fa-heart" },
+    { name: "star", class: "fa-solid fa-star" },
+    { name: "check", class: "fa-solid fa-check" },
+    { name: "xmark", class: "fa-solid fa-xmark" },
+    { name: "arrow right", class: "fa-solid fa-arrow-right" },
+    { name: "arrow left", class: "fa-solid fa-arrow-left" },
+    { name: "envelope", class: "fa-solid fa-envelope" },
+    { name: "phone", class: "fa-solid fa-phone" },
+    { name: "bell", class: "fa-solid fa-bell" },
+    { name: "calendar", class: "fa-solid fa-calendar" },
+    { name: "chart", class: "fa-solid fa-chart-simple" },
+    { name: "image", class: "fa-regular fa-image" },
+    { name: "camera", class: "fa-solid fa-camera" },
+    { name: "video", class: "fa-solid fa-video" },
+    { name: "music", class: "fa-solid fa-music" },
+    { name: "magnifying glass", class: "fa-solid fa-magnifying-glass" },
+    { name: "location", class: "fa-solid fa-location-dot" },
+    { name: "thumbs up", class: "fa-solid fa-thumbs-up" },
+    { name: "thumbs down", class: "fa-solid fa-thumbs-down" },
+    { name: "comment", class: "fa-solid fa-comment" },
+    { name: "share", class: "fa-solid fa-share" },
+    { name: "folder", class: "fa-solid fa-folder" },
+    { name: "file", class: "fa-solid fa-file" },
+    { name: "paperclip", class: "fa-solid fa-paperclip" },
+    { name: "link", class: "fa-solid fa-link" },
+    { name: "trash", class: "fa-solid fa-trash" },
+    { name: "pen", class: "fa-solid fa-pen" },
+    { name: "flag", class: "fa-solid fa-flag" },
+    { name: "lock", class: "fa-solid fa-lock" },
+    { name: "key", class: "fa-solid fa-key" },
+    { name: "lightbulb", class: "fa-solid fa-lightbulb" },
+    { name: "bolt", class: "fa-solid fa-bolt" },
+    { name: "clock", class: "fa-solid fa-clock" },
+    { name: "globe", class: "fa-solid fa-globe" },
+    { name: "cloud", class: "fa-solid fa-cloud" },
+    { name: "wifi", class: "fa-solid fa-wifi" },
+    { name: "battery", class: "fa-solid fa-battery-full" },
+    { name: "download", class: "fa-solid fa-download" },
+    { name: "upload", class: "fa-solid fa-upload" },
+    { name: "save", class: "fa-solid fa-floppy-disk" },
+    { name: "print", class: "fa-solid fa-print" },
+    { name: "copy", class: "fa-regular fa-copy" },
+    { name: "paste clipboard", class: "fa-regular fa-clipboard" },
+    { name: "filter", class: "fa-solid fa-filter" },
+    { name: "sliders", class: "fa-solid fa-sliders" },
+    { name: "database", class: "fa-solid fa-database" },
+    { name: "server", class: "fa-solid fa-server" },
+    { name: "code", class: "fa-solid fa-code" },
+    { name: "terminal", class: "fa-solid fa-terminal" },
+    { name: "bug", class: "fa-solid fa-bug" },
+    { name: "shield", class: "fa-solid fa-shield-halved" },
+    { name: "fingerprint", class: "fa-solid fa-fingerprint" },
+    { name: "rocket", class: "fa-solid fa-rocket" },
+    { name: "flask", class: "fa-solid fa-flask" },
+    { name: "microscope", class: "fa-solid fa-microscope" },
+    { name: "atom", class: "fa-solid fa-atom" },
+    { name: "dna", class: "fa-solid fa-dna" },
+    { name: "brain", class: "fa-solid fa-brain" },
+    { name: "stethoscope", class: "fa-solid fa-stethoscope" },
+    { name: "capsules", class: "fa-solid fa-capsules" },
+    { name: "chart line", class: "fa-solid fa-chart-line" },
+    { name: "chart pie", class: "fa-solid fa-chart-pie" },
+    { name: "chart bar", class: "fa-solid fa-chart-column" },
+    { name: "bullseye", class: "fa-solid fa-bullseye" },
+    { name: "trophy", class: "fa-solid fa-trophy" },
+    { name: "award", class: "fa-solid fa-award" },
+    { name: "medal", class: "fa-solid fa-medal" },
+    { name: "handshake", class: "fa-solid fa-handshake" },
+    { name: "users", class: "fa-solid fa-users" },
+    { name: "person chalkboard", class: "fa-solid fa-person-chalkboard" },
+    { name: "school", class: "fa-solid fa-school" },
+    { name: "landmark", class: "fa-solid fa-landmark" },
+    { name: "scale balanced", class: "fa-solid fa-scale-balanced" },
+    { name: "gavel", class: "fa-solid fa-gavel" },
+    { name: "factory", class: "fa-solid fa-industry" },
+    { name: "gear process", class: "fa-solid fa-gears" },
+    { name: "wrench", class: "fa-solid fa-wrench" },
+    { name: "screwdriver wrench", class: "fa-solid fa-screwdriver-wrench" },
+    { name: "map", class: "fa-regular fa-map" },
+    { name: "compass", class: "fa-regular fa-compass" },
+    { name: "route", class: "fa-solid fa-route" },
+    { name: "train", class: "fa-solid fa-train" },
+    { name: "bus", class: "fa-solid fa-bus" },
+    { name: "bicycle", class: "fa-solid fa-bicycle" },
+    { name: "utensils", class: "fa-solid fa-utensils" },
+    { name: "mug hot", class: "fa-solid fa-mug-hot" },
+    { name: "seedling", class: "fa-solid fa-seedling" },
+    { name: "recycle", class: "fa-solid fa-recycle" },
+    { name: "solar panel", class: "fa-solid fa-solar-panel" },
+    { name: "plug", class: "fa-solid fa-plug" },
+    { name: "temperature", class: "fa-solid fa-temperature-half" },
+    { name: "sun", class: "fa-regular fa-sun" },
+    { name: "moon", class: "fa-regular fa-moon" },
+    { name: "palette", class: "fa-solid fa-palette" },
+    { name: "brush", class: "fa-solid fa-paintbrush" },
+    { name: "wand magic", class: "fa-solid fa-wand-magic-sparkles" },
+    { name: "layer group", class: "fa-solid fa-layer-group" },
+    { name: "shapes", class: "fa-solid fa-shapes" },
+    { name: "diamond", class: "fa-solid fa-diamond" },
+    { name: "circle", class: "fa-regular fa-circle" },
+    { name: "square", class: "fa-regular fa-square" },
+    { name: "triangle", class: "fa-solid fa-play" },
+    { name: "question", class: "fa-regular fa-circle-question" },
+    { name: "info", class: "fa-solid fa-circle-info" },
+    { name: "warning", class: "fa-solid fa-triangle-exclamation" },
+    { name: "clipboard check", class: "fa-solid fa-clipboard-check" },
+    { name: "list check", class: "fa-solid fa-list-check" },
+    { name: "timeline", class: "fa-solid fa-timeline" },
+    { name: "calendar check", class: "fa-regular fa-calendar-check" },
+    { name: "hourglass", class: "fa-regular fa-hourglass-half" },
+    { name: "car", class: "fa-solid fa-car" },
+    { name: "plane", class: "fa-solid fa-plane" },
+    { name: "truck", class: "fa-solid fa-truck" },
+    { name: "ship", class: "fa-solid fa-ship" },
+    { name: "shopping cart", class: "fa-solid fa-cart-shopping" },
+    { name: "bag", class: "fa-solid fa-bag-shopping" },
+    { name: "credit card", class: "fa-solid fa-credit-card" },
+    { name: "money bill", class: "fa-solid fa-money-bill" },
+    { name: "wallet", class: "fa-solid fa-wallet" },
+    { name: "gift", class: "fa-solid fa-gift" },
+    { name: "book", class: "fa-solid fa-book" },
+    { name: "graduation cap", class: "fa-solid fa-graduation-cap" },
+    { name: "briefcase", class: "fa-solid fa-briefcase" },
+    { name: "building", class: "fa-solid fa-building" },
+    { name: "hospital", class: "fa-solid fa-hospital" },
+    { name: "tree", class: "fa-solid fa-tree" },
+    { name: "leaf", class: "fa-solid fa-leaf" },
+    { name: "fire", class: "fa-solid fa-fire" },
+    { name: "water", class: "fa-solid fa-droplet" },
+    { name: "wind", class: "fa-solid fa-wind" }
+];
+
+function openIconPicker() {
+    captureInlineSelection?.();
+    beginFormattingInteraction?.();
+    const modal = document.getElementById("icon-picker-modal");
+    const grid = document.getElementById("icon-grid");
+    if (!modal || !grid) return;
+    const input = document.getElementById("icon-search-input");
+    if (input) input.value = "";
+    filterIconPicker("");
+    modal.style.display = "flex";
+}
+
+function closeIconPicker() {
+    const modal = document.getElementById("icon-picker-modal");
+    if (modal) modal.style.display = "none";
+    requestAnimationFrame(() => endFormattingInteraction?.());
+}
+
+function filterIconPicker(query) {
+    const grid = document.getElementById("icon-grid");
+    if (!grid) return;
+    grid.innerHTML = "";
+    const lowerQuery = query.toLowerCase();
+    _icons.forEach(iconObj => {
+        if (!iconObj.name.toLowerCase().includes(lowerQuery)) return;
+        const btn = document.createElement("button");
+        btn.title = iconObj.name;
+        btn.style.cssText =
+            "aspect-ratio:1;border:1px solid #E5E7EB;border-radius:6px;background:white;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.15s;color:#0F172A;padding:4px;";
+        const i = document.createElement("i");
+        i.className = iconObj.class;
+        btn.appendChild(i);
+        btn.onmouseenter = () => {
+            btn.style.background = "#EFF6FF";
+            btn.style.borderColor = "#2563EB";
+        };
+        btn.onmouseleave = () => {
+            btn.style.background = "white";
+            btn.style.borderColor = "#E5E7EB";
+        };
+        btn.onpointerdown = e => {
+            e.preventDefault();
+            restoreInlineSelection?.();
+        };
+        btn.onclick = () => _insertIcon(iconObj);
+        grid.appendChild(btn);
+    });
+}
+
+function _insertIcon(iconObj) {
+    const activeIndex = typeof currentSlideIndex !== "undefined" ? currentSlideIndex : 0;
+    saveStateToUndo();
+    const id = generateId("el");
+    const theme =
+        typeof getPresentationTheme === "function"
+            ? getPresentationTheme()
+            : { defaultTextColor: "#ffffff", bodyFont: "Inter, sans-serif" };
+    const slide = state.slides[activeIndex];
+    const existingIcons = (slide?.elements || []).filter(el => el.iconMode);
+    const cascade = existingIcons.length % 12;
+    const x = 200 + cascade * 28;
+    const y = 200 + cascade * 24;
+            
+    slide.elements.push({
+        id,
+        type: "text",
+        iconMode: true,
+        iconClass: iconObj.class,
+        x,
+        y,
+        width: "100px",
+        height: "100px",
+        autoHeight: false,
+        textFitMode: "fixed",
+        content: `<i class="${iconObj.class}"></i>`,
+        styles: {
+            color: theme.defaultTextColor,
+            fontSize: "64px",
+            fontFamily: theme.bodyFont,
+            zIndex: getNextZIndex(),
+            textAlign: "center",
+            backgroundColor: "transparent"
+        },
+    });
+    renderSlidesFromState();
+    selectElement(id);
+    closeIconPicker();
+}
+
+window.openIconPicker = openIconPicker;
+window.closeIconPicker = closeIconPicker;
+window.filterIconPicker = filterIconPicker;

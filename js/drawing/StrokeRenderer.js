@@ -58,47 +58,18 @@ export class StrokeRenderer {
             return;
         }
 
-        ctx.fillStyle = strokeColor;
+        const strokePoints = this.generateSplinePoints(points, 4);
+        ctx.save();
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = Math.max(1, baseWidth);
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
         ctx.beginPath();
-
-        for (let i = 0; i < points.length - 1; i++) {
-            const p1 = points[i];
-            const p2 = points[i + 1];
-
-            // Clamp pressure to valid range [0, 1]
-            const pressure1 = Math.max(0, Math.min(1, p1.pressure || 0.5));
-            const pressure2 = Math.max(0, Math.min(1, p2.pressure || 0.5));
-
-            const w1 = baseWidth * (0.4 + pressure1 * 1.2);
-            const w2 = baseWidth * (0.4 + pressure2 * 1.2);
-
-            const dx = p2.x - p1.x;
-            const dy = p2.y - p1.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist === 0) continue;
-
-            const nx = -dy / dist;
-            const ny = dx / dist;
-
-            const p1LeftX = p1.x + nx * (w1 / 2);
-            const p1LeftY = p1.y + ny * (w1 / 2);
-            const p1RightX = p1.x - nx * (w1 / 2);
-            const p1RightY = p1.y - ny * (w1 / 2);
-
-            const p2LeftX = p2.x + nx * (w2 / 2);
-            const p2LeftY = p2.y + ny * (w2 / 2);
-            const p2RightX = p2.x - nx * (w2 / 2);
-            const p2RightY = p2.y - ny * (w2 / 2);
-
-            ctx.moveTo(p1LeftX, p1LeftY);
-            ctx.lineTo(p2LeftX, p2LeftY);
-            ctx.lineTo(p2RightX, p2RightY);
-            ctx.lineTo(p1RightX, p1RightY);
-            ctx.closePath();
-
-            ctx.arc(p1.x, p1.y, w1 / 2, 0, Math.PI * 2);
-            ctx.arc(p2.x, p2.y, w2 / 2, 0, Math.PI * 2);
+        ctx.moveTo(strokePoints[0].x, strokePoints[0].y);
+        for (let i = 1; i < strokePoints.length; i++) {
+            ctx.lineTo(strokePoints[i].x, strokePoints[i].y);
         }
-        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
     }
 }

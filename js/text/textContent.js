@@ -423,7 +423,25 @@ function applyTextBulletState(elData, kind, style = "default") {
     }
 }
 
+function getSafeIconHtml(elData) {
+    const raw = String(elData?.iconClass || elData?.content || "");
+    const classMatch =
+        raw.match(/class\s*=\s*["']([^"']+)["']/i) ||
+        raw.match(/class\s*=\s*&quot;([^&]+)&quot;/i);
+    const classSource = classMatch ? classMatch[1] : raw;
+    const safeClasses = classSource
+        .split(/\s+/)
+        .map(cls => cls.trim())
+        .filter(cls => /^fa-/.test(cls) || /^fa[srltdbk]?$/.test(cls));
+    const iconClass = safeClasses.length ? safeClasses.join(" ") : "fa-solid fa-icons";
+    return `<i class="${iconClass}"></i>`;
+}
+
 function renderTextContent(elData) {
+    if (elData?.iconMode) {
+        return getSafeIconHtml(elData);
+    }
+
     if (!isStructuredBulletContent(elData.content)) {
         return typeof sanitizeTextHtml === "function"
             ? sanitizeTextHtml(elData.content || "")

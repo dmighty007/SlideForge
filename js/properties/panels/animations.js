@@ -408,23 +408,9 @@ function buildAnimationInspectorPanel(data) {
     if (!data) data = (typeof getSelectedElementData === "function") ? getSelectedElementData() : null;
     if (!data) return "";
 
-    const animation = (typeof getElementAnimationConfig === "function") ? getElementAnimationConfig(data) : null;
     const config    = (typeof normalizeElementAnimationConfig === "function") ? normalizeElementAnimationConfig(data) : null;
     const hasTimelines = config?.timelines?.length > 0;
-    const isEnabled = !!animation;
-    const isOnClick = (animation?.trigger || "on-slide") === "on-click";
-
-    // Effect options
-    const effectOpts = (typeof PRESENTATION_ANIMATION_EFFECTS !== "undefined" ? PRESENTATION_ANIMATION_EFFECTS : [
-        "fade-in","slide-up","slide-down","slide-left","slide-right","zoom-in","pop-in","wipe-in","pulse","glow"
-    ]).map(e => `<option value="${e}" ${(animation?.effect||"fade-in")===e?"selected":""}>${
-        typeof describeAnimationEffect === "function" ? describeAnimationEffect(e) : e}</option>`).join("");
-
-    // Easing options
-    const easingOpts = [
-        ["ease-out","Ease Out"],["ease-in","Ease In"],["ease-in-out","Ease In-Out"],["linear","Linear"],
-        ["cubic-bezier(0.34,1.56,0.64,1)","Spring"],["cubic-bezier(0.4,0,0.2,1)","Material"]
-    ].map(([v,l]) => `<option value="${v}" ${(animation?.easing||"ease-out")===v?"selected":""}>${l}</option>`).join("");
+    const isEnabled = !!config;
 
     // Timeline items
     let timelineHTML = "";
@@ -486,66 +472,23 @@ function buildAnimationInspectorPanel(data) {
     <span class="sf-anim-panel-icon">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
     </span>
-    <span class="sf-anim-panel-title">Animation</span>
+    <span class="sf-anim-panel-title">Advanced Animation</span>
     <label class="sf-anim-toggle-wrap" title="Enable animation">
       <input type="checkbox" id="prop-anim-enabled" class="sf-anim-toggle-input" ${isEnabled ? "checked" : ""}>
       <span class="sf-anim-toggle-track"><span class="sf-anim-toggle-thumb"></span></span>
     </label>
   </div>
 
-  <div id="prop-anim-controls" class="sf-anim-controls${isEnabled ? "" : " sf-anim-hidden"}">
+  <div id="prop-anim-controls" class="sf-anim-controls">
 
-    <!-- Slide Animation (Reveal.js) -->
-    <div class="sf-anim-section">
-      <div class="sf-anim-section-label">Slide Entry</div>
-      <div class="sf-anim-grid-2">
-        <div class="sf-anim-field">
-          <label>Effect</label>
-          <select id="prop-anim-effect">${effectOpts}</select>
-        </div>
-        <div class="sf-anim-field">
-          <label>Trigger</label>
-          <select id="prop-anim-trigger">
-            <option value="on-slide" ${!isOnClick?"selected":""}>With Slide</option>
-            <option value="on-click" ${isOnClick?"selected":""}>On Click</option>
-          </select>
-        </div>
-      </div>
-      <div id="prop-anim-order-wrap" class="sf-anim-field${isOnClick?"":" sf-anim-hidden"}">
-        <label>Click Order</label>
-        <input type="number" id="prop-anim-order" min="0" max="99" value="${animation?.order??0}">
-      </div>
-      <div class="sf-anim-grid-3">
-        <div class="sf-anim-field">
-          <label>Duration</label>
-          <div class="sf-anim-input-unit">
-            <input type="number" id="prop-anim-duration" min="100" step="50" value="${animation?.durationMs??800}">
-            <span>ms</span>
-          </div>
-        </div>
-        <div class="sf-anim-field">
-          <label>Delay</label>
-          <div class="sf-anim-input-unit">
-            <input type="number" id="prop-anim-delay" min="0" step="50" value="${animation?.delayMs??0}">
-            <span>ms</span>
-          </div>
-        </div>
-        <div class="sf-anim-field">
-          <label>Easing</label>
-          <select id="prop-anim-easing">${easingOpts}</select>
-        </div>
-      </div>
-    </div>
-
-    <!-- Advanced Timeline -->
     <div class="sf-anim-section">
       <div class="sf-anim-section-label">Advanced Timeline</div>
       ${hasTimelines
         ? `<div class="sf-anim-timeline-list">${timelineHTML}</div>`
-        : `<div class="sf-anim-empty">No timeline animations yet.</div>`}
+        : `<div class="sf-anim-empty">No advanced timeline animations yet.</div>`}
       <button class="sf-anim-add-btn" onclick="openAnimationPresetSelector('${data.id}')">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Add Timeline Animation
+        Add Advanced Animation
       </button>
     </div>
 
@@ -757,64 +700,61 @@ function bindAnimationPanelListeners(data) {
     if (!data) return;
     const enabled   = document.getElementById("prop-anim-enabled");
     const controls  = document.getElementById("prop-anim-controls");
-    const effect    = document.getElementById("prop-anim-effect");
-    const trigger   = document.getElementById("prop-anim-trigger");
-    const orderWrap = document.getElementById("prop-anim-order-wrap");
-    const order     = document.getElementById("prop-anim-order");
-    const duration  = document.getElementById("prop-anim-duration");
-    const delay     = document.getElementById("prop-anim-delay");
-    const easing    = document.getElementById("prop-anim-easing");
-
-    const currentAnimation = (typeof getElementAnimationConfig === "function") ? getElementAnimationConfig(data) : null;
-
-    const getNum = (input, fallback) => {
-        const p = parseInt(input?.value, 10);
-        return Number.isFinite(p) ? p : fallback;
-    };
-
-    const buildConfig = () => ({
-        effect:     effect?.value  || "fade-in",
-        trigger:    trigger?.value === "on-click" ? "on-click" : "on-slide",
-        order:      getNum(order, 0),
-        durationMs: getNum(duration, 800),
-        delayMs:    getNum(delay, 0),
-        easing:     easing?.value  || "ease-out",
-    });
-
-    const commit = () => {
-        if (!enabled?.checked) {
-            if (typeof setElementAnimationConfig === "function") setElementAnimationConfig(data.id, null);
-            return;
-        }
-        if (typeof setElementAnimationConfig === "function") setElementAnimationConfig(data.id, buildConfig());
-    };
 
     if (enabled) {
         enabled.onchange = () => {
             controls?.classList.toggle("sf-anim-hidden", !enabled.checked);
-            if (enabled.checked && trigger?.value === "on-click" && !currentAnimation && order) {
-                if (typeof getNextClickAnimationOrder === "function")
-                    order.value = String(getNextClickAnimationOrder(data.id));
+            saveStateToUndo?.();
+            const element = typeof getElementDataById === "function" ? getElementDataById(data.id) : data;
+            if (!element) return;
+            if (!enabled.checked) {
+                element.animation = null;
+                element.fragmentAnimation = "none";
+                element.fragmentIndex = null;
+            } else {
+                element.animation = createDefaultAdvancedAnimationConfig(data.id);
             }
-            commit();
+            renderSlidesFromState?.();
+            buildPropertiesPanel?.();
         };
     }
+}
 
-    if (trigger) {
-        trigger.onchange = () => {
-            const isClick = trigger.value === "on-click";
-            orderWrap?.classList.toggle("sf-anim-hidden", !isClick);
-            if (isClick && currentAnimation?.trigger !== "on-click" && order) {
-                if (typeof getNextClickAnimationOrder === "function")
-                    order.value = String(getNextClickAnimationOrder(data.id));
-            }
-            commit();
-        };
+function createDefaultAdvancedAnimationConfig(elementId = "") {
+    const config =
+        typeof createDefaultAnimationConfig === "function"
+            ? createDefaultAnimationConfig(elementId)
+            : { elementId, timelines: [], autoAnimate: false, laggedStart: false, laggedStartDelay: 50 };
+    const timeline =
+        typeof createElementTimeline === "function"
+            ? createElementTimeline(elementId)
+            : { elementId, animations: [], totalDuration: 0 };
+    const animation =
+        typeof createAnimation === "function"
+            ? createAnimation("fadeIn", { duration: 600, easing: "easeOut", trigger: "on-slide" })
+            : {
+                  id: `anim_${Date.now()}`,
+                  type: "fadeIn",
+                  duration: 600,
+                  delay: 0,
+                  easing: "easeOut",
+                  trigger: "on-slide",
+              };
+    timeline.animations = [animation];
+    timeline.totalDuration = Math.max(100, Number(animation.duration) || 600);
+    config.timelines = [timeline];
+    return config;
+}
+
+function ensureAdvancedAnimationConfig(element, elementId = "") {
+    if (!element) return null;
+    if (!element.animation || typeof element.animation !== "object" || !Array.isArray(element.animation.timelines)) {
+        element.animation =
+            typeof createDefaultAnimationConfig === "function"
+                ? createDefaultAnimationConfig(elementId || element.id || "")
+                : { elementId: elementId || element.id || "", timelines: [], autoAnimate: false, laggedStart: false, laggedStartDelay: 50 };
     }
-
-    [effect, order, duration, delay, easing].forEach(input => {
-        if (input) input.onchange = commit;
-    });
+    return element.animation;
 }
 
 // Open animation preset selector
@@ -826,7 +766,7 @@ function openAnimationPresetSelector(elementId) {
     <div class="modal-overlay" onclick="closeAnimationPresetSelector()">
       <div class="modal-content" onclick="event.stopPropagation()">
         <div class="modal-header">
-          <h3>Choose Animation</h3>
+          <h3>Choose Advanced Animation</h3>
           <button class="btn-close" onclick="closeAnimationPresetSelector()">×</button>
         </div>
 
@@ -1007,10 +947,7 @@ function applyAnimationPreset(elementId, presetName) {
     const element = getElementDataById(elementId);
     if (!element) return;
 
-    // Initialize animation config if needed
-    if (!element.animation || typeof element.animation !== "object") {
-        element.animation = createDefaultAnimationConfig(elementId);
-    }
+    const config = ensureAdvancedAnimationConfig(element, elementId);
 
     // Add timeline and animation
     const timeline = createElementTimeline(elementId);
@@ -1020,10 +957,9 @@ function applyAnimationPreset(elementId, presetName) {
         ...timeline.animations.map(anim => (Number(anim.startTime ?? anim.delay) || 0) + (Number(anim.duration) || 0)),
     );
 
-    if (!element.animation.timelines) {
-        element.animation.timelines = [];
-    }
-    element.animation.timelines.push(timeline);
+    config.timelines.push(timeline);
+    element.fragmentAnimation = "none";
+    element.fragmentIndex = null;
 
     // Update UI
     renderSlidesFromState();
@@ -1208,16 +1144,38 @@ function showNotification(message, type = "info") {
 // Helper function - get element data by ID
 function getElementDataById(elementId) {
     const slide = getCurrentSlide();
-    if (!slide) return null;
-    return slide.elements.find(el => el.id === elementId) || null;
+    const current = slide?.elements?.find(el => el.id === elementId);
+    if (current) return current;
+    if (typeof state !== "undefined" && Array.isArray(state.slides)) {
+        for (const candidate of state.slides) {
+            const found = (candidate.elements || []).find(el => el.id === elementId);
+            if (found) return found;
+        }
+    }
+    return null;
 }
 
 // Helper function - get current slide
 function getCurrentSlide() {
     if (typeof state === "undefined") return null;
-    const slideIndex = typeof getCurrentSlideIndex === "function" ? getCurrentSlideIndex() : 0;
+    const slideIndex =
+        typeof getCurrentSlideIndex === "function"
+            ? getCurrentSlideIndex()
+            : Number.isInteger(currentSlideIndex)
+              ? currentSlideIndex
+              : 0;
     return state.slides[slideIndex] || null;
 }
+
+Object.assign(window, {
+    buildAnimationInspectorPanel,
+    openAnimationPresetSelector,
+    closeAnimationPresetSelector,
+    applyAnimationPreset,
+    updateAnimationProperty,
+    removeAnimation,
+    editAnimation,
+});
 
 // Export
 if (typeof module !== "undefined" && module.exports) {

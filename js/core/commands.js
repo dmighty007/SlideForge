@@ -4023,6 +4023,13 @@ function initPresentationTools() {
         event.preventDefault();
         openPresentationContextMenu(event.clientX, event.clientY);
     });
+    wrapper.addEventListener("click", event => {
+        if (!document.body.classList.contains("play-mode-active")) return;
+        if (_presentationToolsState.chalkEnabled || event.button !== 0) return;
+        const { menu, contextMenu, menuToggle: toggle } = _presentationToolsElements();
+        if (menu?.contains(event.target) || contextMenu?.contains(event.target) || toggle?.contains(event.target)) return;
+        presentationNextStep();
+    });
 
     document.addEventListener("mousedown", event => {
         const { menu, contextMenu, menuToggle: toggle } = _presentationToolsElements();
@@ -4735,6 +4742,9 @@ async function togglePlayMode() {
             if (typeof restoreEditorZoom === "function") restoreEditorZoom();
             // Allow re-entry after layout has settled
             requestAnimationFrame(() => {
+                if (typeof window.refreshCanvasBackedElements === "function") {
+                    window.refreshCanvasBackedElements();
+                }
                 _playModeExiting = false;
             });
         });

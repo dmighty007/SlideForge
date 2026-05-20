@@ -312,10 +312,38 @@ function _mBox(x, y, w, h, fill, border, radius = "18px", extra = {}, zIndex) {
 
 function _modernShell(theme, title, subtitle = "", kicker = "") {
     const p = _modernPalette(theme);
+    const slideNumberBg = _mBox(912, 740, 62, 22, p.raisedPanel, `1px solid ${p.line}`, "999px", {
+        boxShadow: "none",
+    }, 2);
+    slideNumberBg.footerRole = "slide-number-bg";
+    const slideNumber = {
+        ..._text(912, 743, 62, "01", {
+            color: p.a,
+            fontSize: "10px",
+            fontFamily: p.bf,
+            fontWeight: "900",
+            textAlign: "center",
+            lineHeight: "1",
+        }),
+        height: "16px",
+        autoHeight: false,
+        textFitMode: "fixed",
+        footerRole: "slide-number",
+    };
     return [
         _mBox(0, 0, 1024, 768, p.canvas, undefined, "0px", { background: p.canvasBackground, pointerEvents: "none" }, 0),
         _bar(0, 0, 1024, 8, p.a, undefined, undefined, 0),
         _bar(0, 736, 1024, 32, p.footer, 0.96, undefined, 0),
+        _text(54, 745, 170, "SLIDEFORGE", {
+            color: p.isLight ? "#ffffff" : p.muted,
+            fontSize: "10px",
+            fontFamily: p.bf,
+            fontWeight: "900",
+            letterSpacing: "0.1em",
+            lineHeight: "1",
+        }),
+        slideNumberBg,
+        slideNumber,
         _bar(0, 8, 1024, 96, p.header, undefined, undefined, 0),
         _bar(50, 64, 18, 18, p.a, undefined, "999px"),
         _bar(76, 70, 150, 6, p.line, undefined, "999px"),
@@ -352,6 +380,30 @@ function _modernShell(theme, title, subtitle = "", kicker = "") {
               ]
             : []),
     ];
+}
+
+function _presetFooterNumberElements(theme) {
+    const p = _modernPalette(theme);
+    const bg = _mBox(912, 740, 62, 22, p.raisedPanel, `1px solid ${p.line}`, "999px", {
+        boxShadow: "none",
+    }, 2);
+    bg.footerRole = "slide-number-bg";
+    const number = {
+        ..._text(912, 743, 62, "01", {
+            color: p.a,
+            fontSize: "10px",
+            fontFamily: p.bf,
+            fontWeight: "900",
+            textAlign: "center",
+            lineHeight: "1",
+            zIndex: 3,
+        }),
+        height: "16px",
+        autoHeight: false,
+        textFitMode: "fixed",
+        footerRole: "slide-number",
+    };
+    return [bg, number];
 }
 
 function _taskCard(x, y, w, h, title, meta, tint, accent, theme, tags = []) {
@@ -3576,6 +3628,15 @@ function buildPresetSlideState(
         id: generateId("el"),
         themeManaged: true,
     }));
+    if (!elements.some(el => el.footerRole === "slide-number")) {
+        elements.push(
+            ..._presetFooterNumberElements(resolvedTheme).map(el => ({
+                ...el,
+                id: generateId("el"),
+                themeManaged: true,
+            })),
+        );
+    }
     if (
         typeof scaleSlideElementsForPageSetup === "function" &&
         typeof getPresentationPageSetupConfig === "function" &&

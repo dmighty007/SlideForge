@@ -11,9 +11,25 @@ let resizeObserver = null;
 let repositionTimer = null;
 let livePersistTimer = null;
 let whiteboardSessionUndoCaptured = false;
+let exitingWhiteboard = false;
 
 const STROKE_SWATCHES = ["#1f2937", "#e03131", "#2f9e44", "#1971c2", "#f08c00", "#6741d9"];
 const BG_SWATCHES = ["transparent", "#ffc9c9", "#b2f2bb", "#a5d8ff", "#fff3bf", "#ffd43b"];
+const WHITEBOARD_TOOLS = [
+    { id: "select", icon: "fa-solid fa-arrow-pointer", label: "Select / Move", primary: true },
+    { id: "pen", icon: "fa-solid fa-pen", label: "Pen", primary: true },
+    { id: "rectangle", icon: "fa-regular fa-square", label: "Rectangle", primary: true },
+    { id: "ellipse", icon: "fa-regular fa-circle", label: "Ellipse", primary: true },
+    { id: "line", icon: "fa-solid fa-minus", label: "Line", primary: true },
+    { id: "arrow", icon: "fa-solid fa-arrow-right", label: "Arrow", primary: true },
+    { id: "text", icon: "fa-solid fa-font", label: "Text", primary: true },
+    { id: "eraser", icon: "fa-solid fa-eraser", label: "Eraser", primary: true },
+    { id: "diamond", icon: "fa-solid fa-diamond", label: "Diamond" },
+    { id: "triangle", icon: "fa-solid fa-play -rotate-90", label: "Triangle" },
+    { id: "star", icon: "fa-regular fa-star", label: "Star" },
+    { id: "curve", icon: "fa-solid fa-bezier-curve", label: "Curve" },
+    { id: "curve_arrow", icon: "fa-solid fa-turn-up fa-rotate-90", label: "Curved Arrow" },
+];
 
 function getEngine() {
     if (!engine) engine = new DrawingEngine("slideforge-whiteboard", { showGrid: false, allowPanZoom: false });
@@ -25,14 +41,18 @@ window.getWhiteboardEngine = getEngine;
 function registerEscHandler() {
     if (escHandler) return;
     escHandler = e => {
-        if (e.key === "Escape") exitWhiteboardMode();
+        if (e.key !== "Escape" || !isWhiteboardActive()) return;
+        if (e.target?.closest?.(".whiteboard-text-editor")) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        exitWhiteboardMode({ preserveSelection: false });
     };
-    document.addEventListener("keydown", escHandler);
+    document.addEventListener("keydown", escHandler, true);
 }
 
 function unregisterEscHandler() {
     if (!escHandler) return;
-    document.removeEventListener("keydown", escHandler);
+    document.removeEventListener("keydown", escHandler, true);
     escHandler = null;
 }
 
@@ -240,20 +260,24 @@ function renderDrawingElementToCanvas(canvas, whiteboardObject) {
         const style = {
             ...drawingElement,
             random: RoughRenderer.seededRandom(drawingElement.seed || 1),
-            fillOpacity: drawingElement.fillStyle === "solid" ? 1 : 0.35,
+            fillOpacity: drawingElement.fillStyle === "solid" ? 0.58 : 0.35,
         };
         if (drawingElement.shapeType === "rectangle") RoughRenderer.drawRoughRect(ctx, drawingElement.x, drawingElement.y, drawingElement.width, drawingElement.height, style);
         else if (drawingElement.shapeType === "diamond") RoughRenderer.drawRoughDiamond(ctx, drawingElement.x, drawingElement.y, drawingElement.width, drawingElement.height, style);
         else if (drawingElement.shapeType === "ellipse") RoughRenderer.drawRoughEllipse(ctx, drawingElement.x + drawingElement.width / 2, drawingElement.y + drawingElement.height / 2, Math.abs(drawingElement.width / 2), Math.abs(drawingElement.height / 2), style);
+        else if (drawingElement.shapeType === "triangle") RoughRenderer.drawRoughTriangle(ctx, drawingElement.x, drawingElement.y, drawingElement.width, drawingElement.height, style);
+        else if (drawingElement.shapeType === "star") RoughRenderer.drawRoughStar(ctx, drawingElement.x, drawingElement.y, drawingElement.width, drawingElement.height, style);
         else if (drawingElement.shapeType === "line") RoughRenderer.drawRoughLine(ctx, drawingElement.x, drawingElement.y, drawingElement.x + drawingElement.width, drawingElement.y + drawingElement.height, style);
         else if (drawingElement.shapeType === "arrow") RoughRenderer.drawRoughArrow(ctx, drawingElement.x, drawingElement.y, drawingElement.x + drawingElement.width, drawingElement.y + drawingElement.height, style);
+        else if (drawingElement.shapeType === "curve") RoughRenderer.drawRoughCurve(ctx, drawingElement.x, drawingElement.y, drawingElement.x + drawingElement.width, drawingElement.y + drawingElement.height, style);
+        else if (drawingElement.shapeType === "curve_arrow") RoughRenderer.drawRoughCurveArrow(ctx, drawingElement.x, drawingElement.y, drawingElement.x + drawingElement.width, drawingElement.y + drawingElement.height, style);
     }
     ctx.restore();
 }
 
 window.renderWhiteboardDrawingElement = renderDrawingElementToCanvas;
 
-function persistWhiteboardToSlide({ renderSlide = false, finalizeActive = false } = {}) {
+function persistWhiteboardToSlide({ renderSlide = false, finalizeActive = false, preserveSelection = true } = {}) {
     if (syncingFromSlide || !engine) return;
     if (finalizeActive) {
         engine.commitActiveTextEditor?.();
@@ -282,7 +306,7 @@ function persistWhiteboardToSlide({ renderSlide = false, finalizeActive = false 
     }
     if (renderSlide && typeof window.renderSlidesFromState === "function") {
         window.renderSlidesFromState({ preserveState: true });
-        if (selectedSlideElement?.id) {
+        if (preserveSelection && selectedSlideElement?.id) {
             requestAnimationFrame(() => {
                 if (typeof window.selectElement === "function") window.selectElement(selectedSlideElement.id);
             });
@@ -380,8 +404,7 @@ function stopPositionTracking() {
 
 function updateWhiteboardUi() {
     const activeEngine = getEngine();
-    const tools = ["select", "pen", "rectangle", "diamond", "ellipse", "line", "arrow", "text", "eraser"];
-    tools.forEach(tool => {
+    WHITEBOARD_TOOLS.forEach(({ id: tool }) => {
         const btn = document.getElementById(`wb-tool-${tool}`);
         if (!btn) return;
         const active = activeEngine.activeTool === tool;
@@ -417,6 +440,22 @@ function swatchButton(type, color, current) {
 function optionButton(label, active, onclick, icon = "") {
     return `<button type="button" class="wb-option${active ? " is-active" : ""}" onclick="${onclick}" title="${label}">${icon || label}</button>`;
 }
+
+function whiteboardToolButton(tool, extraClass = "") {
+    return `<button type="button" onclick="setWhiteboardTool('${tool.id}')" id="wb-tool-${tool.id}" class="wb-tool-btn ${extraClass}" title="${tool.label}" aria-label="${tool.label}"><i class="${tool.icon} text-xs"></i></button>`;
+}
+
+function renderWhiteboardToolbarTools() {
+    const primary = document.getElementById("whiteboard-tool-strip");
+    const more = document.getElementById("whiteboard-more-tools");
+    if (!primary || !more) return;
+    primary.innerHTML = WHITEBOARD_TOOLS.filter(tool => tool.primary).map(tool => whiteboardToolButton(tool)).join("");
+    more.innerHTML = WHITEBOARD_TOOLS.filter(tool => !tool.primary).map(tool => whiteboardToolButton(tool, "wb-more-tool")).join("");
+}
+
+window.toggleWhiteboardMoreTools = function () {
+    document.getElementById("whiteboard-more-tools")?.classList.toggle("hidden");
+};
 
 function renderStylePanel(activeEngine) {
     const panel = getStylePanel();
@@ -464,7 +503,7 @@ function renderStylePanel(activeEngine) {
         <div class="wb-panel-section">
             <div class="wb-panel-label">Sloppiness</div>
             <div class="wb-option-row">
-                ${[0.4, 1.4, 2.4].map((value, index) => optionButton(["Low", "Med", "High"][index], Math.abs(Number(roughness) - value) < 0.05, `setWhiteboardRoughness(${value})`, ["-", "~", "≈"][index])).join("")}
+                ${[0.3, 1.6, 3.2].map((value, index) => optionButton(["Clean", "Sketch", "Messy"][index], Math.abs(Number(roughness) - value) < 0.25, `setWhiteboardRoughness(${value})`, ["-", "~", "≈"][index])).join("")}
             </div>
         </div>
         <div class="wb-panel-section">
@@ -512,28 +551,8 @@ function renderWhiteboardPropertiesPanel(panel) {
                 </div>
                 <div class="space-y-3 pt-1 pb-2">
                     <div class="grid grid-cols-5 gap-1.5">
-                        ${["select", "pen", "rectangle", "diamond", "ellipse", "line", "arrow", "text", "eraser"]
-                            .map(tool => {
-                                const icon =
-                                    tool === "select"
-                                        ? "fa-arrow-pointer"
-                                        : tool === "pen"
-                                          ? "fa-pen"
-                                          : tool === "rectangle"
-                                            ? "fa-regular fa-square"
-                                            : tool === "diamond"
-                                              ? "fa-regular fa-gem"
-                                              : tool === "ellipse"
-                                                ? "fa-regular fa-circle"
-                                                : tool === "line"
-                                                  ? "fa-minus"
-                                                  : tool === "arrow"
-                                                    ? "fa-arrow-right"
-                                                    : tool === "text"
-                                                      ? "fa-font"
-                                                      : "fa-eraser";
-                                const prefix = icon.startsWith("fa-regular") ? "" : "fa-solid ";
-                                return `<button type="button" class="prop-icon-btn ${activeEngine.activeTool === tool ? "active" : ""}" onclick="setWhiteboardTool('${tool}')" title="${tool}"><i class="${prefix}${icon}"></i></button>`;
+                        ${WHITEBOARD_TOOLS.map(tool => {
+                                return `<button type="button" class="prop-icon-btn ${activeEngine.activeTool === tool.id ? "active" : ""}" onclick="setWhiteboardTool('${tool.id}')" title="${tool.label}"><i class="${tool.icon}"></i></button>`;
                             })
                             .join("")}
                     </div>
@@ -586,7 +605,7 @@ function renderWhiteboardPropertiesPanel(panel) {
                     <div class="space-y-2">
                         <label class="prop-label">Sloppiness</label>
                         <div class="wb-option-row">
-                            ${[0.4, 1.4, 2.4].map((value, index) => optionButton(["Low", "Med", "High"][index], Math.abs(Number(roughness) - value) < 0.05, `setWhiteboardRoughness(${value})`, ["-", "~", "≈"][index])).join("")}
+                            ${[0.3, 1.6, 3.2].map((value, index) => optionButton(["Clean", "Sketch", "Messy"][index], Math.abs(Number(roughness) - value) < 0.25, `setWhiteboardRoughness(${value})`, ["-", "~", "≈"][index])).join("")}
                         </div>
                     </div>
                     <div class="space-y-2">
@@ -631,6 +650,7 @@ window.toggleWhiteboardMode = function () {
     const btn = document.getElementById("btn-whiteboard-toggle");
     const panel = getStylePanel();
     if (!container || !canvas || !toolbar) return;
+    renderWhiteboardToolbarTools();
     const isActive = container.style.display !== "none";
     if (isActive) {
         exitWhiteboardMode();
@@ -675,18 +695,26 @@ window.toggleWhiteboardMode = function () {
     registerEscHandler();
 };
 
-window.exitWhiteboardMode = function () {
+window.exitWhiteboardMode = function (options = {}) {
+    if (exitingWhiteboard) return;
+    exitingWhiteboard = true;
+    const preserveSelection = options?.preserveSelection !== false;
     const container = document.getElementById("whiteboard-overlay-container");
     const toolbar = document.getElementById("whiteboard-floating-toolbar");
     const guide = document.getElementById("whiteboard-guide-card");
     const btn = document.getElementById("btn-whiteboard-toggle");
     const panel = getStylePanel();
-    if (!container || !toolbar) return;
+    if (!container || !toolbar) {
+        exitingWhiteboard = false;
+        return;
+    }
+    unregisterEscHandler();
     if (livePersistTimer) {
         clearTimeout(livePersistTimer);
         livePersistTimer = null;
     }
     getEngine()?.commitActiveTextEditor?.();
+    getEngine()?.removeEventHandlers?.();
     container.style.opacity = "0";
     container.style.pointerEvents = "none";
     const canvas = document.getElementById("slideforge-whiteboard");
@@ -705,17 +733,17 @@ window.exitWhiteboardMode = function () {
     setTimeout(() => {
         container.style.display = "none";
         if (guide) guide.style.display = "none";
-        getEngine()?.removeEventHandlers();
+        exitingWhiteboard = false;
     }, 300);
-    persistWhiteboardToSlide({ renderSlide: true, finalizeActive: true });
+    persistWhiteboardToSlide({ renderSlide: true, finalizeActive: true, preserveSelection });
     whiteboardSessionUndoCaptured = false;
     stopPositionTracking();
-    window.buildPropertiesPanel?.();
-    unregisterEscHandler();
+    requestAnimationFrame(() => window.buildPropertiesPanel?.());
 };
 
 window.setWhiteboardTool = function (tool) {
     getEngine()?.setTool(tool);
+    document.getElementById("whiteboard-more-tools")?.classList.add("hidden");
     updateWhiteboardUi();
 };
 
@@ -747,7 +775,7 @@ window.setWhiteboardStrokeStyle = function (strokeStyle) {
 };
 
 window.setWhiteboardRoughness = function (roughness) {
-    getEngine()?.updateSelectedStyle({ roughness: Number(roughness) || 1.4 });
+    getEngine()?.updateSelectedStyle({ roughness: Number(roughness) || 1.6 });
     updateWhiteboardUi();
 };
 

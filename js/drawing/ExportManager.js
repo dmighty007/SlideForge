@@ -22,7 +22,7 @@ export class ExportManager {
 
     static fillAttrs(el) {
         if (el.fillStyle === "none" || !el.backgroundColor || el.backgroundColor === "transparent") return 'fill="none"';
-        const opacity = el.fillStyle === "solid" ? 1 : 0.35;
+        const opacity = el.fillStyle === "solid" ? 0.58 : 0.35;
         return `fill="${this.esc(el.backgroundColor)}" fill-opacity="${opacity}"`;
     }
 
@@ -50,7 +50,8 @@ export class ExportManager {
                     svgContent += `</text>`;
                 } else if (el.type === "draw_shape" && el.shapeType) {
                     if (el.shapeType === "rectangle") {
-                        svgContent += `<rect x="${el.x.toFixed(1)}" y="${el.y.toFixed(1)}" width="${el.width.toFixed(1)}" height="${el.height.toFixed(1)}" ${this.fillAttrs(el)} ${this.commonAttrs(el)} />`;
+                        const radius = Math.min(Math.abs(el.width), Math.abs(el.height), 64) * 0.18;
+                        svgContent += `<rect x="${el.x.toFixed(1)}" y="${el.y.toFixed(1)}" width="${el.width.toFixed(1)}" height="${el.height.toFixed(1)}" rx="${radius.toFixed(1)}" ${this.fillAttrs(el)} ${this.commonAttrs(el)} />`;
                     } else if (el.shapeType === "diamond") {
                         const points = [
                             `${(el.x + el.width / 2).toFixed(1)},${el.y.toFixed(1)}`,
@@ -63,12 +64,45 @@ export class ExportManager {
                         const cx = (el.x + el.width / 2).toFixed(1);
                         const cy = (el.y + el.height / 2).toFixed(1);
                         svgContent += `<ellipse cx="${cx}" cy="${cy}" rx="${Math.abs(el.width / 2).toFixed(1)}" ry="${Math.abs(el.height / 2).toFixed(1)}" ${this.fillAttrs(el)} ${this.commonAttrs(el)} />`;
+                    } else if (el.shapeType === "triangle") {
+                        const points = [
+                            `${(el.x + el.width / 2).toFixed(1)},${el.y.toFixed(1)}`,
+                            `${(el.x + el.width).toFixed(1)},${(el.y + el.height).toFixed(1)}`,
+                            `${el.x.toFixed(1)},${(el.y + el.height).toFixed(1)}`,
+                        ].join(" ");
+                        svgContent += `<polygon points="${points}" ${this.fillAttrs(el)} ${this.commonAttrs(el)} />`;
+                    } else if (el.shapeType === "star") {
+                        const cx = el.x + el.width / 2;
+                        const cy = el.y + el.height / 2;
+                        const outer = Math.min(Math.abs(el.width), Math.abs(el.height)) / 2;
+                        const inner = outer * 0.382;
+                        const points = Array.from({ length: 10 }, (_, index) => {
+                            const radius = index % 2 === 0 ? outer : inner;
+                            const angle = (Math.PI * 2 * index) / 10 - Math.PI / 2;
+                            return `${(cx + Math.cos(angle) * radius).toFixed(1)},${(cy + Math.sin(angle) * radius).toFixed(1)}`;
+                        }).join(" ");
+                        svgContent += `<polygon points="${points}" ${this.fillAttrs(el)} ${this.commonAttrs(el)} />`;
                     } else if (el.shapeType === "line" || el.shapeType === "arrow") {
                         const x2 = el.x + el.width;
                         const y2 = el.y + el.height;
                         svgContent += `<line x1="${el.x.toFixed(1)}" y1="${el.y.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" ${this.commonAttrs(el)} />`;
                         if (el.shapeType === "arrow") {
                             const angle = Math.atan2(el.height, el.width);
+                            const len = 12 + (el.strokeWidth || 2) * 2.4;
+                            const p1 = { x: x2 - len * Math.cos(angle - Math.PI / 6), y: y2 - len * Math.sin(angle - Math.PI / 6) };
+                            const p2 = { x: x2 - len * Math.cos(angle + Math.PI / 6), y: y2 - len * Math.sin(angle + Math.PI / 6) };
+                            svgContent += `<line x1="${x2.toFixed(1)}" y1="${y2.toFixed(1)}" x2="${p1.x.toFixed(1)}" y2="${p1.y.toFixed(1)}" ${this.commonAttrs(el)} />`;
+                            svgContent += `<line x1="${x2.toFixed(1)}" y1="${y2.toFixed(1)}" x2="${p2.x.toFixed(1)}" y2="${p2.y.toFixed(1)}" ${this.commonAttrs(el)} />`;
+                        }
+                    } else if (el.shapeType === "curve" || el.shapeType === "curve_arrow") {
+                        const x2 = el.x + el.width;
+                        const y2 = el.y + el.height;
+                        const length = Math.max(1, Math.hypot(el.width, el.height));
+                        const cx = (el.x + x2) / 2 - (el.height / length) * length * 0.25;
+                        const cy = (el.y + y2) / 2 + (el.width / length) * length * 0.25;
+                        svgContent += `<path d="M ${el.x.toFixed(1)} ${el.y.toFixed(1)} Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${x2.toFixed(1)} ${y2.toFixed(1)}" fill="none" ${this.commonAttrs(el)} />`;
+                        if (el.shapeType === "curve_arrow") {
+                            const angle = Math.atan2(y2 - cy, x2 - cx);
                             const len = 12 + (el.strokeWidth || 2) * 2.4;
                             const p1 = { x: x2 - len * Math.cos(angle - Math.PI / 6), y: y2 - len * Math.sin(angle - Math.PI / 6) };
                             const p2 = { x: x2 - len * Math.cos(angle + Math.PI / 6), y: y2 - len * Math.sin(angle + Math.PI / 6) };

@@ -132,7 +132,7 @@ function _toEditableFooterElement(el, index = 0) {
 }
 
 function _alignEditableFooterSlideNumber(slide, slideIndex, theme = getPresentationTheme()) {
-    if (!slide || slide.editableFooterNumberAlignmentVersion === EDITABLE_FOOTER_NUMBER_ALIGNMENT_VERSION) return false;
+    if (!slide) return false;
     const footerElements = (slide.elements || []).filter(el => el?.editableMasterFooterElement);
     if (!footerElements.length) return false;
 
@@ -142,8 +142,9 @@ function _alignEditableFooterSlideNumber(slide, slideIndex, theme = getPresentat
     const numberBg = footerElements.find(el => el.footerRole === "slide-number-bg");
     const number = footerElements.find(el => el.footerRole === "slide-number");
     let changed = false;
+    const alreadyAligned = slide.editableFooterNumberAlignmentVersion === EDITABLE_FOOTER_NUMBER_ALIGNMENT_VERSION;
 
-    if (numberBg && numberBgTemplate) {
+    if (!alreadyAligned && numberBg && numberBgTemplate) {
         numberBg.x = numberBgTemplate.x;
         numberBg.y = numberBgTemplate.y;
         numberBg.width = numberBgTemplate.width;
@@ -152,7 +153,12 @@ function _alignEditableFooterSlideNumber(slide, slideIndex, theme = getPresentat
         changed = true;
     }
 
-    if (number && numberBgTemplate && numberTemplate) {
+    if (number && numberTemplate && number.content !== numberTemplate.content) {
+        number.content = numberTemplate.content;
+        changed = true;
+    }
+
+    if (!alreadyAligned && number && numberBgTemplate && numberTemplate) {
         number.x = numberBgTemplate.x;
         number.y = numberBgTemplate.y;
         number.width = numberBgTemplate.width;

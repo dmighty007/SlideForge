@@ -35,6 +35,9 @@ function initSketchMode(sketchElementId) {
         currentStroke: null,
         capturedPointerId: null,
         isErasing: false,
+        activeTool: "pen",
+        dirty: false,
+        toolbar: null,
         tools: {
             color: elData.sketchStrokeColor || "#000000",
             width: elData.sketchStrokeWidth || 2,
@@ -69,6 +72,9 @@ function exitSketchMode() {
     if (mode.boundHandlers.keydown) {
         document.removeEventListener("keydown", mode.boundHandlers.keydown);
     }
+    if (mode.toolbar) {
+        mode.toolbar.remove();
+    }
 
     // Remove visual indicator
     if (mode.elementDom) {
@@ -76,12 +82,14 @@ function exitSketchMode() {
     }
 
     // Save to undo if strokes were added
-    if (mode.elementData.strokes && mode.elementData.strokes.length > 0) {
-        if (window.renderSlidesFromState) {
-            window.renderSlidesFromState();
+    if (mode.dirty || (mode.elementData.strokes && mode.elementData.strokes.length > 0)) {
+        if (typeof schedulePresentationAutosave === "function") {
+            schedulePresentationAutosave();
         }
         if (window.refreshPreviews) {
             window.refreshPreviews();
+        } else if (window.refreshActiveSlidePreview) {
+            window.refreshActiveSlidePreview();
         }
     }
 
@@ -89,6 +97,8 @@ function exitSketchMode() {
 }
 
 function _setupSketchPointerHandlers(mode) {
+    _createSketchToolbar(mode);
+
     const handlePointerDown = e => {
         if (e.isPrimary === false) return;
 
@@ -103,7 +113,7 @@ function _setupSketchPointerHandlers(mode) {
         const y = e.clientY - rect.top;
 
         // Check for keyboard modifiers for eraser
-        mode.isErasing = e.ctrlKey || e.metaKey;
+        mode.isErasing = mode.activeTool === "eraser" || e.ctrlKey || e.metaKey;
 
         if (mode.isErasing) {
             // Eraser mode
@@ -118,7 +128,9 @@ function _setupSketchPointerHandlers(mode) {
             };
         }
 
-        mode.canvas.setPointerCapture(e.pointerId);
+        try {
+            mode.canvas.setPointerCapture(e.pointerId);
+        } catch (_err) {}
     };
 
     const handlePointerMove = e => {
@@ -153,6 +165,7 @@ function _setupSketchPointerHandlers(mode) {
         if (!mode.isErasing && mode.currentStroke && mode.currentStroke.points.length >= 2) {
             mode.elementData.strokes = mode.elementData.strokes || [];
             mode.elementData.strokes.push(mode.currentStroke);
+            mode.dirty = true;
         }
 
         mode.currentStroke = null;
@@ -162,7 +175,12 @@ function _setupSketchPointerHandlers(mode) {
         if (typeof updateElementState === "function") {
             updateElementState(mode.elementId, {
                 strokes: mode.elementData.strokes,
+                sketchStrokeColor: mode.tools.color,
+                sketchStrokeWidth: mode.tools.width,
             });
+        }
+        if (typeof schedulePresentationAutosave === "function") {
+            schedulePresentationAutosave(250);
         }
 
         _renderSketchCanvas(mode);
@@ -177,13 +195,18 @@ function _setupSketchPointerHandlers(mode) {
     const handleKeyDown = e => {
         if (e.key === "Escape") {
             exitSketchMode();
-        } else if (e.key === "Delete" || (e.ctrlKey && e.key === "a")) {
+        } else if (e.key.toLowerCase() === "e") {
             e.preventDefault();
-            mode.elementData.strokes = [];
-            if (typeof updateElementState === "function") {
-                updateElementState(mode.elementId, { strokes: [] });
-            }
-            _renderSketchCanvas(mode);
+            _setSketchTool(mode, "eraser");
+        } else if (e.key.toLowerCase() === "p") {
+            e.preventDefault();
+            _setSketchTool(mode, "pen");
+        } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+            e.preventDefault();
+            _undoSketchStroke(mode);
+        } else if (e.key === "Delete" || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a")) {
+            e.preventDefault();
+            _clearSketch(mode);
         }
     };
 
@@ -200,8 +223,79 @@ function _setupSketchPointerHandlers(mode) {
     document.addEventListener("keydown", handleKeyDown);
 
     // Focus canvas for keyboard input
+    mode.canvas.tabIndex = 0;
     mode.canvas.focus();
 
+    _renderSketchCanvas(mode);
+}
+
+function _createSketchToolbar(mode) {
+    const toolbar = document.createElement("div");
+    toolbar.className = "sketch-inline-toolbar";
+    toolbar.innerHTML = `
+        <button type="button" class="sketch-tool-btn is-active" data-tool="pen" title="Pen"><i class="fa-solid fa-pen"></i></button>
+        <button type="button" class="sketch-tool-btn" data-tool="eraser" title="Eraser"><i class="fa-solid fa-eraser"></i></button>
+        <input class="sketch-color-input" type="color" value="${mode.tools.color}" title="Stroke color">
+        <select class="sketch-width-select" title="Stroke width">
+            ${[1, 2, 3, 4, 6, 8, 12, 16].map(width => `<option value="${width}" ${Number(mode.tools.width) === width ? "selected" : ""}>${width}</option>`).join("")}
+        </select>
+        <button type="button" class="sketch-tool-btn" data-action="undo" title="Undo last stroke"><i class="fa-solid fa-rotate-left"></i></button>
+        <button type="button" class="sketch-tool-btn" data-action="clear" title="Clear"><i class="fa-regular fa-trash-can"></i></button>
+        <button type="button" class="sketch-tool-btn sketch-done-btn" data-action="done" title="Done"><i class="fa-solid fa-check"></i></button>
+    `;
+    toolbar.addEventListener("pointerdown", e => {
+        e.preventDefault();
+        e.stopPropagation();
+    });
+    toolbar.addEventListener("click", e => {
+        e.preventDefault();
+        e.stopPropagation();
+        const button = e.target.closest("button");
+        if (!button) return;
+        const tool = button.dataset.tool;
+        const action = button.dataset.action;
+        if (tool) _setSketchTool(mode, tool);
+        else if (action === "undo") _undoSketchStroke(mode);
+        else if (action === "clear") _clearSketch(mode);
+        else if (action === "done") exitSketchMode();
+        mode.canvas.focus();
+    });
+    toolbar.querySelector(".sketch-color-input")?.addEventListener("input", e => {
+        mode.tools.color = e.target.value;
+        mode.elementData.sketchStrokeColor = e.target.value;
+        mode.dirty = true;
+        if (typeof updateElementState === "function") updateElementState(mode.elementId, { sketchStrokeColor: e.target.value });
+    });
+    toolbar.querySelector(".sketch-width-select")?.addEventListener("change", e => {
+        mode.tools.width = Number(e.target.value) || 2;
+        mode.elementData.sketchStrokeWidth = mode.tools.width;
+        mode.dirty = true;
+        if (typeof updateElementState === "function") updateElementState(mode.elementId, { sketchStrokeWidth: mode.tools.width });
+    });
+    mode.elementDom.appendChild(toolbar);
+    mode.toolbar = toolbar;
+}
+
+function _setSketchTool(mode, tool) {
+    mode.activeTool = tool;
+    mode.toolbar?.querySelectorAll("[data-tool]").forEach(btn => {
+        btn.classList.toggle("is-active", btn.dataset.tool === tool);
+    });
+    mode.canvas.style.cursor = tool === "eraser" ? "cell" : "crosshair";
+}
+
+function _undoSketchStroke(mode) {
+    if (!mode.elementData.strokes?.length) return;
+    mode.elementData.strokes = mode.elementData.strokes.slice(0, -1);
+    mode.dirty = true;
+    if (typeof updateElementState === "function") updateElementState(mode.elementId, { strokes: mode.elementData.strokes });
+    _renderSketchCanvas(mode);
+}
+
+function _clearSketch(mode) {
+    mode.elementData.strokes = [];
+    mode.dirty = true;
+    if (typeof updateElementState === "function") updateElementState(mode.elementId, { strokes: [] });
     _renderSketchCanvas(mode);
 }
 
@@ -265,6 +359,10 @@ function _eraseSketchPoint(mode, point) {
         })
         .filter(stroke => stroke.points && stroke.points.length >= 2);
 
+    mode.dirty = true;
+    if (typeof updateElementState === "function") {
+        updateElementState(mode.elementId, { strokes: mode.elementData.strokes });
+    }
     _renderSketchCanvas(mode);
 }
 

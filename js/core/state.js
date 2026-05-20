@@ -609,7 +609,7 @@ function setAuthState(user) {
     updateProjectTitleUi();
 }
 
-const SAFE_ELEMENT_TYPES = new Set(["text", "image", "shape", "table", "connector", "video", "html", "pdf", "molecule", "chart", "equation", "latex"]);
+const SAFE_ELEMENT_TYPES = new Set(["text", "image", "shape", "table", "connector", "video", "html", "pdf", "molecule", "chart", "equation", "latex", "sketch", "whiteboard"]);
 const SAFE_TEXT_TAGS = new Set(["B", "BR", "DIV", "EM", "I", "LI", "MARK", "OL", "P", "S", "SMALL", "SPAN", "STRONG", "SUB", "SUP", "U", "UL"]);
 const SAFE_TEXT_STYLE_PROPS = new Set([
     "color",
@@ -700,6 +700,17 @@ function sanitizeTextHtml(html) {
         Array.from(node.attributes).forEach(attr => {
             const name = attr.name.toLowerCase();
             if (name === "style") return;
+            if (name === "class") {
+                // Whitelist FontAwesome and internal ppt-* classes
+                const safeClasses = attr.value.split(/\s+/).filter(cls =>
+                    /^fa-/.test(cls) || /^fa[srltdbk]?$/.test(cls) || /^ppt-/.test(cls)
+                );
+                if (safeClasses.length) {
+                    node.setAttribute("class", safeClasses.join(" "));
+                    return;
+                }
+            }
+            if (name.startsWith("data-bullet") || name.startsWith("data-level")) return;
             node.removeAttribute(attr.name);
         });
 
@@ -717,6 +728,22 @@ function sanitizeTextHtml(html) {
     });
 
     return template.innerHTML;
+}
+
+function sanitizeIconClassValue(value) {
+    const raw = String(value || "");
+    const source = raw.includes("<")
+        ? raw
+        : raw.replace(/[^\w\s-]/g, " ");
+    const classMatch =
+        source.match(/class\s*=\s*["']([^"']+)["']/i) ||
+        source.match(/class\s*=\s*&quot;([^&]+)&quot;/i);
+    const classSource = classMatch ? classMatch[1] : source;
+    const safeClasses = classSource
+        .split(/\s+/)
+        .map(cls => cls.trim())
+        .filter(cls => /^fa-/.test(cls) || /^fa[srltdbk]?$/.test(cls));
+    return safeClasses.length ? safeClasses.join(" ") : "";
 }
 
 function sanitizeTextContentValue(content) {
@@ -822,6 +849,10 @@ function normalizeStateIds() {
             // process it but the raw data exists (e.g. advanced animation-engine configs)
             const preservedAnimation = normalizedAnimation
                 ?? (safeEl.animation && typeof safeEl.animation === "object" ? safeEl.animation : null);
+            const normalizedIconClass =
+                fallbackType === "text" && safeEl.iconMode
+                    ? sanitizeIconClassValue(safeEl.iconClass || safeEl.content)
+                    : "";
             return {
                 ...safeEl,
                 id: nextElId,
@@ -904,6 +935,8 @@ function normalizeStateIds() {
                     : {}),
                 ...(fallbackType === "text"
                     ? {
+                          iconMode: Boolean(safeEl.iconMode),
+                          iconClass: normalizedIconClass || undefined,
                           bulletStyle:
                               typeof safeEl.bulletStyle === "string" && safeEl.bulletStyle
                                   ? safeEl.bulletStyle
@@ -987,7 +1020,9 @@ function normalizeStateIds() {
                               ? "420px"
                             : "auto"),
                 content:
-                    fallbackType === "text"
+                    fallbackType === "text" && safeEl.iconMode && normalizedIconClass
+                        ? `<i class="${normalizedIconClass}"></i>`
+                        : fallbackType === "text"
                         ? typeof normalizeTextElementContent === "function"
                             ? normalizeTextElementContent(sanitizeElementContent(safeEl, fallbackType))
                             : sanitizeElementContent(safeEl, fallbackType)
