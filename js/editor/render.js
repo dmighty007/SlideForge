@@ -1042,6 +1042,110 @@ function getShapeStyle(shape = "rectangle") {
     }
 }
 
+function _parseShapePolygonPoints(clipPath = "") {
+    const match = String(clipPath).match(/^polygon\((.*)\)$/i);
+    if (!match) return [];
+    return match[1]
+        .split(",")
+        .map(pair => {
+            const values = pair.trim().split(/\s+/);
+            if (values.length < 2) return null;
+            const x = parseFloat(values[0]);
+            const y = parseFloat(values[1]);
+            return Number.isFinite(x) && Number.isFinite(y) ? [x, y] : null;
+        })
+        .filter(Boolean);
+}
+
+function _parseBorderShorthand(border = "") {
+    const text = String(border || "").trim();
+    if (!text) return {};
+    const widthMatch = text.match(/(?:^|\s)(\d*\.?\d+)px(?:\s|$)/i);
+    const styleMatch = text.match(/\b(solid|dashed|dotted|double|none)\b/i);
+    let color = text
+        .replace(widthMatch?.[0] || "", " ")
+        .replace(styleMatch?.[0] || "", " ")
+        .trim();
+    if (!color || color === "0") color = "";
+    return {
+        width: widthMatch ? Number(widthMatch[1]) : undefined,
+        style: styleMatch ? styleMatch[1].toLowerCase() : undefined,
+        color,
+    };
+}
+
+function _getShapePaint(elData = {}) {
+    const styles = elData.styles || {};
+    const border = _parseBorderShorthand(styles.border);
+    const borderWidth = Math.max(0, parseFloat(styles.borderWidth ?? border.width ?? 0) || 0);
+    const borderStyle = String(styles.borderStyle || border.style || "solid").toLowerCase();
+    const borderColor = String(styles.borderColor || border.color || "transparent").trim();
+    return {
+        fill: styles.backgroundColor || "transparent",
+        strokeWidth: borderWidth,
+        strokeStyle: borderStyle,
+        strokeColor: borderColor,
+        hasStroke:
+            borderWidth > 0 &&
+            borderStyle !== "none" &&
+            borderColor &&
+            !/^transparent$/i.test(borderColor) &&
+            !/^rgba?\([^)]*,\s*0(?:\.0+)?\)$/i.test(borderColor),
+    };
+}
+
+function renderShapeContent(el, elData = {}) {
+    if (!el || elData.type !== "shape") return;
+    el.querySelectorAll(":scope > .sf-shape-visual-svg").forEach(node => node.remove());
+
+    const visual = getShapeStyle(elData);
+    const points = _parseShapePolygonPoints(visual.clipPath);
+    const paint = _getShapePaint(elData);
+
+    if (!points.length) {
+        el.style.clipPath = visual.clipPath;
+        if (!elData.styles?.borderRadius || elData.shapeType === "circle") {
+            el.style.borderRadius = visual.borderRadius;
+        }
+        el.style.removeProperty("--sf-shape-fill");
+        return;
+    }
+
+    el.style.clipPath = "none";
+    el.style.borderRadius = "0px";
+    el.style.backgroundColor = "transparent";
+    el.style.border = "0";
+    el.style.overflow = "visible";
+    el.style.setProperty("--sf-shape-fill", paint.fill);
+
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.classList.add("sf-shape-visual-svg");
+    svg.setAttribute("viewBox", "0 0 100 100");
+    svg.setAttribute("preserveAspectRatio", "none");
+    svg.style.position = "absolute";
+    svg.style.inset = "0";
+    svg.style.width = "100%";
+    svg.style.height = "100%";
+    svg.style.overflow = "visible";
+    svg.style.pointerEvents = "none";
+
+    const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+    polygon.setAttribute("points", points.map(([x, y]) => `${x},${y}`).join(" "));
+    polygon.setAttribute("fill", "var(--sf-shape-fill, transparent)");
+    polygon.setAttribute("stroke", paint.hasStroke ? paint.strokeColor : "none");
+    polygon.setAttribute("stroke-width", paint.hasStroke ? String(paint.strokeWidth) : "0");
+    polygon.setAttribute("vector-effect", "non-scaling-stroke");
+    polygon.setAttribute("stroke-linejoin", "round");
+    if (paint.strokeStyle === "dashed") {
+        polygon.setAttribute("stroke-dasharray", `${paint.strokeWidth * 3} ${paint.strokeWidth * 2}`);
+    } else if (paint.strokeStyle === "dotted") {
+        polygon.setAttribute("stroke-dasharray", `${paint.strokeWidth} ${paint.strokeWidth * 2}`);
+        polygon.setAttribute("stroke-linecap", "round");
+    }
+    svg.appendChild(polygon);
+    el.insertBefore(svg, el.firstChild);
+}
+
 // ─── Slide Rendering ────────────────────────────────────────────────────────
 
 function _escapeWhiteboardAttr(value = "") {
@@ -1503,6 +1607,13 @@ function _applyStylesToElement(el, styles) {
             } else {
                 el.style.setProperty("-webkit-text-stroke-color", value, "important");
             }
+            return;
+        }
+        if (prop === "borderWidth") {
+            const normalized = typeof value === "number" || /^\d*\.?\d+$/.test(String(value))
+                ? `${value}px`
+                : String(value);
+            el.style.setProperty("border-width", normalized);
             return;
         }
         const cssProp = prop.replace(/([A-Z])/g, "-$1").toLowerCase();
@@ -2025,11 +2136,7 @@ function _createStaticNode(elData, options = {}) {
         el.appendChild(frame);
         el.appendChild(chip);
     } else if (elData.type === "shape") {
-        const visual = getShapeStyle(elData);
-        el.style.clipPath = visual.clipPath;
-        if (!elData.styles?.borderRadius) {
-            el.style.borderRadius = visual.borderRadius;
-        }
+        renderShapeContent(el, elData);
     } else if (elData.type === "whiteboard") {
         const canvas = document.createElement("canvas");
         canvas.className = "whiteboard-object-canvas";
@@ -2671,11 +2778,7 @@ function _applyTypeContent(el, elData, options = {}) {
             }
         });
     } else if (elData.type === "shape") {
-        const visual = getShapeStyle(elData);
-        el.style.clipPath = visual.clipPath;
-        if (!elData.styles?.borderRadius) {
-            el.style.borderRadius = visual.borderRadius;
-        }
+        renderShapeContent(el, elData);
     } else if (elData.type === "whiteboard") {
         const canvas = document.createElement("canvas");
         canvas.className = "whiteboard-object-canvas";

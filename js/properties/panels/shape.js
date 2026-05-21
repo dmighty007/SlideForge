@@ -45,8 +45,13 @@ function buildShapePanel(panel, data) {
                     },
                 };
                 const visual = shapeVisuals[value] || shapeVisuals.rectangle;
-                dom.style.clipPath = visual.clipPath;
-                dom.style.borderRadius = visual.borderRadius;
+                data.shapeType = value;
+                if (typeof renderShapeContent === "function") {
+                    renderShapeContent(dom, data);
+                } else {
+                    dom.style.clipPath = visual.clipPath;
+                    dom.style.borderRadius = visual.borderRadius;
+                }
                 updateElementStyleState(data.id, { borderRadius: visual.borderRadius });
             });
         };

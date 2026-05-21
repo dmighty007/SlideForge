@@ -2925,8 +2925,12 @@ function buildPropertiesPanel() {
                     const dom = document.getElementById(data.id);
                     if (!dom || typeof getShapeStyle !== "function") return;
                     const visual = getShapeStyle(data);
-                    dom.style.clipPath = visual.clipPath;
-                    dom.style.borderRadius = visual.borderRadius;
+                    if (typeof renderShapeContent === "function") {
+                        renderShapeContent(dom, data);
+                    } else {
+                        dom.style.clipPath = visual.clipPath;
+                        dom.style.borderRadius = visual.borderRadius;
+                    }
                     updateElementStyleState(data.id, { borderRadius: visual.borderRadius });
                 };
                 const bindShapeDimension = (input, key) => {
