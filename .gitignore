@@ -14,3 +14,5 @@ test_output.json
 test_fail.json
 test_fail.pptx
 .trash/
+node_modules/
+.tmp*

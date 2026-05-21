@@ -1,109 +1,194 @@
-# SlideForge — Professional AI-Powered Presentation Builder
+# SlideForge
 
-[![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
-[![Django Framework](https://img.shields.io/badge/framework-Django--4.2-green.svg)](https://www.djangoproject.com/)
-[![License](https://img.shields.io/badge/license-MIT-cyan.svg)](LICENSE)
-[![Frontend Stack](https://img.shields.io/badge/frontend-HTML5%20%7C%20CSS3%20%7C%20ES6%20%7C%20Vanilla-orange.svg)](#technology-stack)
+SlideForge is a browser-based presentation editor with a Django backend. It combines a canvas-style slide builder, project persistence, PPTX export, animation tooling, AI-assisted import, and document-to-slide workflows in one local web app.
 
-SlideForge is a professional, standalone, Figma-like web presentation builder. It seamlessly blends high-fidelity interactive frontend canvas editing with an intelligent Django-based AI slide generation backend. SlideForge supports PDF structure extraction, Gemini/Groq-first slide authoring, dynamic mathematical re-tinting, and a robust advanced slide animation engine.
+## What It Does
 
----
+- Edit presentations in a Figma-like canvas with draggable, resizable, styleable slide elements.
+- Build slides from text, images, shapes, tables, media, scientific figures, and generated presets.
+- Insert editable Mermaid diagrams for flowcharts, sequence diagrams, state charts, Gantt timelines, ER diagrams, and mind maps.
+- Apply and preview slide and object animations, including advanced text and shape effects.
+- Import and clean up document content through the AI import bridge.
+- Save presentations through the Django API and export decks to PowerPoint.
+- Run locally with SQLite for development.
 
-## 🚀 Key Features
+## Project Layout
 
-*   **Figma-Like Canvas Editor:** Drag-and-drop element resizing, smart alignment guides, double-click text editing, and real-time canvas properties.
-*   **Gemini-First AI slide Writing:** Dynamic generation of cohesive scientific and corporate slide decks from simple prompts or uploaded documents using Gemini, Groq, or local Ollama.
-*   **AI PDF Structural Extraction:** Integrates a Python PDF parser bridge (`pdf_bridge.py`) that uses local PyTorch/MinerU to extract documents, visual elements, and math/equations directly into slide structures.
-*   **Dynamic, Theme-Aware Slide Presets:** Instantly apply corporate or scientific layout templates (Title Page, Section Divider, Results/Data, OPES Sampling, etc.). Presets dynamically recompute colors, background washes, and typography instantly when the presentation theme changes.
-*   **Advanced Animation Timeline & Engine:** Create rich transitions using type-specific animations (such as *TextMorph*, *MoveAlongPath*, and *Blur*). Manage sequences with a granular keyframe timeline inspector.
-*   **Professional Exporting Options:** Download presentations natively as PowerPoint (`.pptx`) decks or structure-rich JSON files.
-
----
-
-## 🛠️ Architecture Overview
-
-```mermaid
-graph TD
-    User([User Client]) <--> |WebSocket / REST| FE[Vanilla ES6 Frontend Editor]
-    FE <--> |JSON API / REST| BE[Django Backend API]
-    BE <--> |SQLite 3| DB[(Database)]
-    BE --> |Job Queue| Bridge[AI PDF Import Bridge]
-    Bridge --> |PyTorch / MinerU| Extraction[Structure & Math Parsing]
-    Extraction --> |JSON Payload| BE
-    BE --> |AI Generation| LLM[Gemini / Groq / Ollama]
+```text
+SlideForge/
+|-- index.html              # Single-page editor shell
+|-- js/                     # Frontend editor modules
+|-- js/mermaid/             # Mermaid diagram editor, renderer, templates, export helpers
+|-- css/                    # Editor styles
+|-- assets/                 # Static images and icons
+|-- studio/                 # Django views, auth, assets, presentations, exports
+|-- ai_jobs/                # AI import job endpoints and orchestration
+|-- bridge/                 # PDF/document parsing, LLM helpers, PPTX exporter
+|-- pptmaker_backend/       # Django settings and root URL routing
+|-- media/                  # Local uploaded/generated media
+|-- requirements.txt        # Python dependencies
+`-- package.json            # Optional Playwright dependency for browser probes
 ```
 
-### Component Details
-*   **Frontend Studio (`studio/`, `js/`, `css/`):** A lightweight, premium vanilla ES6 editor. Custom properties and native CSS layout systems are used instead of heavy frameworks, achieving maximum page speed and sub-10ms canvas rendering.
-*   **Django Backend (`pptmaker_backend/`, `ai_jobs/`):** Handles secure authentication, project persistence, and acts as the orchestration layer for background bridge workers.
-*   **AI Bridge (`bridge/`):** Implements a dedicated job runner. When a user uploads a paper, the bridge parses it into layout components and equations, feeding it to the LLM to write corresponding slides.
+## Requirements
 
----
+- Python 3.10 or newer
+- Django 5.2, installed from `requirements.txt`
+- SQLite, used by default through `db.sqlite3`
+- Node.js, optional, only needed for Playwright-based browser checks
+- Optional AI provider credentials for Gemini, Groq, OpenAI, or Ollama
 
-## ⚙️ Setup & Installation
+Some import paths use heavier document extraction dependencies such as MinerU. Keep those in an isolated Python or Conda environment when possible.
 
-### Prerequisites
-*   **Python:** Version `3.10` or higher
-*   **Node.js (Optional):** For frontend dev-tooling
-*   **Conda (Optional):** To manage bridge dependencies
+## Quick Start
 
-### Step-by-Step Setup
+Create and activate a Python environment:
 
-1.  **Clone the Repository:**
-    ```bash
-    git clone https://github.com/your-username/slideforge.git
-    cd slideforge
-    ```
+```bash
+python -m venv .venv
+source .venv/bin/activate
+```
 
-2.  **Initialize the Python Virtual Environment:**
-    ```bash
-    python -m venv venv
-    source venv/bin/activate  # On Windows: venv\Scripts\activate
-    ```
+Install the backend dependencies:
 
-3.  **Install Django & Base Dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
+```bash
+pip install -r requirements.txt
+```
 
-4.  **Environment Variables:**
-    Copy the sample environment file and configure your API keys:
-    ```bash
-    cp .env.example .env
-    ```
-    *   `GOOGLE_API_KEY`: Enables Gemini Pro models for slide layout composition and PDF summarization.
-    *   `GROQ_API_KEY`: Activates ultra-fast fallback generation.
-    *   `OLLAMA_HOST` (Optional): Activates local fallback models (e.g., Llama 3) for offline slide generation.
+Create your local environment file:
 
-5.  **Initialize Database & Run Migrations:**
-    ```bash
-    python manage.py migrate --run-syncdb
-    ```
+```bash
+cp .env.example .env
+```
 
-6.  **Launch the Server:**
-    ```bash
-    python manage.py runserver
-    ```
-    SlideForge will now be running at [http://127.0.0.1:8000/](http://127.0.0.1:8000/).
+Run database migrations:
 
----
+```bash
+python manage.py migrate
+```
 
-## 🎨 Technology Stack
+Start the development server:
 
-*   **Backend:** Python 3.10+, Django 4.2+, SQLite3, `python-pptx`
-*   **Frontend:** Vanilla Javascript (ES6), HTML5 Canvas, Vanilla CSS3 (curated dynamic palettes, glassmorphism, responsive grids), FontAwesome Icons
-*   **AI/Extraction:** Google Gemini API, Groq Cloud API, PyTorch, MinerU, PDF-Extract-Kit
+```bash
+python manage.py runserver
+```
 
----
+Open the editor at:
 
-## 📝 Key Developer Notes
+```text
+http://127.0.0.1:8000/
+```
 
-*   **Database Setup:** This standalone application uses `--run-syncdb` for migrations to quickly synchronize imported schemas without bloating the repository with local migration files.
-*   **Conda Bridge Configuration:** If you wish to run heavy PDF structure-extraction jobs inside a separate Anaconda/Conda environment, populate `PPTMAKER_CONDA` in your `.env` file with your Conda environment name.
-*   **Figma-Like Editing Flow:** Changes to font family, size, or dynamic presets save in real-time. If you make a mistake, simply use `Ctrl + Z` or click the **Undo** button in the top toolbar.
+In development mode, Django serves the editor shell plus the `js/`, `css/`, `assets/`, `static/`, and `media/` paths.
 
----
+## Configuration
 
-## 📄 License
+The main runtime settings are loaded from `.env`.
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+Core Django settings:
+
+```text
+DJANGO_SECRET_KEY=change-me
+DJANGO_DEBUG=1
+DJANGO_ALLOWED_HOSTS=127.0.0.1,localhost,testserver
+```
+
+AI and import settings:
+
+```text
+GOOGLE_API_KEY=
+GROQ_API_KEY=
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_VISION_MODEL=
+PPTMAKER_SMART_LLM_MODE=auto
+PPTMAKER_ALLOW_REMOTE_LLM=0
+PPTMAKER_CONDA=
+PPTMAKER_BRIDGE_JSON_TIMEOUT=7200
+```
+
+Document extraction settings:
+
+```text
+MINERU_BIN=
+PPTMAKER_MINERU_BACKEND=pipeline
+PPTMAKER_MINERU_TIMEOUT_SECONDS=1800
+PPTMAKER_FIGURE_BACKEND=auto
+```
+
+Remote LLM calls are disabled unless `PPTMAKER_ALLOW_REMOTE_LLM=1` is set in the environment.
+
+## API Surface
+
+The Django app exposes the editor at `/` and serves backend endpoints under `/api/`.
+
+- `POST /api/auth/register/`
+- `POST /api/auth/login/`
+- `POST /api/auth/logout/`
+- `GET /api/auth/session/`
+- `POST /api/assets/upload/`
+- `POST /api/slides/cleanup/`
+- `POST /api/presentations/`
+- `GET/PATCH/DELETE /api/presentations/<presentation_id>/`
+- `POST /api/presentations/export/pptx/`
+- `POST /api/ai-import-start`
+- `GET /api/ai-import-status`
+
+## Development
+
+Run Django checks:
+
+```bash
+python manage.py check
+```
+
+Run Django tests:
+
+```bash
+python manage.py test
+```
+
+Install optional browser tooling:
+
+```bash
+npm install
+```
+
+Run the animation probe when Playwright is installed:
+
+```bash
+node test-animations.js
+```
+
+For focused frontend syntax checks, use Node against the files you changed:
+
+```bash
+node --check js/animations/animation-engine.js
+```
+
+## Mermaid Diagrams
+
+Use the toolbar button labelled `Flowchart / Mermaid Diagram` or press `Ctrl+Shift+M` to open the diagram editor. Flowcharts open as a hybrid visual/code editor with draggable nodes, quick connections, inline label editing, a compact floating toolbar, markdown-lite labels, multi-select basics, layout controls, and Mermaid source kept in sync. Non-flowchart Mermaid types still use the sanitized Mermaid preview/render path.
+
+Architecture notes:
+
+- `js/mermaid/mermaid-engine.js` lazy-loads Mermaid from the ESM CDN, validates source, queues async renders, caches SVG, and sanitizes output.
+- `js/mermaid/mermaid-graph.js` parses flowchart Mermaid into SlideForge's graph model, lays out nodes, regenerates Mermaid with `sf:graph` position metadata, and exports custom SVG.
+- `js/mermaid/mermaid-dialog.js` owns visual/code/split modes, templates, direct graph manipulation, theme controls, debounce, diagnostics, and insert/update flow.
+- `js/mermaid/mermaid-object.js` creates and renders canvas objects so diagrams can be moved, resized, copied, duplicated, styled, and animated like other elements.
+- `js/mermaid/mermaid-export.js` handles browser SVG download.
+- `bridge/pptx_exporter.py` exports Mermaid diagrams as SVG when supported and falls back to high-resolution PNG through CairoSVG.
+
+Migration notes:
+
+- Existing projects load unchanged.
+- New Mermaid elements preserve `mermaidSource`, `mermaidType`, `theme`, `svgContent`, `graphModel`, `nodePositions`, routing/layout flags, dimensions, style, and animation data.
+- Visual node positions are stored both in `graphModel` and in Mermaid comments such as `%% sf:graph {...} %%`, so source remains portable while SlideForge can restore manual layout.
+- Double-click a node to edit inline, drag from a connector to create a linked node, use `Enter` for child nodes, `Tab` for siblings, `Ctrl/Cmd+D` to duplicate, arrow keys to nudge, and `F` to focus the current selection.
+- If an older saved project contains a Mermaid object without `svgContent`, the editor re-renders it on load.
+
+## Notes
+
+- Local development data lives in `db.sqlite3` and `media/`.
+- Do not commit `.env`, uploaded media, generated caches, or local browser probe output.
+- The frontend is intentionally framework-light: most editor behavior lives in ES modules under `js/`.
+- PPTX export is implemented in `bridge/pptx_exporter.py` and exposed through the Django presentation export endpoint.

@@ -297,26 +297,52 @@ export class DrawingEngine {
         if (this.currentStroke.type === "freehand") {
             this.addPointerPointsToCurrentStroke(e);
         } else if (this.currentStroke.type === "draw_shape") {
-            const dx = worldPt.x - this.shapeStartPt.x;
-            const dy = worldPt.y - this.shapeStartPt.y;
-            if (e.shiftKey && ["rectangle", "diamond", "ellipse", "triangle", "star"].includes(this.currentStroke.shapeType)) {
-                const size = Math.max(Math.abs(dx), Math.abs(dy));
-                this.currentStroke.x = dx < 0 ? this.shapeStartPt.x - size : this.shapeStartPt.x;
-                this.currentStroke.y = dy < 0 ? this.shapeStartPt.y - size : this.shapeStartPt.y;
-                this.currentStroke.width = size;
-                this.currentStroke.height = size;
-            } else if (["line", "arrow", "curve", "curve_arrow"].includes(this.currentStroke.shapeType)) {
-                const constrained = e.shiftKey ? this.constrainLinearDelta(dx, dy) : { dx, dy };
-                this.currentStroke.width = constrained.dx;
-                this.currentStroke.height = constrained.dy;
-            } else {
-                this.currentStroke.x = dx < 0 ? worldPt.x : this.shapeStartPt.x;
-                this.currentStroke.y = dy < 0 ? worldPt.y : this.shapeStartPt.y;
-                this.currentStroke.width = Math.abs(dx);
-                this.currentStroke.height = Math.abs(dy);
-            }
+            this.updateDraftShape(worldPt, e);
         }
         this.requestRender();
+    }
+
+    updateDraftShape(worldPt, event = {}) {
+        if (!this.currentStroke || this.currentStroke.type !== "draw_shape") return;
+        const shape = this.currentStroke;
+        let dx = worldPt.x - this.shapeStartPt.x;
+        let dy = worldPt.y - this.shapeStartPt.y;
+        const isLinear = ["line", "arrow", "curve", "curve_arrow"].includes(shape.shapeType);
+        const isBoxShape = ["rectangle", "diamond", "ellipse", "triangle", "star"].includes(shape.shapeType);
+
+        if (event.shiftKey && isLinear) {
+            const constrained = this.constrainLinearDelta(dx, dy);
+            dx = constrained.dx;
+            dy = constrained.dy;
+        }
+
+        if (event.shiftKey && isBoxShape) {
+            const size = Math.max(Math.abs(dx), Math.abs(dy));
+            dx = Math.sign(dx || 1) * size;
+            dy = Math.sign(dy || 1) * size;
+        }
+
+        if (isLinear) {
+            if (event.altKey) {
+                shape.x = this.shapeStartPt.x - dx;
+                shape.y = this.shapeStartPt.y - dy;
+                shape.width = dx * 2;
+                shape.height = dy * 2;
+            } else {
+                shape.x = this.shapeStartPt.x;
+                shape.y = this.shapeStartPt.y;
+                shape.width = dx;
+                shape.height = dy;
+            }
+            return;
+        }
+
+        const left = event.altKey ? this.shapeStartPt.x - Math.abs(dx) : Math.min(this.shapeStartPt.x, this.shapeStartPt.x + dx);
+        const top = event.altKey ? this.shapeStartPt.y - Math.abs(dy) : Math.min(this.shapeStartPt.y, this.shapeStartPt.y + dy);
+        shape.x = left;
+        shape.y = top;
+        shape.width = event.altKey ? Math.abs(dx) * 2 : Math.abs(dx);
+        shape.height = event.altKey ? Math.abs(dy) * 2 : Math.abs(dy);
     }
 
     handlePointerUp(e) {
@@ -498,6 +524,92 @@ export class DrawingEngine {
         return null;
     }
 
+    distanceToSegment(point, a, b) {
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        if (!dx && !dy) return Math.hypot(point.x - a.x, point.y - a.y);
+        const t = Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / (dx * dx + dy * dy)));
+        const px = a.x + dx * t;
+        const py = a.y + dy * t;
+        return Math.hypot(point.x - px, point.y - py);
+    }
+
+    distanceToPolyline(point, points = []) {
+        if (!points.length) return Infinity;
+        if (points.length === 1) return Math.hypot(point.x - points[0].x, point.y - points[0].y);
+        let min = Infinity;
+        for (let i = 1; i < points.length; i += 1) {
+            min = Math.min(min, this.distanceToSegment(point, points[i - 1], points[i]));
+        }
+        return min;
+    }
+
+    pointInPolygon(point, points = []) {
+        let inside = false;
+        for (let i = 0, j = points.length - 1; i < points.length; j = i, i += 1) {
+            const pi = points[i];
+            const pj = points[j];
+            const dy = pj.y - pi.y || 0.0001;
+            const intersects = pi.y > point.y !== pj.y > point.y && point.x < ((pj.x - pi.x) * (point.y - pi.y)) / dy + pi.x;
+            if (intersects) inside = !inside;
+        }
+        return inside;
+    }
+
+    getShapePoints(el) {
+        const x = Number(el.x) || 0;
+        const y = Number(el.y) || 0;
+        const w = Number(el.width) || 0;
+        const h = Number(el.height) || 0;
+        if (el.shapeType === "diamond") {
+            return [
+                { x: x + w / 2, y },
+                { x: x + w, y: y + h / 2 },
+                { x: x + w / 2, y: y + h },
+                { x, y: y + h / 2 },
+            ];
+        }
+        if (el.shapeType === "triangle") {
+            return [
+                { x: x + w / 2, y },
+                { x: x + w, y: y + h },
+                { x, y: y + h },
+            ];
+        }
+        if (el.shapeType === "star") {
+            const cx = x + w / 2;
+            const cy = y + h / 2;
+            const outer = Math.min(Math.abs(w), Math.abs(h)) / 2;
+            const inner = outer * 0.382;
+            return Array.from({ length: 10 }, (_, index) => {
+                const radius = index % 2 === 0 ? outer : inner;
+                const angle = (Math.PI * 2 * index) / 10 - Math.PI / 2;
+                return { x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius };
+            });
+        }
+        return [];
+    }
+
+    getCurveSamplePoints(el, steps = 18) {
+        const x1 = Number(el.x) || 0;
+        const y1 = Number(el.y) || 0;
+        const x2 = x1 + (Number(el.width) || 0);
+        const y2 = y1 + (Number(el.height) || 0);
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const length = Math.max(1, Math.hypot(dx, dy));
+        const cx = (x1 + x2) / 2 - (dy / length) * length * 0.25;
+        const cy = (y1 + y2) / 2 + (dx / length) * length * 0.25;
+        return Array.from({ length: steps + 1 }, (_, index) => {
+            const t = index / steps;
+            const mt = 1 - t;
+            return {
+                x: mt * mt * x1 + 2 * mt * t * cx + t * t * x2,
+                y: mt * mt * y1 + 2 * mt * t * cy + t * t * y2,
+            };
+        });
+    }
+
     getSelectionHandles(el = this.getSelectedElement()) {
         const b = this.getElementBounds(el);
         if (!b) return [];
@@ -598,8 +710,48 @@ export class DrawingEngine {
         if (point.x < b.x - tolerance || point.x > b.x + b.width + tolerance || point.y < b.y - tolerance || point.y > b.y + b.height + tolerance) {
             return false;
         }
-        if (el.type !== "freehand") return true;
-        return (el.points || []).some(p => Math.hypot(p.x - point.x, p.y - point.y) <= tolerance + (el.strokeWidth || 2));
+        const strokeTolerance = tolerance + Math.max(1, Number(el.strokeWidth) || 2);
+        if (el.type === "freehand") {
+            return this.distanceToPolyline(point, el.points || []) <= strokeTolerance;
+        }
+        if (el.type === "text") return true;
+        if (el.type !== "draw_shape") return true;
+        const x = Number(el.x) || 0;
+        const y = Number(el.y) || 0;
+        const w = Number(el.width) || 0;
+        const h = Number(el.height) || 0;
+        if (["line", "arrow"].includes(el.shapeType)) {
+            return this.distanceToSegment(point, { x, y }, { x: x + w, y: y + h }) <= strokeTolerance;
+        }
+        if (["curve", "curve_arrow"].includes(el.shapeType)) {
+            return this.distanceToPolyline(point, this.getCurveSamplePoints(el)) <= strokeTolerance;
+        }
+        const hasVisibleFill = el.fillStyle !== "none" && el.backgroundColor && el.backgroundColor !== "transparent";
+        if (el.shapeType === "ellipse") {
+            const rx = Math.max(0.001, Math.abs(w / 2));
+            const ry = Math.max(0.001, Math.abs(h / 2));
+            const cx = x + w / 2;
+            const cy = y + h / 2;
+            const normalized = ((point.x - cx) ** 2) / (rx ** 2) + ((point.y - cy) ** 2) / (ry ** 2);
+            if (hasVisibleFill && normalized <= 1) return true;
+            const edgeDistance = Math.abs(Math.sqrt(normalized) - 1) * Math.min(rx, ry);
+            return edgeDistance <= strokeTolerance;
+        }
+        if (el.shapeType === "rectangle") {
+            if (hasVisibleFill) return true;
+            const left = Math.min(x, x + w);
+            const right = Math.max(x, x + w);
+            const top = Math.min(y, y + h);
+            const bottom = Math.max(y, y + h);
+            const edgeDistance = Math.min(Math.abs(point.x - left), Math.abs(point.x - right), Math.abs(point.y - top), Math.abs(point.y - bottom));
+            return edgeDistance <= strokeTolerance;
+        }
+        const polygon = this.getShapePoints(el);
+        if (polygon.length) {
+            if (hasVisibleFill && this.pointInPolygon(point, polygon)) return true;
+            return this.distanceToPolyline(point, [...polygon, polygon[0]]) <= strokeTolerance;
+        }
+        return true;
     }
 
     getElementBounds(el) {

@@ -26,6 +26,43 @@ export class ExportManager {
         return `fill="${this.esc(el.backgroundColor)}" fill-opacity="${opacity}"`;
     }
 
+    static distance(a, b) {
+        return Math.hypot((b?.x || 0) - (a?.x || 0), (b?.y || 0) - (a?.y || 0));
+    }
+
+    static pointToward(from, to, distance) {
+        const length = Math.max(0.001, this.distance(from, to));
+        const t = Math.max(0, Math.min(1, distance / length));
+        return {
+            x: from.x + (to.x - from.x) * t,
+            y: from.y + (to.y - from.y) * t,
+        };
+    }
+
+    static roundedPolygonPath(points, radius = 0) {
+        if (!Array.isArray(points) || points.length < 2) return "";
+        const r = Math.max(0, Number(radius) || 0);
+        if (points.length < 3 || r <= 0) {
+            const commands = [`M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`];
+            points.slice(1).forEach(point => commands.push(`L ${point.x.toFixed(1)} ${point.y.toFixed(1)}`));
+            if (points.length > 2) commands.push("Z");
+            return commands.join(" ");
+        }
+
+        const commands = [];
+        points.forEach((point, index) => {
+            const prev = points[(index - 1 + points.length) % points.length];
+            const next = points[(index + 1) % points.length];
+            const cornerRadius = Math.min(r, this.distance(point, prev) * 0.42, this.distance(point, next) * 0.42);
+            const start = this.pointToward(point, prev, cornerRadius);
+            const end = this.pointToward(point, next, cornerRadius);
+            commands.push(`${index === 0 ? "M" : "L"} ${start.x.toFixed(1)} ${start.y.toFixed(1)}`);
+            commands.push(`Q ${point.x.toFixed(1)} ${point.y.toFixed(1)} ${end.x.toFixed(1)} ${end.y.toFixed(1)}`);
+        });
+        commands.push("Z");
+        return commands.join(" ");
+    }
+
     static generateSVG(elements, viewport, slideWidth = 1024, slideHeight = 768) {
         if (!elements || elements.length === 0) {
             return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${slideWidth} ${slideHeight}" width="100%" height="100%"><rect width="100%" height="100%" fill="white"/></svg>`;
@@ -39,7 +76,15 @@ export class ExportManager {
             try {
                 if (el.type === "freehand" && el.points && el.points.length >= 2) {
                     let d = `M ${el.points[0].x.toFixed(1)} ${el.points[0].y.toFixed(1)} `;
-                    for (let i = 1; i < el.points.length; i++) d += `L ${el.points[i].x.toFixed(1)} ${el.points[i].y.toFixed(1)} `;
+                    for (let i = 1; i < el.points.length; i++) {
+                        const point = el.points[i];
+                        if (i < el.points.length - 1) {
+                            const next = el.points[i + 1];
+                            d += `Q ${point.x.toFixed(1)} ${point.y.toFixed(1)} ${((point.x + next.x) / 2).toFixed(1)} ${((point.y + next.y) / 2).toFixed(1)} `;
+                        } else {
+                            d += `L ${point.x.toFixed(1)} ${point.y.toFixed(1)} `;
+                        }
+                    }
                     svgContent += `<path d="${d.trim()}" fill="none" ${this.commonAttrs(el)} />`;
                 } else if (el.type === "text") {
                     const lines = String(el.text || "").split("\n");
@@ -54,23 +99,25 @@ export class ExportManager {
                         svgContent += `<rect x="${el.x.toFixed(1)}" y="${el.y.toFixed(1)}" width="${el.width.toFixed(1)}" height="${el.height.toFixed(1)}" rx="${radius.toFixed(1)}" ${this.fillAttrs(el)} ${this.commonAttrs(el)} />`;
                     } else if (el.shapeType === "diamond") {
                         const points = [
-                            `${(el.x + el.width / 2).toFixed(1)},${el.y.toFixed(1)}`,
-                            `${(el.x + el.width).toFixed(1)},${(el.y + el.height / 2).toFixed(1)}`,
-                            `${(el.x + el.width / 2).toFixed(1)},${(el.y + el.height).toFixed(1)}`,
-                            `${el.x.toFixed(1)},${(el.y + el.height / 2).toFixed(1)}`,
-                        ].join(" ");
-                        svgContent += `<polygon points="${points}" ${this.fillAttrs(el)} ${this.commonAttrs(el)} />`;
+                            { x: el.x + el.width / 2, y: el.y },
+                            { x: el.x + el.width, y: el.y + el.height / 2 },
+                            { x: el.x + el.width / 2, y: el.y + el.height },
+                            { x: el.x, y: el.y + el.height / 2 },
+                        ];
+                        const radius = Math.min(Math.abs(el.width), Math.abs(el.height)) * 0.075;
+                        svgContent += `<path d="${this.roundedPolygonPath(points, radius)}" ${this.fillAttrs(el)} ${this.commonAttrs(el)} />`;
                     } else if (el.shapeType === "ellipse") {
                         const cx = (el.x + el.width / 2).toFixed(1);
                         const cy = (el.y + el.height / 2).toFixed(1);
                         svgContent += `<ellipse cx="${cx}" cy="${cy}" rx="${Math.abs(el.width / 2).toFixed(1)}" ry="${Math.abs(el.height / 2).toFixed(1)}" ${this.fillAttrs(el)} ${this.commonAttrs(el)} />`;
                     } else if (el.shapeType === "triangle") {
                         const points = [
-                            `${(el.x + el.width / 2).toFixed(1)},${el.y.toFixed(1)}`,
-                            `${(el.x + el.width).toFixed(1)},${(el.y + el.height).toFixed(1)}`,
-                            `${el.x.toFixed(1)},${(el.y + el.height).toFixed(1)}`,
-                        ].join(" ");
-                        svgContent += `<polygon points="${points}" ${this.fillAttrs(el)} ${this.commonAttrs(el)} />`;
+                            { x: el.x + el.width / 2, y: el.y },
+                            { x: el.x + el.width, y: el.y + el.height },
+                            { x: el.x, y: el.y + el.height },
+                        ];
+                        const radius = Math.min(Math.abs(el.width), Math.abs(el.height)) * 0.07;
+                        svgContent += `<path d="${this.roundedPolygonPath(points, radius)}" ${this.fillAttrs(el)} ${this.commonAttrs(el)} />`;
                     } else if (el.shapeType === "star") {
                         const cx = el.x + el.width / 2;
                         const cy = el.y + el.height / 2;
@@ -79,9 +126,9 @@ export class ExportManager {
                         const points = Array.from({ length: 10 }, (_, index) => {
                             const radius = index % 2 === 0 ? outer : inner;
                             const angle = (Math.PI * 2 * index) / 10 - Math.PI / 2;
-                            return `${(cx + Math.cos(angle) * radius).toFixed(1)},${(cy + Math.sin(angle) * radius).toFixed(1)}`;
-                        }).join(" ");
-                        svgContent += `<polygon points="${points}" ${this.fillAttrs(el)} ${this.commonAttrs(el)} />`;
+                            return { x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius };
+                        });
+                        svgContent += `<path d="${this.roundedPolygonPath(points, Math.min(Math.abs(el.width), Math.abs(el.height)) * 0.025)}" ${this.fillAttrs(el)} ${this.commonAttrs(el)} />`;
                     } else if (el.shapeType === "line" || el.shapeType === "arrow") {
                         const x2 = el.x + el.width;
                         const y2 = el.y + el.height;

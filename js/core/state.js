@@ -609,7 +609,7 @@ function setAuthState(user) {
     updateProjectTitleUi();
 }
 
-const SAFE_ELEMENT_TYPES = new Set(["text", "image", "shape", "table", "connector", "video", "html", "pdf", "molecule", "chart", "equation", "latex", "sketch", "whiteboard"]);
+const SAFE_ELEMENT_TYPES = new Set(["text", "image", "shape", "table", "connector", "video", "html", "pdf", "molecule", "chart", "equation", "latex", "sketch", "whiteboard", "mermaid"]);
 const SAFE_TEXT_TAGS = new Set(["B", "BR", "DIV", "EM", "I", "LI", "MARK", "OL", "P", "S", "SMALL", "SPAN", "STRONG", "SUB", "SUP", "U", "UL"]);
 const SAFE_TEXT_STYLE_PROPS = new Set([
     "color",
@@ -646,9 +646,12 @@ const SAFE_ELEMENT_STYLE_PROPS = new Set([
     "fontSize",
     "fontStyle",
     "fontWeight",
+    "fill",
     "letterSpacing",
     "lineHeight",
     "opacity",
+    "stroke",
+    "text",
     "textAlign",
     "textDecoration",
     "textStrokeColor",
@@ -660,6 +663,8 @@ const MAX_PRESENTATION_SLIDES = 250;
 const MAX_ELEMENTS_PER_SLIDE = 300;
 const MAX_TEXT_HTML_LENGTH = 20000;
 const MAX_EMBED_HTML_LENGTH = 100000;
+const MAX_MERMAID_SOURCE_LENGTH = 50000;
+const MAX_MERMAID_SVG_LENGTH = 500000;
 
 function _truncateStateString(value, maxLength) {
     return String(value ?? "").slice(0, maxLength);
@@ -789,6 +794,104 @@ function sanitizeElementContent(safeEl, fallbackType) {
         return _truncateStateString(safeEl.content || safeEl.latexSrc || "", 10000);
     }
     return typeof safeEl.content === "string" ? _truncateStateString(safeEl.content, 20000) : "";
+}
+
+function sanitizeMermaidSvgContent(svg) {
+    let cleaned = _truncateStateString(svg || "", MAX_MERMAID_SVG_LENGTH);
+    cleaned = cleaned.replace(/<\s*(script|foreignObject)\b[^>]*>.*?<\s*\/\s*\1\s*>/gis, "");
+    cleaned = cleaned.replace(/\s+on[a-z]+\s*=\s*(['"]).*?\1/gis, "");
+    cleaned = cleaned.replace(/\s+(href|xlink:href)\s*=\s*(['"])\s*(javascript:|data:text\/html).*?\2/gis, "");
+    cleaned = cleaned.replace(/url\s*\(\s*(['"]?)\s*(javascript:|data:text\/html).*?\)/gis, "none");
+    return cleaned.trim();
+}
+
+function normalizeMermaidTheme(theme) {
+    return ["default", "neutral", "dark", "forest", "base"].includes(theme) ? theme : "default";
+}
+
+function normalizeMermaidType(type) {
+    return ["flowchart", "sequenceDiagram", "stateDiagram-v2", "classDiagram", "erDiagram", "gantt", "journey", "mindmap"].includes(type)
+        ? type
+        : "flowchart";
+}
+
+function normalizeMermaidStyle(style = {}) {
+    const safe = style && typeof style === "object" ? style : {};
+    const color = (value, fallback) => {
+        const raw = String(value || "").trim();
+        return /^#[0-9a-fA-F]{3,8}$/.test(raw) ? raw : fallback;
+    };
+    return {
+        fontFamily: _truncateStateString(safe.fontFamily || "Inter, Arial, sans-serif", 120),
+        fontSize: Math.max(10, Math.min(28, Number(safe.fontSize) || 16)),
+        primaryColor: color(safe.primaryColor, "#eef2ff"),
+        primaryTextColor: color(safe.primaryTextColor, "#0f172a"),
+        lineColor: color(safe.lineColor, "#4f46e5"),
+        backgroundColor: color(safe.backgroundColor, "#ffffff"),
+        handDrawn: Boolean(safe.handDrawn),
+    };
+}
+
+function normalizeMermaidGraphModel(graph = null) {
+    if (!graph || typeof graph !== "object") return null;
+    const safeNodes = Array.isArray(graph.nodes)
+        ? graph.nodes.slice(0, 600).map((node, index) => ({
+              id: _truncateStateString(node?.id || `Node${index + 1}`, 80).replace(/[^\w-]/g, "_") || `Node${index + 1}`,
+              label: _truncateStateString(node?.label || node?.id || `Node ${index + 1}`, 180),
+              shape: ["process", "decision", "database", "cloud", "actor", "queue", "hexagon", "parallelogram", "terminal", "document", "scientific"].includes(node?.shape) ? node.shape : "process",
+              x: Number.isFinite(Number(node?.x)) ? Math.round(Number(node.x)) : 48,
+              y: Number.isFinite(Number(node?.y)) ? Math.round(Number(node.y)) : 48,
+              width: Number.isFinite(Number(node?.width)) ? Math.max(48, Math.min(320, Number(node.width))) : 138,
+              height: Number.isFinite(Number(node?.height)) ? Math.max(32, Math.min(220, Number(node.height))) : 58,
+              locked: Boolean(node?.locked),
+              style: sanitizeElementStyles(node?.style || {}),
+          }))
+        : [];
+    const nodeIds = new Set(safeNodes.map(node => node.id));
+    const safeEdges = Array.isArray(graph.edges)
+        ? graph.edges.slice(0, 2500)
+              .map((edge, index) => ({
+                  id: _truncateStateString(edge?.id || `edge_${index + 1}`, 120).replace(/[^\w-]/g, "_") || `edge_${index + 1}`,
+                  from: _truncateStateString(edge?.from || "", 80).replace(/[^\w-]/g, "_"),
+                  to: _truncateStateString(edge?.to || "", 80).replace(/[^\w-]/g, "_"),
+                  label: _truncateStateString(edge?.label || "", 180),
+                  arrow: ["arrow", "circle", "cross", "none"].includes(edge?.arrow) ? edge.arrow : "arrow",
+                  routingStyle: edge?.routingStyle === "curved" ? "curved" : "orthogonal",
+                  waypoints: Array.isArray(edge?.waypoints)
+                      ? edge.waypoints.slice(0, 24).map(point => ({
+                            x: Number.isFinite(Number(point?.x)) ? Math.round(Number(point.x)) : 0,
+                            y: Number.isFinite(Number(point?.y)) ? Math.round(Number(point.y)) : 0,
+                        }))
+                      : [],
+                  labelOffset: {
+                      x: Number.isFinite(Number(edge?.labelOffset?.x)) ? Math.round(Number(edge.labelOffset.x)) : 0,
+                      y: Number.isFinite(Number(edge?.labelOffset?.y)) ? Math.round(Number(edge.labelOffset.y)) : 0,
+                  },
+                  style: sanitizeElementStyles(edge?.style || {}),
+              }))
+              .filter(edge => nodeIds.has(edge.from) && nodeIds.has(edge.to))
+        : [];
+    return {
+        version: 1,
+        type: graph.type === "flowchart" ? "flowchart" : "flowchart",
+        direction: ["TD", "TB", "BT", "LR", "RL"].includes(graph.direction) ? graph.direction : "TD",
+        nodes: safeNodes,
+        edges: safeEdges,
+        groups: Array.isArray(graph.groups) ? graph.groups.slice(0, 100) : [],
+        mermaidSource: _truncateStateString(graph.mermaidSource || "", MAX_MERMAID_SOURCE_LENGTH),
+        layoutMetadata: graph.layoutMetadata && typeof graph.layoutMetadata === "object" ? graph.layoutMetadata : {},
+        viewport: {
+            x: Number.isFinite(Number(graph.viewport?.x)) ? Number(graph.viewport.x) : 0,
+            y: Number.isFinite(Number(graph.viewport?.y)) ? Number(graph.viewport.y) : 0,
+            zoom: Number.isFinite(Number(graph.viewport?.zoom)) ? Math.max(0.1, Math.min(8, Number(graph.viewport.zoom))) : 1,
+        },
+        style: normalizeMermaidStyle(graph.style || {}),
+        nodePositions: Object.fromEntries(safeNodes.map(node => [node.id, { x: node.x, y: node.y }])),
+        lockedLayout: Boolean(graph.lockedLayout),
+        autoLayout: graph.autoLayout !== false,
+        routingStyle: graph.routingStyle === "curved" ? "curved" : "orthogonal",
+        connectionStyle: ["arrow", "circle", "cross", "none"].includes(graph.connectionStyle) ? graph.connectionStyle : "arrow",
+    };
 }
 
 function normalizeStateIds() {
@@ -933,6 +1036,46 @@ function normalizeStateIds() {
                           localMimeType: safeEl.localMimeType || "application/pdf",
                       }
                     : {}),
+                ...(fallbackType === "mermaid"
+                    ? {
+                          mermaidSource: _truncateStateString(
+                              safeEl.mermaidSource ||
+                                  safeEl.content ||
+                                  "flowchart TD\n    A[Start] --> B[End]",
+                              MAX_MERMAID_SOURCE_LENGTH,
+                          ),
+                          mermaidType: normalizeMermaidType(safeEl.mermaidType),
+                          theme: normalizeMermaidTheme(safeEl.theme),
+                          svgContent: sanitizeMermaidSvgContent(safeEl.svgContent || ""),
+                          svgManualEdits: Boolean(safeEl.svgManualEdits),
+                          editMode: ["visual", "code", "split"].includes(safeEl.editMode) ? safeEl.editMode : "split",
+                          graphModel: normalizeMermaidGraphModel(safeEl.graphModel),
+                          nodePositions:
+                              safeEl.nodePositions && typeof safeEl.nodePositions === "object"
+                                  ? Object.fromEntries(
+                                        Object.entries(safeEl.nodePositions)
+                                            .slice(0, 600)
+                                            .map(([id, pos]) => [
+                                                _truncateStateString(id, 80).replace(/[^\w-]/g, "_"),
+                                                {
+                                                    x: Number.isFinite(Number(pos?.x)) ? Math.round(Number(pos.x)) : 0,
+                                                    y: Number.isFinite(Number(pos?.y)) ? Math.round(Number(pos.y)) : 0,
+                                                },
+                                            ]),
+                                    )
+                                  : {},
+                          lockedLayout: Boolean(safeEl.lockedLayout),
+                          autoLayout: safeEl.autoLayout !== false,
+                          routingStyle: safeEl.routingStyle === "curved" ? "curved" : "orthogonal",
+                          connectionStyle: ["arrow", "circle", "cross", "none"].includes(safeEl.connectionStyle) ? safeEl.connectionStyle : "arrow",
+                          rotation: Number.isFinite(Number(safeEl.rotation)) ? Number(safeEl.rotation) : 0,
+                          locked: Boolean(safeEl.locked),
+                          opacity: Number.isFinite(Number(safeEl.opacity))
+                              ? Math.max(0, Math.min(1, Number(safeEl.opacity)))
+                              : 1,
+                          style: normalizeMermaidStyle(safeEl.style),
+                      }
+                    : {}),
                 ...(fallbackType === "text"
                     ? {
                           iconMode: Boolean(safeEl.iconMode),
@@ -991,6 +1134,8 @@ function normalizeStateIds() {
                         ? "150px"
                         : fallbackType === "connector"
                           ? "280px"
+                        : fallbackType === "mermaid"
+                          ? "560px"
                         : fallbackType === "table"
                           ? "520px"
                         : fallbackType === "image"
@@ -1008,6 +1153,8 @@ function normalizeStateIds() {
                         ? "150px"
                         : fallbackType === "connector"
                           ? "140px"
+                        : fallbackType === "mermaid"
+                          ? "360px"
                         : fallbackType === "table"
                           ? "240px"
                         : fallbackType === "image"

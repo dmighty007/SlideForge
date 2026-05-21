@@ -4909,6 +4909,7 @@ const COMMANDS = [
     { id: "add-text", title: "Add Text Box", icon: "fa-t", action: () => addElement("text") },
     { id: "add-shape-rect", title: "Add Rectangle", icon: "fa-square", action: () => addShape("rectangle") },
     { id: "add-shape-circle", title: "Add Circle", icon: "fa-circle", action: () => addShape("circle") },
+    { id: "add-mermaid", title: "Insert Flowchart / Mermaid Diagram", icon: "fa-diagram-project", action: () => window.openMermaidDialog?.() },
     {
         id: "add-image",
         title: "Add Image",

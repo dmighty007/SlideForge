@@ -99,6 +99,51 @@ export class RoughRenderer {
         ctx.quadraticCurveTo(x1, y1, x1 + r, y1);
     }
 
+    static _distance(a, b) {
+        return Math.hypot((b?.x || 0) - (a?.x || 0), (b?.y || 0) - (a?.y || 0));
+    }
+
+    static _pointToward(from, to, distance) {
+        const length = Math.max(0.001, this._distance(from, to));
+        const t = Math.max(0, Math.min(1, distance / length));
+        return {
+            x: from.x + (to.x - from.x) * t,
+            y: from.y + (to.y - from.y) * t,
+        };
+    }
+
+    static _smoothPolygonPath(ctx, points, radius = 0) {
+        if (!Array.isArray(points) || points.length < 2) return;
+        const r = Math.max(0, Number(radius) || 0);
+        if (points.length < 3 || r <= 0) {
+            ctx.moveTo(points[0].x, points[0].y);
+            points.slice(1).forEach(point => ctx.lineTo(point.x, point.y));
+            if (points.length > 2) ctx.closePath();
+            return;
+        }
+
+        points.forEach((point, index) => {
+            const prev = points[(index - 1 + points.length) % points.length];
+            const next = points[(index + 1) % points.length];
+            const cornerRadius = Math.min(r, this._distance(point, prev) * 0.42, this._distance(point, next) * 0.42);
+            const start = this._pointToward(point, prev, cornerRadius);
+            const end = this._pointToward(point, next, cornerRadius);
+            if (index === 0) ctx.moveTo(start.x, start.y);
+            else ctx.lineTo(start.x, start.y);
+            ctx.quadraticCurveTo(point.x, point.y, end.x, end.y);
+        });
+        ctx.closePath();
+    }
+
+    static _jitterPoints(points, style = {}, rand = Math.random, scale = 1) {
+        const roughness = Math.max(0, Number(style.roughness) || 0);
+        const jitter = Math.min(14, roughness * 2.4 * scale);
+        return points.map(point => ({
+            x: point.x + (rand() - 0.5) * jitter,
+            y: point.y + (rand() - 0.5) * jitter,
+        }));
+    }
+
     static _drawWobblyRoundedRect(ctx, x, y, w, h, radius, style, rand) {
         const roughness = Math.max(0, Number(style.roughness) || 0);
         const x1 = Math.min(x, x + w);
@@ -214,11 +259,7 @@ export class RoughRenderer {
         ctx.globalAlpha *= style.fillOpacity ?? 0.45;
         ctx.fillStyle = fill;
         ctx.beginPath();
-        points.forEach((point, index) => {
-            if (index === 0) ctx.moveTo(point.x, point.y);
-            else ctx.lineTo(point.x, point.y);
-        });
-        ctx.closePath();
+        this._smoothPolygonPath(ctx, points, style.cornerRadius || 0);
         ctx.fill();
 
         if (style.fillStyle === "hachure" || style.fillStyle === "cross-hatch") {
@@ -249,6 +290,34 @@ export class RoughRenderer {
                     ctx.lineTo(x + (maxY - minY) + gap + (rand() - 0.5) * jitter, maxY + gap + (rand() - 0.5) * jitter);
                     ctx.stroke();
                 }
+            }
+        }
+        ctx.restore();
+    }
+
+    static drawRoughPolygon(ctx, points, style = {}, options = {}) {
+        if (!Array.isArray(points) || points.length < 2) return;
+        const roughness = style.roughness ?? 1.5;
+        const rand = style.random || Math.random;
+        const profile = this.roughProfile(style);
+        const cornerRadius = options.cornerRadius ?? style.cornerRadius ?? 0;
+        this.fillPolygon(ctx, points, { ...style, cornerRadius });
+
+        ctx.save();
+        const initialAlpha = ctx.globalAlpha;
+        ctx.globalAlpha = initialAlpha * profile.baseAlpha;
+        this._setupStroke(ctx, style);
+        ctx.beginPath();
+        this._smoothPolygonPath(ctx, points, cornerRadius);
+        ctx.stroke();
+
+        if (roughness > 0.2) {
+            ctx.globalAlpha = initialAlpha * profile.overlayAlpha;
+            this._setupStroke(ctx, style, this._roughOverlayWidth(style));
+            for (let pass = 0; pass < profile.overlayPasses; pass += 1) {
+                ctx.beginPath();
+                this._smoothPolygonPath(ctx, this._jitterPoints(points, style, rand, pass + 1), cornerRadius);
+                ctx.stroke();
             }
         }
         ctx.restore();
@@ -293,18 +362,14 @@ export class RoughRenderer {
     }
 
     static drawRoughDiamond(ctx, x, y, w, h, style = {}) {
+        const cornerRadius = Math.min(Math.abs(w), Math.abs(h)) * 0.075;
         const points = [
             { x: x + w / 2, y },
             { x: x + w, y: y + h / 2 },
             { x: x + w / 2, y: y + h },
             { x, y: y + h / 2 },
         ];
-        this.fillPolygon(ctx, points, style);
-        for (let i = 0; i < points.length; i += 1) {
-            const a = points[i];
-            const b = points[(i + 1) % points.length];
-            this.drawRoughLine(ctx, a.x, a.y, b.x, b.y, style);
-        }
+        this.drawRoughPolygon(ctx, points, style, { cornerRadius });
     }
 
     static drawRoughEllipse(ctx, cx, cy, rx, ry, style = {}) {
@@ -358,17 +423,13 @@ export class RoughRenderer {
     }
 
     static drawRoughTriangle(ctx, x, y, w, h, style = {}) {
+        const cornerRadius = Math.min(Math.abs(w), Math.abs(h)) * 0.07;
         const points = [
             { x: x + w / 2, y },
             { x: x + w, y: y + h },
             { x, y: y + h },
         ];
-        this.fillPolygon(ctx, points, style);
-        for (let i = 0; i < points.length; i += 1) {
-            const a = points[i];
-            const b = points[(i + 1) % points.length];
-            this.drawRoughLine(ctx, a.x, a.y, b.x, b.y, style);
-        }
+        this.drawRoughPolygon(ctx, points, style, { cornerRadius });
     }
 
     static drawRoughStar(ctx, x, y, w, h, style = {}) {
@@ -382,12 +443,7 @@ export class RoughRenderer {
             const angle = (Math.PI * 2 * i) / 10 - Math.PI / 2;
             points.push({ x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius });
         }
-        this.fillPolygon(ctx, points, style);
-        for (let i = 0; i < points.length; i += 1) {
-            const a = points[i];
-            const b = points[(i + 1) % points.length];
-            this.drawRoughLine(ctx, a.x, a.y, b.x, b.y, style);
-        }
+        this.drawRoughPolygon(ctx, points, style, { cornerRadius: Math.min(Math.abs(w), Math.abs(h)) * 0.025 });
     }
 
     static drawRoughCurve(ctx, x1, y1, x2, y2, style = {}) {

@@ -1,4 +1,8 @@
 export class StrokeRenderer {
+    static clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
     static getCatmullRomPoint(p0, p1, p2, p3, t) {
         const t2 = t * t;
         const t3 = t2 * t;
@@ -50,26 +54,50 @@ export class StrokeRenderer {
 
     static drawInkStroke(ctx, points, strokeColor, baseWidth = 3) {
         if (!points || points.length === 0) return;
+        const width = Math.max(0.75, Number(baseWidth) || 3);
         if (points.length === 1) {
             ctx.beginPath();
-            ctx.arc(points[0].x, points[0].y, baseWidth / 2, 0, Math.PI * 2);
+            ctx.arc(points[0].x, points[0].y, width / 2, 0, Math.PI * 2);
             ctx.fillStyle = strokeColor;
             ctx.fill();
             return;
         }
 
-        const strokePoints = this.generateSplinePoints(points, 4);
+        const strokePoints = this.generateSplinePoints(points, 5);
         ctx.save();
         ctx.strokeStyle = strokeColor;
-        ctx.lineWidth = Math.max(1, baseWidth);
+        ctx.fillStyle = strokeColor;
         ctx.lineCap = "round";
         ctx.lineJoin = "round";
-        ctx.beginPath();
-        ctx.moveTo(strokePoints[0].x, strokePoints[0].y);
+
+        let previousWidth = width * this.clamp(strokePoints[0].pressure || 0.5, 0.35, 1);
         for (let i = 1; i < strokePoints.length; i++) {
-            ctx.lineTo(strokePoints[i].x, strokePoints[i].y);
+            const prev = strokePoints[i - 1];
+            const current = strokePoints[i];
+            const pressure = this.clamp(current.pressure || 0.5, 0.28, 1);
+            const distance = Math.max(0.01, Math.hypot(current.x - prev.x, current.y - prev.y));
+            const taper = Math.min(1, i / 5, (strokePoints.length - i) / 5);
+            const pressureWidth = width * (0.54 + pressure * 0.68) * Math.max(0.72, taper);
+            const nextWidth = previousWidth * 0.72 + pressureWidth * 0.28;
+
+            ctx.lineWidth = Math.max(0.75, (previousWidth + nextWidth) / 2);
+            ctx.beginPath();
+            ctx.moveTo(prev.x, prev.y);
+            if (i < strokePoints.length - 1) {
+                const next = strokePoints[i + 1];
+                ctx.quadraticCurveTo(current.x, current.y, (current.x + next.x) / 2, (current.y + next.y) / 2);
+            } else {
+                ctx.lineTo(current.x, current.y);
+            }
+            ctx.stroke();
+
+            if (distance > width * 1.4) {
+                ctx.beginPath();
+                ctx.arc(current.x, current.y, Math.max(0.5, nextWidth / 2), 0, Math.PI * 2);
+                ctx.fill();
+            }
+            previousWidth = nextWidth;
         }
-        ctx.stroke();
         ctx.restore();
     }
 }

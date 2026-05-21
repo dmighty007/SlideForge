@@ -2137,6 +2137,23 @@ function _createStaticNode(elData, options = {}) {
         el.appendChild(chip);
     } else if (elData.type === "shape") {
         renderShapeContent(el, elData);
+    } else if (elData.type === "mermaid") {
+        const host = document.createElement("div");
+        host.className = "mermaid-object-surface";
+        const svgHost = document.createElement("div");
+        svgHost.className = "mermaid-svg-host";
+        if (elData.svgContent) svgHost.innerHTML = elData.svgContent;
+        else svgHost.innerHTML = `<div class="mermaid-render-status"><i class="fa-solid fa-diagram-project"></i><span>Diagram</span></div>`;
+        host.appendChild(svgHost);
+        el.appendChild(host);
+        const renderMermaidObject = (attempt = 0) => {
+            if (typeof window.renderMermaidElement === "function") {
+                window.renderMermaidElement(el, elData);
+            } else if (attempt < 8) {
+                requestAnimationFrame(() => renderMermaidObject(attempt + 1));
+            }
+        };
+        requestAnimationFrame(renderMermaidObject);
     } else if (elData.type === "whiteboard") {
         const canvas = document.createElement("canvas");
         canvas.className = "whiteboard-object-canvas";
@@ -2287,6 +2304,10 @@ function refreshCanvasBackedElements() {
             const canvas = dom.querySelector("canvas.whiteboard-object-canvas");
             if (canvas && typeof window.renderWhiteboardDrawingElement === "function") {
                 window.renderWhiteboardDrawingElement(canvas, elData);
+            }
+        } else if (elData.type === "mermaid") {
+            if (typeof window.renderMermaidElement === "function") {
+                window.renderMermaidElement(dom, elData, { force: true });
             }
         } else if (elData.type === "sketch") {
             const canvas = dom.querySelector("canvas.sketch-canvas");
@@ -2779,6 +2800,25 @@ function _applyTypeContent(el, elData, options = {}) {
         });
     } else if (elData.type === "shape") {
         renderShapeContent(el, elData);
+    } else if (elData.type === "mermaid") {
+        if (typeof window.renderMermaidElement === "function") {
+            window.renderMermaidElement(el, elData);
+        } else {
+            const surface = document.createElement("div");
+            surface.className = "mermaid-object-surface";
+            const svgHost = document.createElement("div");
+            svgHost.className = "mermaid-svg-host";
+            svgHost.innerHTML = elData.svgContent || `<div class="mermaid-render-status"><i class="fa-solid fa-diagram-project"></i><span>Diagram</span></div>`;
+            surface.appendChild(svgHost);
+            el.appendChild(surface);
+            requestAnimationFrame(() => window.renderMermaidElement?.(el, elData));
+        }
+        el.addEventListener("dblclick", event => {
+            if (document.body.classList.contains("play-mode-active")) return;
+            event.preventDefault();
+            event.stopPropagation();
+            window.openMermaidDialog?.(elData.id);
+        });
     } else if (elData.type === "whiteboard") {
         const canvas = document.createElement("canvas");
         canvas.className = "whiteboard-object-canvas";

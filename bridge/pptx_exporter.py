@@ -673,6 +673,8 @@ class PPTXExporter:
                 self._add_connector_element(slide, el, x, y, w, h)
             elif el_type == "video":
                 self._add_video_element(slide, el, x, y, w, h)
+            elif el_type == "mermaid":
+                self._add_mermaid_element(slide, el, x, y, w, h)
             elif el_type in {"html", "pdf", "molecule", "chart", "equation", "latex"}:
                 self._add_placeholder_element(slide, el, x, y, w, h)
         except Exception as e:
@@ -825,6 +827,62 @@ class PPTXExporter:
         connector.line.color.rgb = self._parse_color(styles.get("color") or styles.get("borderColor"), self.theme["accent"])
         connector.line.width = Pt(float(self._parse_px(styles.get("strokeWidth") or styles.get("borderWidth"), 2)))
 
+    def _sanitize_svg(self, svg: str) -> str:
+        cleaned = str(svg or "")
+        cleaned = re.sub(r"<\s*(script|foreignObject)\b[^>]*>.*?<\s*/\s*\1\s*>", "", cleaned, flags=re.I | re.S)
+        cleaned = re.sub(r"\s+on[a-zA-Z]+\s*=\s*(['\"]).*?\1", "", cleaned, flags=re.I | re.S)
+        cleaned = re.sub(r"\s+(href|xlink:href)\s*=\s*(['\"])\s*(javascript:|data:text/html).*?\2", "", cleaned, flags=re.I | re.S)
+        cleaned = re.sub(r"url\s*\(\s*(['\"]?)\s*(javascript:|data:text/html).*?\)", "none", cleaned, flags=re.I | re.S)
+        return cleaned.strip()
+
+    def _svg_to_png_stream(self, svg: str, width_px: int, height_px: int) -> Optional[io.BytesIO]:
+        try:
+            import cairosvg
+
+            png = cairosvg.svg2png(
+                bytestring=svg.encode("utf-8"),
+                output_width=max(1, width_px),
+                output_height=max(1, height_px),
+            )
+            stream = io.BytesIO(png)
+            stream.seek(0)
+            return stream
+        except Exception:
+            pass
+
+        try:
+            from svglib.svglib import svg2rlg
+            from reportlab.graphics import renderPM
+
+            drawing = svg2rlg(io.BytesIO(svg.encode("utf-8")))
+            png = renderPM.drawToString(drawing, fmt="PNG", dpi=220)
+            stream = io.BytesIO(png)
+            stream.seek(0)
+            return stream
+        except Exception:
+            return None
+
+    def _add_mermaid_element(self, slide: Any, el: Dict[str, Any], x: Inches, y: Inches, w: Inches, h: Inches):
+        svg = self._sanitize_svg(el.get("svgContent") or "")
+        if not svg:
+            self._add_placeholder_element(slide, {**el, "type": "mermaid"}, x, y, w, h)
+            return
+
+        svg_stream = io.BytesIO(svg.encode("utf-8"))
+        try:
+            slide.shapes.add_picture(svg_stream, x, y, width=w, height=h)
+            return
+        except Exception:
+            pass
+
+        width_px = int(max(320, self._parse_px(el.get("width"), 560) * 3))
+        height_px = int(max(240, self._parse_px(el.get("height"), 360) * 3))
+        png_stream = self._svg_to_png_stream(svg, width_px, height_px)
+        if png_stream:
+            slide.shapes.add_picture(png_stream, x, y, width=w, height=h)
+            return
+        self._add_placeholder_element(slide, {**el, "type": "mermaid"}, x, y, w, h)
+
     def _add_placeholder_element(self, slide: Any, el: Dict[str, Any], x: Inches, y: Inches, w: Inches, h: Inches):
         label_by_type = {
             "video": "Video",
@@ -834,6 +892,7 @@ class PPTXExporter:
             "chart": "Chart",
             "equation": "Equation",
             "latex": "Equation",
+            "mermaid": "Mermaid diagram",
         }
         label = label_by_type.get(el.get("type"), "Unsupported content")
         shape = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x, y, w, h)
