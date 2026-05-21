@@ -16,6 +16,7 @@ function normalizeColor(value, fallback) {
 }
 
 export function normalizeMermaidStyle(style = {}) {
+    const renderMode = ["real", "draw", "sketch"].includes(style.renderMode) ? style.renderMode : (style.handDrawn ? "sketch" : "real");
     return {
         fontFamily: String(style.fontFamily || "Inter, Arial, sans-serif").slice(0, 120),
         fontSize: Math.max(10, Math.min(28, Number(style.fontSize) || 16)),
@@ -23,7 +24,8 @@ export function normalizeMermaidStyle(style = {}) {
         primaryTextColor: normalizeColor(style.primaryTextColor, "#0f172a"),
         lineColor: normalizeColor(style.lineColor, "#4f46e5"),
         backgroundColor: normalizeColor(style.backgroundColor, "#ffffff"),
-        handDrawn: Boolean(style.handDrawn),
+        renderMode,
+        handDrawn: renderMode !== "real",
     };
 }
 

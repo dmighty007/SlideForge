@@ -4910,6 +4910,12 @@ const COMMANDS = [
     { id: "add-shape-rect", title: "Add Rectangle", icon: "fa-square", action: () => addShape("rectangle") },
     { id: "add-shape-circle", title: "Add Circle", icon: "fa-circle", action: () => addShape("circle") },
     { id: "add-mermaid", title: "Insert Flowchart / Mermaid Diagram", icon: "fa-diagram-project", action: () => window.openMermaidDialog?.() },
+    { id: "graph-add-node", title: "Graph: Add Node", icon: "fa-circle-plus", action: () => window.openMermaidDialog?.(state.selectedIds?.[0], "add-node") },
+    { id: "graph-auto-layout", title: "Graph: Auto-layout Selection", icon: "fa-wand-magic-sparkles", action: () => window.openMermaidDialog?.(state.selectedIds?.[0], "auto-layout") },
+    { id: "graph-create-group", title: "Graph: Create Group", icon: "fa-object-group", action: () => window.openMermaidDialog?.(state.selectedIds?.[0], "create-group") },
+    { id: "graph-branch-reveal", title: "Graph: Branch Reveal Animation", icon: "fa-route", action: () => window.openMermaidDialog?.(state.selectedIds?.[0], "branch-reveal") },
+    { id: "graph-scientific-stage", title: "Graph: Scientific Workflow Stage", icon: "fa-atom", action: () => window.openMermaidDialog?.(state.selectedIds?.[0], "scientific-stage") },
+    { id: "graph-generate-legend", title: "Graph: Generate Legend", icon: "fa-list", action: () => window.openMermaidDialog?.(state.selectedIds?.[0], "generate-legend") },
     {
         id: "add-image",
         title: "Add Image",

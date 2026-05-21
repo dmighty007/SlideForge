@@ -2,6 +2,15 @@ import { normalizeMermaidStyle, renderMermaid, validateMermaid, sanitizeMermaidS
 import { exportMermaidSvg } from "./mermaid-export.js";
 import { createMermaidElementData, insertMermaidElement, updateMermaidElement } from "./mermaid-object.js";
 import { canUseVisualGraph, graphToMermaid, graphToSvg, layoutGraphModel, makeNode, parseMermaidToGraph } from "./mermaid-graph.js";
+import {
+    SCIENTIFIC_WORKFLOW_PRIMITIVES,
+    applyPresentationPreset,
+    createGraphDocument,
+    deriveMermaidFromDocument,
+    documentToGraphModel,
+    renderDocumentToSvg,
+    updateDocumentFromGraphModel,
+} from "./mermaid-document.js";
 import { DEFAULT_MERMAID_TEMPLATE, MERMAID_TEMPLATES, inferMermaidType } from "./mermaid-templates.js";
 
 const THEMES = ["default", "neutral", "dark", "forest", "base"];
@@ -36,7 +45,7 @@ function ensureDialog() {
             <header class="mermaid-dialog-header">
                 <div>
                     <div class="mermaid-dialog-title">Flowchart / Mermaid Diagram</div>
-                    <div class="mermaid-dialog-subtitle">Visual graph editing, synced Mermaid source, and live SVG export.</div>
+                    <div class="mermaid-dialog-subtitle">Slide-native graph authoring with Mermaid import/export.</div>
                 </div>
                 <div class="mermaid-mode-switch" role="tablist" aria-label="Mermaid editor mode">
                     <button type="button" id="mermaid-mode-visual" class="mermaid-mode-button is-active" data-mode="visual">Visual</button>
@@ -62,7 +71,9 @@ function ensureDialog() {
                         <button type="button" data-toolbar-action="duplicate" title="Duplicate"><i class="fa-regular fa-copy"></i></button>
                         <button type="button" data-toolbar-action="shape" title="Toggle shape"><i class="fa-regular fa-circle"></i></button>
                         <button type="button" data-toolbar-action="color" title="Color"><i class="fa-solid fa-droplet"></i></button>
+                        <button type="button" data-toolbar-action="align" title="Align"><i class="fa-solid fa-align-center"></i></button>
                         <button type="button" data-toolbar-action="layout" title="Layout selection"><i class="fa-solid fa-wand-magic-sparkles"></i></button>
+                        <button type="button" data-toolbar-action="animate" title="Animation preset"><i class="fa-solid fa-person-running"></i></button>
                         <button type="button" data-toolbar-action="delete" title="Delete"><i class="fa-regular fa-trash-can"></i></button>
                     </div>
                     <div id="mermaid-marquee" class="mermaid-marquee hidden"></div>
@@ -86,8 +97,16 @@ function ensureDialog() {
                             </select>
                         </label>
                         <label class="mermaid-field">
-                            <span>XKCD</span>
-                            <input id="mermaid-hand-drawn" type="checkbox">
+                            <span>Size</span>
+                            <input id="mermaid-font-size" type="number" min="10" max="28" value="16" title="Font size in pixels">
+                        </label>
+                        <label class="mermaid-field">
+                            <span>Shape</span>
+                            <select id="mermaid-render-mode" class="mermaid-select">
+                                <option value="real">Real</option>
+                                <option value="draw">Draw</option>
+                                <option value="sketch">Sketch</option>
+                            </select>
                         </label>
                         <label class="mermaid-field">
                             <span>Node fill</span>
@@ -126,13 +145,34 @@ function ensureDialog() {
                             </select>
                         </label>
                         <label class="mermaid-field">
-                            <span>Color</span>
+                            <span>Font</span>
+                            <select id="mermaid-selected-font-family" class="mermaid-select" title="Font family for selected item">
+                                <option value="">Inherit</option>
+                                <option value="Inter, Arial, sans-serif">Inter</option>
+                                <option value="Arial, sans-serif">Arial</option>
+                                <option value="Georgia, serif">Georgia</option>
+                                <option value="'Comic Sans MS', 'Comic Neue', cursive">Cursive</option>
+                                <option value="'Caveat', 'Bradley Hand', cursive">Handwritten</option>
+                                <option value="'Architects Daughter', 'Comic Sans MS', cursive">XKCD</option>
+                                <option value="Courier New, monospace">Mono</option>
+                            </select>
+                        </label>
+                        <label class="mermaid-field">
+                            <span>Size</span>
+                            <input id="mermaid-selected-font-size" type="number" min="8" max="48" placeholder="Inherit" title="Font size in pixels">
+                        </label>
+                        <label class="mermaid-field">
+                            <span>Text Color</span>
+                            <input id="mermaid-selected-text-color" type="color" value="#0f172a">
+                        </label>
+                        <label class="mermaid-field">
+                            <span>Fill Color</span>
                             <input id="mermaid-part-color" type="color" value="#4f46e5">
                         </label>
                         <div class="mermaid-part-actions">
                             <button type="button" id="mermaid-part-fill" class="mermaid-secondary-button" title="Apply to selected fill">Fill</button>
                             <button type="button" id="mermaid-part-stroke" class="mermaid-secondary-button" title="Apply to selected stroke">Stroke</button>
-                            <button type="button" id="mermaid-part-text" class="mermaid-secondary-button" title="Apply to selected text">Text</button>
+                            <button type="button" id="mermaid-part-text" class="mermaid-secondary-button" title="Apply to selected text">Text Color</button>
                         </div>
                         <div class="mermaid-part-actions">
                             <button type="button" id="mermaid-add-child" class="mermaid-secondary-button" title="Add child node">Child</button>
@@ -158,6 +198,11 @@ function ensureDialog() {
                             </select>
                         </label>
                         <button type="button" id="mermaid-improve-layout" class="mermaid-secondary-button"><i class="fa-solid fa-wand-magic-sparkles"></i><span>Improve Layout</span></button>
+                    </div>
+                    <div class="mermaid-inspector-section mermaid-inspector-section-collapsed">
+                        <div class="mermaid-inspector-title">Story</div>
+                        <button type="button" id="mermaid-branch-reveal" class="mermaid-secondary-button"><i class="fa-solid fa-route"></i><span>Branch Reveal</span></button>
+                        <button type="button" id="mermaid-add-science-stage" class="mermaid-secondary-button"><i class="fa-solid fa-atom"></i><span>Scientific Stage</span></button>
                     </div>
                 </aside>
             </div>
@@ -284,16 +329,32 @@ function setupControls(element) {
     }
     const style = normalizeMermaidStyle(element?.style || {});
     const fontField = document.getElementById("mermaid-font-family");
+    const fontSizeField = document.getElementById("mermaid-font-size");
     const fillField = document.getElementById("mermaid-primary-color");
     const textField = document.getElementById("mermaid-text-color");
     const lineField = document.getElementById("mermaid-line-color");
     const handDrawnField = document.getElementById("mermaid-hand-drawn");
+    const renderModeField = document.getElementById("mermaid-render-mode");
     if (fontField) fontField.value = style.fontFamily;
+    if (fontSizeField) fontSizeField.value = style.fontSize;
     if (fillField) fillField.value = style.primaryColor;
     if (textField) textField.value = style.primaryTextColor;
     if (lineField) lineField.value = style.lineColor;
     if (handDrawnField) handDrawnField.checked = Boolean(style.handDrawn);
-    [fontField, fillField, textField, lineField, handDrawnField].forEach(field => {
+    if (renderModeField) renderModeField.value = style.renderMode || (style.handDrawn ? "sketch" : "real");
+    if (handDrawnField) {
+        handDrawnField.oninput = () => {
+            if (renderModeField) renderModeField.value = handDrawnField.checked ? "sketch" : "real";
+            schedulePreview({ immediate: true });
+        };
+    }
+    if (renderModeField) {
+        renderModeField.oninput = () => {
+            if (handDrawnField) handDrawnField.checked = renderModeField.value !== "real";
+            schedulePreview({ immediate: true });
+        };
+    }
+    [fontField, fontSizeField, fillField, textField, lineField].forEach(field => {
         if (field) field.oninput = () => schedulePreview({ immediate: field.type === "color" });
     });
     if (applyBtn) {
@@ -305,6 +366,9 @@ function setupControls(element) {
     document.getElementById("mermaid-part-text")?.addEventListener("click", () => applySelectedPartColor("text"));
     document.getElementById("mermaid-selected-label")?.addEventListener("input", event => updateSelectedLabel(event.target.value));
     document.getElementById("mermaid-selected-shape")?.addEventListener("change", event => updateSelectedShape(event.target.value));
+    document.getElementById("mermaid-selected-font-family")?.addEventListener("change", event => updateSelectedFontFamily(event.target.value));
+    document.getElementById("mermaid-selected-font-size")?.addEventListener("input", event => updateSelectedFontSize(event.target.value));
+    document.getElementById("mermaid-selected-text-color")?.addEventListener("input", event => updateSelectedTextColor(event.target.value));
     document.getElementById("mermaid-add-child")?.addEventListener("click", () => addRelatedNode("child"));
     document.getElementById("mermaid-add-sibling")?.addEventListener("click", () => addRelatedNode("sibling"));
     document.getElementById("mermaid-delete-item")?.addEventListener("click", deleteSelectedGraphItem);
@@ -313,6 +377,8 @@ function setupControls(element) {
         dialogState.graphModel = layoutGraphModel(dialogState.graphModel, { preservePositions: false });
         commitGraphChange("Layout improved", { syncEditor: true });
     });
+    document.getElementById("mermaid-branch-reveal")?.addEventListener("click", () => applyGraphAnimationPreset("branch-reveal"));
+    document.getElementById("mermaid-add-science-stage")?.addEventListener("click", addScientificStage);
     const layoutMode = document.getElementById("mermaid-layout-mode");
     if (layoutMode) {
         layoutMode.value = element?.lockedLayout ? "manual" : element?.autoLayout === false ? "manual" : "assisted";
@@ -409,17 +475,41 @@ function setEditorValue(value) {
 function syncEditorFromGraph() {
     if (!dialogState?.graphModel) return;
     dialogState.suppressEditorSync = true;
-    setEditorValue(graphToMermaid(dialogState.graphModel));
+    setEditorValue(dialogState.graphDocument ? deriveMermaidFromDocument(dialogState.graphDocument) : graphToMermaid(dialogState.graphModel));
     dialogState.suppressEditorSync = false;
+}
+
+function syncDocumentFromGraph(interaction = "graph-update") {
+    if (!dialogState?.graphModel) return null;
+    const style = getSelectedStyle();
+    dialogState.graphModel.style = style;
+    dialogState.graphDocument = updateDocumentFromGraphModel(
+        dialogState.graphDocument || createGraphDocument({ graphModel: dialogState.graphModel, styles: style }),
+        dialogState.graphModel,
+        { interaction, styles: style },
+    );
+    dialogState.graphDocument.styles = style;
+    dialogState.graphModel = documentToGraphModel(dialogState.graphDocument);
+    dialogState.graphModel.style = style;
+    return dialogState.graphDocument;
 }
 
 function rebuildGraphFromEditor(options = {}) {
     const source = getEditorValue();
     if (!canUseVisualGraph(source)) {
         dialogState.graphModel = null;
+        dialogState.graphDocument = null;
         return null;
     }
-    dialogState.graphModel = parseMermaidToGraph(source, options.forceLayout ? null : dialogState.graphModel);
+    dialogState.graphDocument = createGraphDocument({
+        mermaidSource: source,
+        graphModel: options.forceLayout ? null : dialogState.graphModel,
+        styles: getSelectedStyle(),
+        routingStyle: dialogState.routingStyle,
+        autoLayout: dialogState.autoLayout,
+        lockedLayout: dialogState.lockedLayout,
+    });
+    dialogState.graphModel = documentToGraphModel(dialogState.graphDocument);
     dialogState.graphModel.style = getSelectedStyle();
     dialogState.graphModel.routingStyle = dialogState.routingStyle || dialogState.graphModel.routingStyle || "orthogonal";
     return dialogState.graphModel;
@@ -430,12 +520,15 @@ function getSelectedTheme() {
 }
 
 function getSelectedStyle() {
+    const renderMode = document.getElementById("mermaid-render-mode")?.value;
     return normalizeMermaidStyle({
         fontFamily: document.getElementById("mermaid-font-family")?.value,
+        fontSize: document.getElementById("mermaid-font-size")?.value,
         primaryColor: document.getElementById("mermaid-primary-color")?.value,
         primaryTextColor: document.getElementById("mermaid-text-color")?.value,
         lineColor: document.getElementById("mermaid-line-color")?.value,
-        handDrawn: document.getElementById("mermaid-hand-drawn")?.checked,
+        renderMode,
+        handDrawn: renderMode ? renderMode !== "real" : document.getElementById("mermaid-hand-drawn")?.checked,
     });
 }
 
@@ -473,6 +566,11 @@ function getSelectedIds() {
 function getSelectedNodes() {
     const ids = new Set(getSelectedIds());
     return dialogState?.graphModel?.nodes?.filter(node => ids.has(node.id)) || [];
+}
+
+function getSelectedEdges() {
+    const ids = new Set(getSelectedIds());
+    return dialogState?.graphModel?.edges?.filter(edge => ids.has(edge.id)) || [];
 }
 
 function selectionBounds(nodes = getSelectedNodes()) {
@@ -885,7 +983,10 @@ function closeInlineEditor(commit = true) {
 
 function getPreviewSvgContent() {
     if (dialogState?.graphModel) {
-        return graphToSvg(dialogState.graphModel, getSelectedStyle(), { selectedIds: [] });
+        if (!dialogState.graphDocument) syncDocumentFromGraph("export-preview");
+        return dialogState.graphDocument
+            ? renderDocumentToSvg(dialogState.graphDocument, getSelectedStyle(), { selectedIds: [] })
+            : graphToSvg(dialogState.graphModel, getSelectedStyle(), { selectedIds: [] });
     }
     const preview = document.getElementById("mermaid-preview");
     const svg = preview?.querySelector("svg");
@@ -957,6 +1058,23 @@ function selectGraphItem(type, id, options = {}) {
     const colorField = document.getElementById("mermaid-part-color");
     const color = item?.style?.fill || item?.style?.stroke || getSelectedStyle().lineColor;
     if (colorField && /^#[0-9a-fA-F]{3,8}$/.test(color)) colorField.value = color;
+    
+    const fontFamilyField = document.getElementById("mermaid-selected-font-family");
+    if (fontFamilyField) {
+        fontFamilyField.value = item?.style?.fontFamily || "";
+        fontFamilyField.disabled = type !== "node";
+    }
+    const fontSizeField = document.getElementById("mermaid-selected-font-size");
+    if (fontSizeField) {
+        fontSizeField.value = item?.style?.fontSize || "";
+        fontSizeField.disabled = type !== "node";
+    }
+    const textColorField = document.getElementById("mermaid-selected-text-color");
+    if (textColorField) {
+        const textColor = item?.style?.text || getSelectedStyle().primaryTextColor;
+        if (/^#[0-9a-fA-F]{3,8}$/.test(textColor)) textColorField.value = textColor;
+    }
+    
     renderGraphPreview({ syncEditor: false, updateCanvas: false });
     updateFloatingToolbar();
 }
@@ -982,6 +1100,61 @@ function updateSelectedShape(shape) {
         node.shape = shape;
     });
     commitGraphChange("Shape updated", { syncEditor: true });
+}
+
+function updateSelectedFontFamily(fontFamily) {
+    const selected = dialogState?.selectedGraphItem;
+    const model = dialogState?.graphModel;
+    if (!selected || !model) return;
+    const nodes = getSelectedNodes();
+    const edges = getSelectedEdges();
+    const items = selected.type === "node" ? nodes : edges;
+    if (!items.length) return;
+    items.forEach(item => {
+        item.style = item.style || {};
+        if (fontFamily) {
+            item.style.fontFamily = fontFamily;
+        } else {
+            delete item.style.fontFamily;
+        }
+    });
+    commitGraphChange("Font family updated", { syncEditor: true });
+}
+
+function updateSelectedFontSize(fontSize) {
+    const selected = dialogState?.selectedGraphItem;
+    const model = dialogState?.graphModel;
+    if (!selected || !model) return;
+    const nodes = getSelectedNodes();
+    const edges = getSelectedEdges();
+    const items = selected.type === "node" ? nodes : edges;
+    if (!items.length) return;
+    const size = Number(fontSize);
+    items.forEach(item => {
+        item.style = item.style || {};
+        if (size > 0) {
+            item.style.fontSize = size;
+        } else {
+            delete item.style.fontSize;
+        }
+    });
+    commitGraphChange("Font size updated", { syncEditor: true });
+}
+
+function updateSelectedTextColor(color) {
+    const selected = dialogState?.selectedGraphItem;
+    const model = dialogState?.graphModel;
+    if (!selected || !model) return;
+    if (!/^#[0-9a-fA-F]{3,8}$/.test(color)) return;
+    const nodes = getSelectedNodes();
+    const edges = getSelectedEdges();
+    const items = selected.type === "node" ? nodes : edges;
+    if (!items.length) return;
+    items.forEach(item => {
+        item.style = item.style || {};
+        item.style.text = color;
+    });
+    commitGraphChange("Text color updated", { syncEditor: true });
 }
 
 function applySelectedGraphColor(target) {
@@ -1102,9 +1275,25 @@ function handleFloatingToolbarAction(action) {
     if (action === "delete") deleteSelectedGraphItem();
     else if (action === "duplicate") duplicateSelection();
     else if (action === "layout") layoutSelection();
+    else if (action === "align") alignSelectionCenterline();
+    else if (action === "animate") applyGraphAnimationPreset("branch-reveal");
     else if (action === "shape") toggleSelectedShape();
     else if (action === "color") applyQuickColor();
     else if (action === "connect") addRelatedNode("child");
+}
+
+function alignSelectionCenterline() {
+    const nodes = getSelectedNodes();
+    if (nodes.length < 2) {
+        setDiagnostics("Select at least two nodes to align.", false);
+        return;
+    }
+    const centerY = nodes.reduce((sum, node) => sum + node.y + node.height / 2, 0) / nodes.length;
+    nodes.forEach(node => {
+        node.y = Math.round((centerY - node.height / 2) / 10) * 10;
+        dialogState.graphModel.nodePositions[node.id] = { x: node.x, y: node.y };
+    });
+    commitGraphChange("Selection aligned", { syncEditor: true });
 }
 
 function layoutSelection() {
@@ -1144,6 +1333,51 @@ function applyQuickColor() {
     commitGraphChange("Color changed", { syncEditor: true });
 }
 
+function applyGraphAnimationPreset(presetId) {
+    if (!dialogState?.graphModel) return;
+    syncDocumentFromGraph("animation-preset");
+    dialogState.graphDocument = applyPresentationPreset(dialogState.graphDocument, presetId);
+    dialogState.graphModel = documentToGraphModel(dialogState.graphDocument);
+    commitGraphChange("Graph animation preset applied", { syncEditor: true });
+}
+
+function addScientificStage() {
+    const model = dialogState?.graphModel;
+    if (!model) return;
+    const primitive = SCIENTIFIC_WORKFLOW_PRIMITIVES[Date.now() % SCIENTIFIC_WORKFLOW_PRIMITIVES.length];
+    const selected = getSelectedNodes()[0];
+    const x = selected ? selected.x + 220 : 90 + model.nodes.length * 18;
+    const y = selected ? selected.y : 90 + model.nodes.length * 14;
+    const node = makeNode(primitive.label, x, y, primitive.shape, new Set(model.nodes.map(item => item.id)));
+    node.style = { fill: primitive.color };
+    model.nodes.push(node);
+    model.nodePositions[node.id] = { x: node.x, y: node.y };
+    if (selected) addEdge(selected.id, node.id);
+    selectGraphItem("node", node.id);
+    commitGraphChange("Scientific workflow stage added", { syncEditor: true });
+}
+
+function runGraphCommand(command) {
+    if (!command || !dialogState?.graphModel) return;
+    if (command === "add-node") {
+        const node = addNodeAt("New node", 120, 120);
+        selectGraphItem("node", node.id);
+        commitGraphChange("Node added", { syncEditor: true });
+        requestAnimationFrame(() => openInlineEditor(node.id, { selectAll: true }));
+    } else if (command === "auto-layout") {
+        dialogState.graphModel = layoutGraphModel(dialogState.graphModel, { preservePositions: false });
+        commitGraphChange("Graph auto-layout applied", { syncEditor: true });
+    } else if (command === "branch-reveal") {
+        applyGraphAnimationPreset("branch-reveal");
+    } else if (command === "scientific-stage") {
+        addScientificStage();
+    } else if (command === "create-group") {
+        setDiagnostics("Group metadata is ready in the graph document; select nodes and use the toolbar workflow next.", null);
+    } else if (command === "generate-legend") {
+        setDiagnostics("Legend generation will use graph styles from the document model.", null);
+    }
+}
+
 function zoomGraphToFit() {
     document.getElementById("mermaid-preview")?.querySelector("svg")?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
     setDiagnostics("Diagram centered", true);
@@ -1178,6 +1412,7 @@ function commitGraphChange(message, options = {}) {
     if (!dialogState?.graphModel) return;
     dialogState.graphModel = layoutGraphModel(dialogState.graphModel, { preservePositions: true });
     dialogState.graphModel.style = getSelectedStyle();
+    syncDocumentFromGraph(message);
     dialogState.hasPartEdits = false;
     if (options.syncEditor !== false) syncEditorFromGraph();
     renderGraphPreview({ syncEditor: false, updateCanvas: !options.debounceCanvas });
@@ -1189,12 +1424,16 @@ function renderGraphPreview(options = {}) {
     if (!preview || !dialogState?.graphModel) return "";
     const style = getSelectedStyle();
     dialogState.graphModel.style = style;
-    const svg = graphToSvg(dialogState.graphModel, style, { selectedIds: getSelectedIds() });
+    if (dialogState.graphDocument) dialogState.graphDocument.styles = style;
+    if (!dialogState.graphDocument) syncDocumentFromGraph("render");
+    const svg = dialogState.graphDocument
+        ? renderDocumentToSvg(dialogState.graphDocument, style, { selectedIds: getSelectedIds() })
+        : graphToSvg(dialogState.graphModel, style, { selectedIds: getSelectedIds() });
     preview.innerHTML = svg;
     installGraphInteraction(preview);
     preview.classList.remove("is-loading");
     dialogState.lastValidSvg = svg;
-    dialogState.lastValidSource = graphToMermaid(dialogState.graphModel);
+    dialogState.lastValidSource = dialogState.graphDocument ? deriveMermaidFromDocument(dialogState.graphDocument) : graphToMermaid(dialogState.graphModel);
     dialogState.lastValidTheme = getSelectedTheme();
     dialogState.lastValidStyle = style;
     if (options.updateCanvas !== false) updateLiveCanvasObject(dialogState.lastValidSource, svg);
@@ -1271,6 +1510,7 @@ function updateLiveCanvasObject(source, svg) {
         svgManualEdits: Boolean(dialogState.hasPartEdits),
         editMode: dialogState.editMode || "split",
         graphModel: dialogState.graphModel,
+        graphDocument: dialogState.graphDocument,
         nodePositions: dialogState.graphModel?.nodePositions || {},
         lockedLayout: Boolean(dialogState.graphModel?.lockedLayout),
         autoLayout: dialogState.graphModel?.autoLayout !== false,
@@ -1290,8 +1530,11 @@ async function applyMermaidDialog() {
     let theme = getSelectedTheme();
     let style = getSelectedStyle();
     if (dialogState?.graphModel) {
-        source = graphToMermaid(dialogState.graphModel);
-        svg = graphToSvg(dialogState.graphModel, style, { selectedIds: [] });
+        syncDocumentFromGraph("apply");
+        source = dialogState.graphDocument ? deriveMermaidFromDocument(dialogState.graphDocument) : graphToMermaid(dialogState.graphModel);
+        svg = dialogState.graphDocument
+            ? renderDocumentToSvg(dialogState.graphDocument, style, { selectedIds: [] })
+            : graphToSvg(dialogState.graphModel, style, { selectedIds: [] });
     } else if (
         source !== dialogState?.lastValidSource ||
         theme !== dialogState?.lastValidTheme ||
@@ -1327,6 +1570,7 @@ async function applyMermaidDialog() {
                 svgManualEdits: Boolean(dialogState.hasPartEdits),
                 editMode: dialogState.editMode || "split",
                 graphModel: dialogState.graphModel,
+                graphDocument: dialogState.graphDocument,
                 nodePositions: dialogState.graphModel?.nodePositions || {},
                 lockedLayout: Boolean(dialogState.graphModel?.lockedLayout),
                 autoLayout: dialogState.graphModel?.autoLayout !== false,
@@ -1345,6 +1589,7 @@ async function applyMermaidDialog() {
             svgManualEdits: Boolean(dialogState.hasPartEdits),
             editMode: dialogState.editMode || "split",
             graphModel: dialogState.graphModel,
+            graphDocument: dialogState.graphDocument,
             nodePositions: dialogState.graphModel?.nodePositions || {},
             lockedLayout: Boolean(dialogState.graphModel?.lockedLayout),
             autoLayout: dialogState.graphModel?.autoLayout !== false,
@@ -1355,7 +1600,7 @@ async function applyMermaidDialog() {
     closeMermaidDialog();
 }
 
-export function openMermaidDialog(editingId = null) {
+export function openMermaidDialog(editingId = null, pendingCommand = null) {
     const shell = ensureDialog();
     const element = editingId ? getCurrentMermaidElement(editingId) : null;
     const source = element?.mermaidSource || DEFAULT_MERMAID_TEMPLATE.source;
@@ -1370,13 +1615,25 @@ export function openMermaidDialog(editingId = null) {
         selectedPart: null,
         selectedGraphItem: null,
         selectedGraphIds: [],
-        graphModel: canUseVisualGraph(source) ? parseMermaidToGraph(source, element?.graphModel || null) : null,
-        editMode: element?.editMode || "split",
+        graphDocument: element?.graphDocument || (canUseVisualGraph(source) ? createGraphDocument({
+            mermaidSource: source,
+            graphModel: element?.graphModel || null,
+            styles: element?.style || {},
+            routingStyle: element?.routingStyle,
+            autoLayout: element?.autoLayout,
+            lockedLayout: element?.lockedLayout,
+        }) : null),
+        graphModel: null,
+        editMode: element?.editMode || "visual",
         autoLayout: element?.autoLayout !== false,
         lockedLayout: Boolean(element?.lockedLayout),
         routingStyle: element?.routingStyle || element?.graphModel?.routingStyle || "orthogonal",
         undoCaptured: false,
+        pendingCommand,
     };
+    dialogState.graphModel = dialogState.graphDocument
+        ? documentToGraphModel(dialogState.graphDocument)
+        : (canUseVisualGraph(source) ? parseMermaidToGraph(source, element?.graphModel || null) : null);
     shell.classList.remove("hidden");
     const panel = shell.querySelector(".mermaid-dialog-panel");
     if (panel && !panel.style.left) {
@@ -1389,6 +1646,7 @@ export function openMermaidDialog(editingId = null) {
     setEditorMode(dialogState.editMode);
     rebuildGraphFromEditor();
     schedulePreview({ immediate: true });
+    if (pendingCommand) requestAnimationFrame(() => runGraphCommand(pendingCommand));
 }
 
 export function closeMermaidDialog() {

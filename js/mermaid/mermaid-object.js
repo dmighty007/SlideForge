@@ -1,5 +1,6 @@
 import { normalizeMermaidStyle, renderMermaid, sanitizeMermaidSvg } from "./mermaid-engine.js";
 import { canUseVisualGraph, graphToSvg, parseMermaidToGraph } from "./mermaid-graph.js";
+import { createGraphDocument, documentToGraphModel, renderDocumentToSvg } from "./mermaid-document.js";
 import { DEFAULT_MERMAID_TEMPLATE, inferMermaidType } from "./mermaid-templates.js";
 
 function readGlobal(name, fallback = null) {
@@ -37,8 +38,16 @@ export function createMermaidElementData(overrides = {}) {
         theme,
         svgContent: sanitizeMermaidSvg(overrides.svgContent || ""),
         svgManualEdits: Boolean(overrides.svgManualEdits),
-        editMode: ["visual", "code", "split"].includes(overrides.editMode) ? overrides.editMode : "split",
-        graphModel: overrides.graphModel || (canUseVisualGraph(source) ? parseMermaidToGraph(source, null) : null),
+        editMode: ["visual", "code", "split"].includes(overrides.editMode) ? overrides.editMode : "visual",
+        graphDocument: overrides.graphDocument || (canUseVisualGraph(source) ? createGraphDocument({
+            mermaidSource: source,
+            graphModel: overrides.graphModel || null,
+            styles: overrides.style || {},
+            routingStyle: overrides.routingStyle,
+            autoLayout: overrides.autoLayout,
+            lockedLayout: overrides.lockedLayout,
+        }) : null),
+        graphModel: overrides.graphModel || (overrides.graphDocument ? documentToGraphModel(overrides.graphDocument) : (canUseVisualGraph(source) ? parseMermaidToGraph(source, null) : null)),
         nodePositions: overrides.nodePositions || {},
         lockedLayout: Boolean(overrides.lockedLayout),
         autoLayout: overrides.autoLayout !== false,
@@ -81,6 +90,7 @@ export function updateMermaidElement(id, updates = {}, options = {}) {
     if (updates.theme !== undefined) element.theme = updates.theme;
     if (updates.style !== undefined) element.style = normalizeMermaidStyle(updates.style);
     if (updates.graphModel !== undefined) element.graphModel = updates.graphModel;
+    if (updates.graphDocument !== undefined) element.graphDocument = updates.graphDocument;
     const dom = document.getElementById(id);
     if (dom) renderMermaidElement(dom, element, { force: true, updateState: false });
     if (options.render !== false) callGlobal("renderSlidesFromState", { preserveState: true });
@@ -108,8 +118,17 @@ export function renderMermaidElement(host, elData = {}, options = {}) {
     }
 
     const currentSvg = sanitizeMermaidSvg(elData.svgContent || "");
-    if (elData.graphModel && canUseVisualGraph(elData.mermaidSource || "")) {
-        const svg = graphToSvg(elData.graphModel, normalizeMermaidStyle(elData.style || {}), { selectedId: "" });
+    if ((elData.graphDocument || elData.graphModel) && canUseVisualGraph(elData.mermaidSource || "")) {
+        if (!elData.graphDocument) elData.graphDocument = createGraphDocument({
+            mermaidSource: elData.mermaidSource || "",
+            graphModel: elData.graphModel,
+            styles: elData.style || {},
+            routingStyle: elData.routingStyle,
+            autoLayout: elData.autoLayout,
+            lockedLayout: elData.lockedLayout,
+        });
+        elData.graphModel = documentToGraphModel(elData.graphDocument);
+        const svg = renderDocumentToSvg(elData.graphDocument, normalizeMermaidStyle(elData.style || {}), { selectedId: "" }) || graphToSvg(elData.graphModel, normalizeMermaidStyle(elData.style || {}), { selectedId: "" });
         svgHost.innerHTML = svg || currentSvg || `<div class="mermaid-render-status"><i class="fa-solid fa-diagram-project"></i><span>Diagram</span></div>`;
         elData.svgContent = svg || currentSvg;
         return;

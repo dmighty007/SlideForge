@@ -6,11 +6,7 @@ const MAX_NODE_WIDTH = 260;
 const SAFE_ID_RE = /^[A-Za-z_][\w-]*$/;
 
 function escapeHtml(value = "") {
-    return String(value)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;");
+    return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 function escapeAttr(value = "") {
@@ -18,7 +14,10 @@ function escapeAttr(value = "") {
 }
 
 function sanitizeId(value = "N") {
-    const clean = String(value || "N").trim().replace(/[^\w-]+/g, "_").replace(/^[-\d]+/, "N$&");
+    const clean = String(value || "N")
+        .trim()
+        .replace(/[^\w-]+/g, "_")
+        .replace(/^[-\d]+/, "N$&");
     return clean && SAFE_ID_RE.test(clean) ? clean : `N_${Math.abs(hashCode(clean || value || "node"))}`;
 }
 
@@ -146,7 +145,10 @@ export function parseMermaidToGraph(source = "", previousGraph = null) {
     const raw = stripGraphMetadata(source);
     const metadata = extractGraphMetadata(source);
     const model = createEmptyGraphModel(source);
-    const lines = raw.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    const lines = raw
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(Boolean);
     const header = lines.find(line => /^(flowchart|graph)\s+/i.test(line));
     if (header) {
         const match = header.match(/^(?:flowchart|graph)\s+([A-Z]{2})/i);
@@ -154,13 +156,21 @@ export function parseMermaidToGraph(source = "", previousGraph = null) {
     }
 
     lines.forEach((line, index) => {
-        if (/^(flowchart|graph)\s+/i.test(line) || line.startsWith("%%") || line.startsWith("classDef") || line.startsWith("class ")) return;
+        if (
+            /^(flowchart|graph)\s+/i.test(line) ||
+            line.startsWith("%%") ||
+            line.startsWith("classDef") ||
+            line.startsWith("class ")
+        )
+            return;
         const parsedEdge = parseEdgeLine(line);
         if (parsedEdge) {
             const from = ensureNode(model, parsedEdge.from, metadata, previousGraph);
             const to = ensureNode(model, parsedEdge.to, metadata, previousGraph);
             const id = `e_${from.id}_${to.id}_${model.edges.length}`;
-            const previousEdge = previousGraph?.edges?.find(edge => edge.from === from.id && edge.to === to.id && edge.label === parsedEdge.label);
+            const previousEdge = previousGraph?.edges?.find(
+                edge => edge.from === from.id && edge.to === to.id && edge.label === parsedEdge.label,
+            );
             model.edges.push({
                 id: previousEdge?.id || id,
                 from: from.id,
@@ -169,7 +179,8 @@ export function parseMermaidToGraph(source = "", previousGraph = null) {
                 arrow: parsedEdge.arrow.includes("x") ? "cross" : parsedEdge.arrow.includes("o") ? "circle" : "arrow",
                 routingStyle: previousEdge?.routingStyle || metadata.routingStyle || "orthogonal",
                 waypoints: Array.isArray(previousEdge?.waypoints) ? previousEdge.waypoints : [],
-                labelOffset: previousEdge?.labelOffset || metadata.edgeLabels?.[previousEdge?.id || id] || { x: 0, y: 0 },
+                labelOffset: previousEdge?.labelOffset ||
+                    metadata.edgeLabels?.[previousEdge?.id || id] || { x: 0, y: 0 },
                 style: previousEdge?.style || {},
             });
             return;
@@ -207,13 +218,15 @@ export function layoutGraphModel(graph, options = {}) {
     while (queue.length) {
         const id = queue.shift();
         const rank = ranks.get(id) || 0;
-        model.edges.filter(edge => edge.from === id).forEach(edge => {
-            const nextRank = Math.max(ranks.get(edge.to) || 0, rank + 1);
-            if (!ranks.has(edge.to) || nextRank > ranks.get(edge.to)) {
-                ranks.set(edge.to, nextRank);
-                queue.push(edge.to);
-            }
-        });
+        model.edges
+            .filter(edge => edge.from === id)
+            .forEach(edge => {
+                const nextRank = Math.max(ranks.get(edge.to) || 0, rank + 1);
+                if (!ranks.has(edge.to) || nextRank > ranks.get(edge.to)) {
+                    ranks.set(edge.to, nextRank);
+                    queue.push(edge.to);
+                }
+            });
     }
     model.nodes.forEach(node => {
         if (!ranks.has(node.id)) ranks.set(node.id, 0);
@@ -256,15 +269,24 @@ export function graphToMermaid(graph) {
     const model = graph || createEmptyGraphModel();
     const lines = [`flowchart ${model.direction || "TD"}`];
     const metadata = {
-        positions: Object.fromEntries((model.nodes || []).map(node => [node.id, { x: Math.round(node.x || 0), y: Math.round(node.y || 0) }])),
+        positions: Object.fromEntries(
+            (model.nodes || []).map(node => [node.id, { x: Math.round(node.x || 0), y: Math.round(node.y || 0) }]),
+        ),
         routingStyle: model.routingStyle || "orthogonal",
         connectionStyle: model.connectionStyle || "arrow",
         lockedLayout: Boolean(model.lockedLayout),
         autoLayout: model.autoLayout !== false,
-        edgeLabels: Object.fromEntries((model.edges || []).filter(edge => edge.labelOffset).map(edge => [
-            edge.id,
-            { x: Math.round(Number(edge.labelOffset?.x) || 0), y: Math.round(Number(edge.labelOffset?.y) || 0) },
-        ])),
+        edgeLabels: Object.fromEntries(
+            (model.edges || [])
+                .filter(edge => edge.labelOffset)
+                .map(edge => [
+                    edge.id,
+                    {
+                        x: Math.round(Number(edge.labelOffset?.x) || 0),
+                        y: Math.round(Number(edge.labelOffset?.y) || 0),
+                    },
+                ]),
+        ),
     };
     lines.push(`%% sf:graph ${JSON.stringify(metadata)} %%`);
     (model.edges || []).forEach(edge => {
@@ -276,15 +298,19 @@ export function graphToMermaid(graph) {
         lines.push(`    ${nodeToMermaid(from)} ${arrow} ${label}${nodeToMermaid(to)}`);
     });
     const connected = new Set((model.edges || []).flatMap(edge => [edge.from, edge.to]));
-    (model.nodes || []).filter(node => !connected.has(node.id)).forEach(node => {
-        lines.push(`    ${nodeToMermaid(node)}`);
-    });
+    (model.nodes || [])
+        .filter(node => !connected.has(node.id))
+        .forEach(node => {
+            lines.push(`    ${nodeToMermaid(node)}`);
+        });
     return lines.join("\n");
 }
 
 function nodeToMermaid(node) {
     const id = sanitizeId(node.id);
-    const label = String(node.label || id).replace(/]/g, "").replace(/}/g, "");
+    const label = String(node.label || id)
+        .replace(/]/g, "")
+        .replace(/}/g, "");
     if (node.shape === "decision") return `${id}{${label}}`;
     if (node.shape === "database") return `${id}[(${label})]`;
     return `${id}[${label}]`;
@@ -356,27 +382,34 @@ function labelChunks(line = "") {
     return chunks.length ? chunks : [{ text: line }];
 }
 
-function labelToSvg(node, textColor) {
+function labelToSvg(node, textColor, defaultFontSize = 16, defaultFontFamily = "Inter, Arial, sans-serif") {
     const lines = splitLabelLines(node.label || node.id);
     const cx = node.x + node.width / 2;
-    const startY = node.y + node.height / 2 - ((lines.length - 1) * 10);
-    return lines.map((line, lineIndex) => {
-        const bullet = /^\s*[-*]\s+/.test(line);
-        const clean = bullet ? line.replace(/^\s*[-*]\s+/, "") : line;
-        const chunks = labelChunks(clean);
-        const tspans = [];
-        if (bullet) tspans.push(`<tspan fill="${textColor}">&#8226; </tspan>`);
-        chunks.forEach(chunk => {
-            const attrs = [
-                chunk.weight ? `font-weight="${chunk.weight}"` : "",
-                chunk.style ? `font-style="${chunk.style}"` : "",
-                chunk.code ? `font-family="'SFMono-Regular', Consolas, monospace"` : "",
-                chunk.code ? `fill="#334155"` : "",
-            ].filter(Boolean).join(" ");
-            tspans.push(`<tspan ${attrs}>${escapeHtml(chunk.text)}</tspan>`);
-        });
-        return `<text x="${cx}" y="${startY + lineIndex * 20}" text-anchor="middle" dominant-baseline="middle" class="mermaid-graph-node-label">${tspans.join("")}</text>`;
-    }).join("");
+    const fontSize = node.style?.fontSize || defaultFontSize;
+    const fontFamily = node.style?.fontFamily || defaultFontFamily;
+    const lineHeight = fontSize * 1.25;
+    const startY = node.y + node.height / 2 - (lines.length - 1) * (lineHeight / 2);
+    return lines
+        .map((line, lineIndex) => {
+            const bullet = /^\s*[-*]\s+/.test(line);
+            const clean = bullet ? line.replace(/^\s*[-*]\s+/, "") : line;
+            const chunks = labelChunks(clean);
+            const tspans = [];
+            if (bullet) tspans.push(`<tspan fill="${textColor}">&#8226; </tspan>`);
+            chunks.forEach(chunk => {
+                const attrs = [
+                    chunk.weight ? `font-weight="${chunk.weight}"` : "",
+                    chunk.style ? `font-style="${chunk.style}"` : "",
+                    chunk.code ? `font-family="'SFMono-Regular', Consolas, monospace"` : "",
+                    chunk.code ? `fill="#334155"` : "",
+                ]
+                    .filter(Boolean)
+                    .join(" ");
+                tspans.push(`<tspan ${attrs}>${escapeHtml(chunk.text)}</tspan>`);
+            });
+            return `<text x="${cx}" y="${startY + lineIndex * lineHeight}" text-anchor="middle" dominant-baseline="middle" class="mermaid-graph-node-label" style="font-family:${fontFamily};font-size:${fontSize}px">${tspans.join("")}</text>`;
+        })
+        .join("");
 }
 
 function edgePath(edge, model) {
@@ -395,19 +428,27 @@ function edgePath(edge, model) {
 
 function roughPoints(points, seed = "") {
     let hash = Math.abs(hashCode(seed));
-    return points.map((point, index) => {
-        hash = (hash * 1664525 + 1013904223 + index) >>> 0;
-        const dx = ((hash % 100) / 100 - 0.5) * 5;
-        hash = (hash * 1664525 + 1013904223 + index + 7) >>> 0;
-        const dy = ((hash % 100) / 100 - 0.5) * 5;
-        return `${Math.round(point[0] + dx)},${Math.round(point[1] + dy)}`;
-    }).join(" ");
+    return points
+        .map((point, index) => {
+            hash = (hash * 1664525 + 1013904223 + index) >>> 0;
+            const dx = ((hash % 100) / 100 - 0.5) * 5;
+            hash = (hash * 1664525 + 1013904223 + index + 7) >>> 0;
+            const dy = ((hash % 100) / 100 - 0.5) * 5;
+            return `${Math.round(point[0] + dx)},${Math.round(point[1] + dy)}`;
+        })
+        .join(" ");
 }
 
 function roughRectPath(x, y, w, h, r = 10, seed = "") {
     const points = [
-        [x + r, y], [x + w - r, y], [x + w, y + r], [x + w, y + h - r],
-        [x + w - r, y + h], [x + r, y + h], [x, y + h - r], [x, y + r],
+        [x + r, y],
+        [x + w - r, y],
+        [x + w, y + r],
+        [x + w, y + h - r],
+        [x + w - r, y + h],
+        [x + r, y + h],
+        [x, y + h - r],
+        [x, y + r],
     ];
     return `M ${roughPoints(points, seed).replaceAll(" ", " L ")} Z`;
 }
@@ -426,28 +467,49 @@ function nodeShape(node, style) {
     const common = `data-node-id="${escapeAttr(node.id)}"`;
     const fill = node.style?.fill || style.primaryColor || "#eef2ff";
     const stroke = node.style?.stroke || style.lineColor || "#4f46e5";
-    const hand = Boolean(style.handDrawn);
-    const pathAttrs = `${common} class="mermaid-graph-node-shape ${hand ? "is-xkcd" : ""}" fill="${fill}" stroke="${stroke}"`;
-    if (hand && !["decision", "cloud", "actor", "queue", "hexagon", "parallelogram", "document", "scientific"].includes(node.shape)) {
+    const renderMode = style.renderMode || (style.handDrawn ? "sketch" : "real");
+    const hand = renderMode !== "real";
+    const sketch = renderMode === "sketch";
+    const pathAttrs = `${common} class="mermaid-graph-node-shape ${hand ? "is-drawn" : ""} ${sketch ? "is-sketch" : ""}" fill="${fill}" stroke="${stroke}"`;
+    if (
+        hand &&
+        !["decision", "cloud", "actor", "queue", "hexagon", "parallelogram", "document", "scientific"].includes(
+            node.shape,
+        )
+    ) {
         return `<path ${pathAttrs} d="${roughRectPath(node.x, node.y, node.width, node.height, node.shape === "database" ? 24 : 10, node.id)}" />`;
     }
     if (node.shape === "decision") {
         const cx = node.x + node.width / 2;
         const cy = node.y + node.height / 2;
-        const points = hand ? roughPoints([[cx, node.y], [node.x + node.width, cy], [cx, node.y + node.height], [node.x, cy]], node.id) : `${cx},${node.y} ${node.x + node.width},${cy} ${cx},${node.y + node.height} ${node.x},${cy}`;
-        return `<polygon ${common} class="mermaid-graph-node-shape ${hand ? "is-xkcd" : ""}" points="${points}" fill="${fill}" stroke="${stroke}" />`;
+        const points = hand
+            ? roughPoints(
+                  [
+                      [cx, node.y],
+                      [node.x + node.width, cy],
+                      [cx, node.y + node.height],
+                      [node.x, cy],
+                  ],
+                  node.id,
+              )
+            : `${cx},${node.y} ${node.x + node.width},${cy} ${cx},${node.y + node.height} ${node.x},${cy}`;
+        return `<polygon ${common} class="mermaid-graph-node-shape ${hand ? "is-drawn" : ""} ${sketch ? "is-sketch" : ""}" points="${points}" fill="${fill}" stroke="${stroke}" />`;
     }
     if (node.shape === "database") {
-        return `<rect ${common} class="mermaid-graph-node-shape ${hand ? "is-xkcd" : ""}" x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" rx="24" fill="${fill}" stroke="${stroke}" />`;
+        return `<rect ${common} class="mermaid-graph-node-shape ${hand ? "is-drawn" : ""} ${sketch ? "is-sketch" : ""}" x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" rx="24" fill="${fill}" stroke="${stroke}" />`;
     }
     if (node.shape === "cloud") {
-        const x = node.x, y = node.y, w = node.width, h = node.height;
+        const x = node.x,
+            y = node.y,
+            w = node.width,
+            h = node.height;
         const d = `M ${x + w * 0.24} ${y + h * 0.72} C ${x + w * 0.05} ${y + h * 0.72}, ${x + w * 0.06} ${y + h * 0.42}, ${x + w * 0.28} ${y + h * 0.44} C ${x + w * 0.32} ${y + h * 0.18}, ${x + w * 0.62} ${y + h * 0.16}, ${x + w * 0.7} ${y + h * 0.42} C ${x + w * 0.92} ${y + h * 0.4}, ${x + w * 0.96} ${y + h * 0.72}, ${x + w * 0.74} ${y + h * 0.72} Z`;
         return `<path ${pathAttrs} d="${hand ? roughPathD(d, node.id) : d}" />`;
     }
     if (node.shape === "actor") {
-        const cx = node.x + node.width / 2, top = node.y + 8;
-        return `<g ${common} class="mermaid-graph-node-shape ${hand ? "is-xkcd" : ""}" fill="none" stroke="${stroke}" stroke-width="2.2">
+        const cx = node.x + node.width / 2,
+            top = node.y + 8;
+        return `<g ${common} class="mermaid-graph-node-shape ${hand ? "is-drawn" : ""} ${sketch ? "is-sketch" : ""}" fill="none" stroke="${stroke}" stroke-width="2.2">
             <circle cx="${cx}" cy="${top + 12}" r="11" fill="${fill}" />
             <path d="${roughPathD(`M ${cx} ${top + 24} L ${cx} ${top + 48} M ${cx - 28} ${top + 34} L ${cx + 28} ${top + 34} M ${cx} ${top + 48} L ${cx - 24} ${top + 72} M ${cx} ${top + 48} L ${cx + 24} ${top + 72}`, node.id)}" />
         </g>`;
@@ -456,26 +518,60 @@ function nodeShape(node, style) {
         return `<path ${pathAttrs} d="${roughPathD(`M ${node.x + 16} ${node.y} H ${node.x + node.width} V ${node.y + node.height} H ${node.x + 16} C ${node.x - 6} ${node.y + node.height}, ${node.x - 6} ${node.y}, ${node.x + 16} ${node.y} Z`, node.id)}" />`;
     }
     if (node.shape === "hexagon") {
-        const x = node.x, y = node.y, w = node.width, h = node.height;
-        const points = hand ? roughPoints([[x + 24, y], [x + w - 24, y], [x + w, y + h / 2], [x + w - 24, y + h], [x + 24, y + h], [x, y + h / 2]], node.id) : `${x + 24},${y} ${x + w - 24},${y} ${x + w},${y + h / 2} ${x + w - 24},${y + h} ${x + 24},${y + h} ${x},${y + h / 2}`;
+        const x = node.x,
+            y = node.y,
+            w = node.width,
+            h = node.height;
+        const points = hand
+            ? roughPoints(
+                  [
+                      [x + 24, y],
+                      [x + w - 24, y],
+                      [x + w, y + h / 2],
+                      [x + w - 24, y + h],
+                      [x + 24, y + h],
+                      [x, y + h / 2],
+                  ],
+                  node.id,
+              )
+            : `${x + 24},${y} ${x + w - 24},${y} ${x + w},${y + h / 2} ${x + w - 24},${y + h} ${x + 24},${y + h} ${x},${y + h / 2}`;
         return `<polygon ${pathAttrs} points="${points}" />`;
     }
     if (node.shape === "parallelogram") {
-        const x = node.x, y = node.y, w = node.width, h = node.height;
-        const points = hand ? roughPoints([[x + 22, y], [x + w, y], [x + w - 22, y + h], [x, y + h]], node.id) : `${x + 22},${y} ${x + w},${y} ${x + w - 22},${y + h} ${x},${y + h}`;
+        const x = node.x,
+            y = node.y,
+            w = node.width,
+            h = node.height;
+        const points = hand
+            ? roughPoints(
+                  [
+                      [x + 22, y],
+                      [x + w, y],
+                      [x + w - 22, y + h],
+                      [x, y + h],
+                  ],
+                  node.id,
+              )
+            : `${x + 22},${y} ${x + w},${y} ${x + w - 22},${y + h} ${x},${y + h}`;
         return `<polygon ${pathAttrs} points="${points}" />`;
     }
     if (node.shape === "document") {
-        const x = node.x, y = node.y, w = node.width, h = node.height;
+        const x = node.x,
+            y = node.y,
+            w = node.width,
+            h = node.height;
         const d = `M ${x} ${y} H ${x + w} V ${y + h - 10} C ${x + w * 0.68} ${y + h + 8}, ${x + w * 0.34} ${y + h - 24}, ${x} ${y + h - 8} Z`;
         return `<path ${pathAttrs} d="${hand ? roughPathD(d, node.id) : d}" />`;
     }
     if (node.shape === "scientific") {
-        const x = node.x, y = node.y, w = node.width, h = node.height;
+        const x = node.x,
+            y = node.y,
+            w = node.width,
+            h = node.height;
         const d = `M ${x + 18} ${y} H ${x + w - 18} L ${x + w} ${y + 18} V ${y + h - 18} L ${x + w - 18} ${y + h} H ${x + 18} L ${x} ${y + h - 18} V ${y + 18} Z`;
         return `<path ${pathAttrs} d="${hand ? roughPathD(d, node.id) : d}" />`;
     }
-    return `<rect ${common} class="mermaid-graph-node-shape ${hand ? "is-xkcd" : ""}" x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" rx="${node.shape === "terminal" ? 28 : 10}" fill="${fill}" stroke="${stroke}" />`;
+    return `<rect ${common} class="mermaid-graph-node-shape ${hand ? "is-drawn" : ""} ${sketch ? "is-sketch" : ""}" x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" rx="${node.shape === "terminal" ? 28 : 10}" fill="${fill}" stroke="${stroke}" />`;
 }
 
 export function graphToSvg(graph, style = {}, options = {}) {
@@ -487,38 +583,50 @@ export function graphToSvg(graph, style = {}, options = {}) {
     const fontFamily = style.fontFamily || "Inter, Arial, sans-serif";
     const fontSize = Number(style.fontSize) || 16;
     const edgeLabels = [];
-    const edges = model.edges.map(edge => {
-        const from = model.nodes.find(node => node.id === edge.from);
-        const to = model.nodes.find(node => node.id === edge.to);
-        if (!from || !to) return "";
-        const labelPoint = edgeLabelPoint(edge, model);
-        const active = selectedIds.has(edge.id) ? " is-selected" : "";
-        if (edge.label) {
-            edgeLabels.push(`<text x="${labelPoint.x}" y="${labelPoint.y}" text-anchor="middle" class="mermaid-graph-edge-label${active}" data-edge-id="${escapeAttr(edge.id)}">${escapeHtml(edge.label)}</text>`);
-        }
-        return `
+    const renderMode = style.renderMode || (style.handDrawn ? "sketch" : "real");
+    const handDrawn = renderMode !== "real";
+    const sketch = renderMode === "sketch";
+    const edges = model.edges
+        .map(edge => {
+            const from = model.nodes.find(node => node.id === edge.from);
+            const to = model.nodes.find(node => node.id === edge.to);
+            if (!from || !to) return "";
+            const labelPoint = edgeLabelPoint(edge, model);
+            const active = selectedIds.has(edge.id) ? " is-selected" : "";
+            if (edge.label) {
+                const edgeTextColor = edge.style?.text || textColor;
+                const edgeFontSize = edge.style?.fontSize ? edge.style.fontSize - 2 : Math.max(11, fontSize - 2);
+                const edgeFontFamily = edge.style?.fontFamily || fontFamily;
+                edgeLabels.push(
+                    `<text x="${labelPoint.x}" y="${labelPoint.y}" text-anchor="middle" class="mermaid-graph-edge-label${active}" data-edge-id="${escapeAttr(edge.id)}" style="font-family:${edgeFontFamily};font-size:${edgeFontSize}px;fill:${edgeTextColor}">${escapeHtml(edge.label)}</text>`,
+                );
+            }
+            return `
             <g class="mermaid-graph-edge${active}" data-edge-id="${escapeAttr(edge.id)}">
-                <path d="${style.handDrawn ? roughPathD(edgePath(edge, model), edge.id) : edgePath(edge, model)}" fill="none" stroke="${edge.style?.stroke || lineColor}" stroke-width="${style.handDrawn ? 2.4 : 2.2}" marker-end="url(#sfMermaidArrow)" />
+                <path d="${handDrawn ? roughPathD(edgePath(edge, model), edge.id) : edgePath(edge, model)}" fill="none" stroke="${edge.style?.stroke || lineColor}" stroke-width="${handDrawn ? 2.4 : 2.2}" marker-end="url(#sfMermaidArrow)" />
             </g>
         `;
-    }).join("");
-    const nodes = model.nodes.map(node => {
-        const active = selectedIds.has(node.id) ? " is-selected" : "";
-        const cy = node.y + node.height / 2;
-        return `
+        })
+        .join("");
+    const nodes = model.nodes
+        .map(node => {
+            const active = selectedIds.has(node.id) ? " is-selected" : "";
+            const cy = node.y + node.height / 2;
+            return `
             <g class="mermaid-graph-node${active}" data-node-id="${escapeAttr(node.id)}">
                 ${nodeShape(node, { ...style, lineColor })}
-                ${labelToSvg(node, node.style?.text || textColor)}
+                ${labelToSvg(node, node.style?.text || textColor, fontSize, fontFamily)}
                 <circle class="mermaid-graph-connect-handle" data-node-id="${escapeAttr(node.id)}" cx="${node.x + node.width + 9}" cy="${cy}" r="6" />
             </g>
         `;
-    }).join("");
+        })
+        .join("");
     const svg = `
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="${bounds.x} ${bounds.y} ${bounds.width} ${bounds.height}" preserveAspectRatio="xMidYMid meet" role="img">
             <defs>
                 <filter id="sfMermaidXkcd" x="-8%" y="-8%" width="116%" height="116%">
                     <feTurbulence type="fractalNoise" baseFrequency="0.025" numOctaves="1" seed="7" result="noise" />
-                    <feDisplacementMap in="SourceGraphic" in2="noise" scale="${style.handDrawn ? 1.15 : 0}" />
+                    <feDisplacementMap in="SourceGraphic" in2="noise" scale="${sketch ? 1.15 : 0.45}" />
                 </filter>
                 <marker id="sfMermaidArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
                     <path d="M 0 0 L 10 5 L 0 10 z" fill="${lineColor}" />
@@ -527,8 +635,8 @@ export function graphToSvg(graph, style = {}, options = {}) {
             <style>
                 .mermaid-graph-node-label{font-family:${fontFamily};font-size:${fontSize}px;fill:${textColor};pointer-events:none}
                 .mermaid-graph-edge-label{font-family:${fontFamily};font-size:${Math.max(11, fontSize - 2)}px;font-weight:800;fill:${textColor};paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round;cursor:grab;pointer-events:visiblePainted}
-                .mermaid-graph-node-shape{stroke-width:${style.handDrawn ? 2.4 : 2.2};stroke-linecap:round;stroke-linejoin:round}
-                .mermaid-graph-node-shape.is-xkcd{filter:url(#sfMermaidXkcd)}
+                .mermaid-graph-node-shape{stroke-width:${handDrawn ? 2.4 : 2.2};stroke-linecap:round;stroke-linejoin:round}
+                .mermaid-graph-node-shape.is-sketch{filter:url(#sfMermaidXkcd)}
                 .mermaid-graph-node.is-selected .mermaid-graph-node-shape,.mermaid-graph-edge.is-selected path{stroke:#f59e0b;stroke-width:3}
                 .mermaid-graph-edge-label.is-selected{fill:#92400e;stroke:#fffbeb}
                 .mermaid-graph-connect-handle{fill:#ffffff;stroke:${lineColor};stroke-width:2;opacity:.92}
@@ -559,7 +667,10 @@ export function graphBounds(graph) {
 
 export function canUseVisualGraph(source = "") {
     const stripped = stripGraphMetadata(source);
-    return /^(flowchart|graph)\s+/im.test(stripped) && !/(sequenceDiagram|stateDiagram|classDiagram|erDiagram|gantt|journey|mindmap)/i.test(stripped);
+    return (
+        /^(flowchart|graph)\s+/im.test(stripped) &&
+        !/(sequenceDiagram|stateDiagram|classDiagram|erDiagram|gantt|journey|mindmap)/i.test(stripped)
+    );
 }
 
 export function makeNode(label = "Node", x = 80, y = 80, shape = "process", existingIds = new Set()) {

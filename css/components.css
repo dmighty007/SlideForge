@@ -2245,11 +2245,13 @@ body.whiteboard-mode-active .reveal .slides section.present .canvas-element[data
 
 .wb-swatch-transparent {
     background:
-        linear-gradient(45deg, #e5e7eb 25%, transparent 25%),
-        linear-gradient(-45deg, #e5e7eb 25%, transparent 25%),
-        linear-gradient(45deg, transparent 75%, #e5e7eb 75%),
-        linear-gradient(-45deg, transparent 75%, #e5e7eb 75%);
-    background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+        linear-gradient(45deg, #e5e7eb 25%, transparent 25%), linear-gradient(-45deg, #e5e7eb 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #e5e7eb 75%), linear-gradient(-45deg, transparent 75%, #e5e7eb 75%);
+    background-position:
+        0 0,
+        0 8px,
+        8px -8px,
+        -8px 0;
     background-size: 16px 16px;
 }
 
@@ -2368,13 +2370,13 @@ body.whiteboard-mode-active .reveal .slides section.present .canvas-element[data
     top: 50%;
     transform: translate(-50%, -50%);
     box-sizing: border-box;
-    width: min(1280px, calc(100vw - 40px));
-    height: min(760px, calc(100vh - 48px));
+    width: min(1320px, calc(100vw - 40px));
+    height: min(790px, calc(100vh - 48px));
     display: grid;
     grid-template-rows: auto 1fr auto;
     overflow: hidden;
     border: 1px solid rgba(226, 232, 240, 0.82);
-    border-radius: 16px;
+    border-radius: 14px;
     background: rgba(255, 255, 255, 0.94);
     box-shadow: 0 30px 80px rgba(15, 23, 42, 0.28);
 }
@@ -2519,7 +2521,7 @@ body.whiteboard-mode-active .reveal .slides section.present .canvas-element[data
     overflow: hidden;
     min-height: 0;
     display: grid;
-    grid-template-columns: minmax(340px, 0.86fr) minmax(420px, 1.14fr) 264px;
+    grid-template-columns: minmax(340px, 0.82fr) minmax(460px, 1.18fr) 248px;
     gap: 1px;
     background: rgba(226, 232, 240, 0.9);
 }
@@ -2537,8 +2539,8 @@ body.whiteboard-mode-active .reveal .slides section.present .canvas-element[data
 
 .mermaid-inspector-pane {
     grid-template-rows: auto auto 1fr;
-    padding: 12px;
-    gap: 12px;
+    padding: 10px;
+    gap: 10px;
     overflow: auto;
     animation: none;
     transform: none;
@@ -2577,10 +2579,10 @@ body.whiteboard-mode-active .reveal .slides section.present .canvas-element[data
 
 .mermaid-inspector-section {
     display: grid;
-    gap: 10px;
-    padding: 12px;
+    gap: 9px;
+    padding: 10px;
     border: 1px solid rgba(226, 232, 240, 0.9);
-    border-radius: 10px;
+    border-radius: 8px;
     background: rgba(248, 250, 252, 0.82);
 }
 
@@ -2612,6 +2614,18 @@ body.whiteboard-mode-active .reveal .slides section.present .canvas-element[data
 }
 
 .mermaid-field input[type="text"] {
+    min-width: 0;
+    height: 30px;
+    padding: 0 8px;
+    border: 1px solid rgba(203, 213, 225, 0.85);
+    border-radius: 8px;
+    background: #ffffff;
+    color: #0f172a;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.mermaid-field input[type="number"] {
     min-width: 0;
     height: 30px;
     padding: 0 8px;
@@ -2671,7 +2685,11 @@ body.whiteboard-mode-active .reveal .slides section.present .canvas-element[data
     padding: 14px;
     color: #0f172a;
     background: #f8fafc;
-    font: 13px/1.55 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    font:
+        13px/1.55 "SFMono-Regular",
+        Consolas,
+        "Liberation Mono",
+        monospace;
 }
 
 .mermaid-preview {
@@ -2683,10 +2701,10 @@ body.whiteboard-mode-active .reveal .slides section.present .canvas-element[data
     overflow: auto;
     background:
         linear-gradient(90deg, rgba(148, 163, 184, 0.09) 1px, transparent 1px),
-        linear-gradient(0deg, rgba(148, 163, 184, 0.09) 1px, transparent 1px),
-        #ffffff;
+        linear-gradient(0deg, rgba(148, 163, 184, 0.09) 1px, transparent 1px), #ffffff;
     background-size: 22px 22px;
     scroll-behavior: smooth;
+    overscroll-behavior: contain;
 }
 
 .mermaid-preview.is-pan-hint {
@@ -2720,11 +2738,20 @@ body.whiteboard-mode-active .reveal .slides section.present .canvas-element[data
 .mermaid-preview .mermaid-graph-node,
 .mermaid-preview .mermaid-graph-edge {
     cursor: pointer;
-    transition: filter 140ms ease, opacity 140ms ease;
+    transition:
+        filter 140ms ease,
+        opacity 140ms ease;
 }
 
 .mermaid-preview .mermaid-graph-edge-label {
     cursor: grab;
+    transition:
+        filter 160ms ease,
+        opacity 160ms ease;
+}
+
+.mermaid-preview .mermaid-graph-edge:hover path {
+    filter: drop-shadow(0 0 7px rgba(79, 70, 229, 0.34));
 }
 
 .mermaid-preview .mermaid-graph-edge-label:active {
@@ -2734,10 +2761,13 @@ body.whiteboard-mode-active .reveal .slides section.present .canvas-element[data
 .mermaid-preview .mermaid-graph-node {
     cursor: grab;
     filter: drop-shadow(0 4px 10px rgba(15, 23, 42, 0.06));
+    transform-box: fill-box;
+    transform-origin: center;
 }
 
 .mermaid-preview .mermaid-graph-node:hover {
     filter: drop-shadow(0 10px 18px rgba(79, 70, 229, 0.16));
+    transform: translateY(-1px);
 }
 
 .mermaid-preview .mermaid-graph-node:active {
@@ -2746,7 +2776,9 @@ body.whiteboard-mode-active .reveal .slides section.present .canvas-element[data
 
 .mermaid-preview .mermaid-graph-connect-handle {
     cursor: crosshair;
-    transition: r 120ms ease, opacity 120ms ease;
+    transition:
+        r 120ms ease,
+        opacity 120ms ease;
 }
 
 .mermaid-preview .mermaid-graph-connect-handle:hover {
@@ -2765,7 +2797,10 @@ body.whiteboard-mode-active .reveal .slides section.present .canvas-element[data
     background: rgba(255, 255, 255, 0.96);
     color: #0f172a;
     box-shadow: 0 18px 45px rgba(15, 23, 42, 0.18);
-    font: 700 13px/1.45 Inter, Arial, sans-serif;
+    font:
+        700 13px/1.45 Inter,
+        Arial,
+        sans-serif;
     text-align: center;
     white-space: pre-wrap;
 }
@@ -2783,7 +2818,9 @@ body.whiteboard-mode-active .reveal .slides section.present .canvas-element[data
     backdrop-filter: blur(12px);
     opacity: 1;
     transform: translateY(0);
-    transition: opacity 140ms ease, transform 140ms ease;
+    transition:
+        opacity 140ms ease,
+        transform 140ms ease;
 }
 
 .mermaid-floating-toolbar.hidden {
@@ -2962,24 +2999,31 @@ body.whiteboard-mode-active .reveal .slides section.present .canvas-element[data
 }
 
 .mermaid-mode-visual-active .mermaid-dialog-body {
-    grid-template-columns: minmax(520px, 1fr) 264px;
+    grid-template-columns: minmax(540px, 1fr) minmax(0, 220px);
 }
 
 .mermaid-mode-visual-active .mermaid-editor-pane {
     display: none;
 }
 
+.mermaid-mode-visual-active .mermaid-inspector-pane {
+    grid-template-rows: auto auto;
+}
+
+.mermaid-mode-visual-active .mermaid-inspector-section:first-child {
+    display: none;
+}
+
 .mermaid-mode-code-active .mermaid-dialog-body {
-    grid-template-columns: minmax(520px, 1fr) 264px;
+    grid-template-columns: minmax(520px, 1fr);
 }
 
 .mermaid-mode-code-active .mermaid-preview-pane {
     display: none;
 }
 
-.mermaid-mode-code-active .mermaid-inspector-section:nth-child(n+2) {
-    opacity: 0.55;
-    pointer-events: none;
+.mermaid-mode-code-active .mermaid-inspector-pane {
+    display: none;
 }
 
 @media (max-width: 1120px) {
@@ -3008,19 +3052,30 @@ body.whiteboard-mode-active .reveal .slides section.present .canvas-element[data
 
     .mermaid-dialog-body {
         grid-template-columns: 1fr;
-        grid-template-rows: minmax(220px, 34vh) minmax(260px, 42vh) minmax(260px, auto);
+        grid-template-rows: minmax(0, 1fr);
         overflow: auto;
     }
 
     .mermaid-mode-visual-active .mermaid-dialog-body,
     .mermaid-mode-code-active .mermaid-dialog-body {
         grid-template-columns: 1fr;
-        grid-template-rows: minmax(380px, 1fr) minmax(260px, auto);
+        grid-template-rows: minmax(0, 1fr);
     }
 
     .mermaid-inspector-pane {
         grid-column: auto;
         grid-template-columns: 1fr;
+        max-height: 42vh;
+        border-top: 1px solid rgba(226, 232, 240, 0.9);
+    }
+
+    .mermaid-mode-split-active .mermaid-inspector-pane {
+        display: none;
+    }
+
+    .mermaid-mode-split-active .mermaid-editor-pane,
+    .mermaid-mode-split-active .mermaid-preview-pane {
+        min-height: 42vh;
     }
 
     .mermaid-dialog-toolbar {
@@ -3035,6 +3090,22 @@ body.whiteboard-mode-active .reveal .slides section.present .canvas-element[data
     .mermaid-toolbar-group .mermaid-select {
         flex: 1;
         min-width: 0;
+    }
+
+    .mermaid-pane-hint {
+        display: none;
+    }
+
+    .mermaid-floating-toolbar {
+        left: 50% !important;
+        right: auto;
+        bottom: 44px;
+        top: auto !important;
+        transform: translateX(-50%);
+    }
+
+    .mermaid-minimap {
+        display: none;
     }
 }
 
