@@ -492,10 +492,8 @@ async function submitEntryAuthForm(event) {
             method: "POST",
             body: JSON.stringify({ username, password }),
         });
-        sessionStorage.setItem(ENTRY_GATE_DISMISSED_KEY, "true");
         setAuthState(session.user || null);
-        sessionStorage.setItem(ENTRY_GATE_DISMISSED_KEY, "true");
-        updateEntryGate();
+        enterEditorWorkspace();
         closeAuthModal();
         await initPresentationPersistence(true);
         renderSlidesFromState?.();
