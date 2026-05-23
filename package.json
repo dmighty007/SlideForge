@@ -1,4 +1,12 @@
 {
+  "name": "slideforge",
+  "private": true,
+  "scripts": {
+    "check:backend": "python3 backend/manage.py check",
+    "check:frontend": "node --check frontend/js/core/commands.js && node --check frontend/js/core/state.js && node --check frontend/js/core/main.js",
+    "test:backend": "python3 backend/manage.py test studio",
+    "test:animations": "node tests/browser/test-animations.js"
+  },
   "dependencies": {
     "playwright": "^1.60.0"
   }

@@ -16,3 +16,5 @@ test_fail.pptx
 .trash/
 node_modules/
 .tmp*
+fresh-repo/
+tests/

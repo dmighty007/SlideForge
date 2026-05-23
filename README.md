@@ -1,6 +1,6 @@
 # SlideForge
 
-SlideForge is a browser-based presentation editor with a Django backend. It combines a canvas-style slide builder, project persistence, PPTX export, animation tooling, AI-assisted import, and document-to-slide workflows in one local web app.
+SlideForge is a browser-based presentation editor with a Django backend. It combines a canvas-style slide builder, project persistence, PPTX export, animation tooling, and document-to-slide workflows in one local web app.
 
 ## What It Does
 
@@ -8,7 +8,7 @@ SlideForge is a browser-based presentation editor with a Django backend. It comb
 - Build slides from text, images, shapes, tables, media, scientific figures, and generated presets.
 - Insert editable Mermaid diagrams for flowcharts, sequence diagrams, state charts, Gantt timelines, ER diagrams, and mind maps.
 - Apply and preview slide and object animations, including advanced text and shape effects.
-- Import and clean up document content through the AI import bridge.
+- Import presentation JSON and clean up slide content.
 - Save presentations through the Django API and export decks to PowerPoint.
 - Run locally with SQLite for development.
 
@@ -16,16 +16,19 @@ SlideForge is a browser-based presentation editor with a Django backend. It comb
 
 ```text
 SlideForge/
-|-- index.html              # Single-page editor shell
-|-- js/                     # Frontend editor modules
-|-- js/mermaid/             # Mermaid diagram editor, renderer, templates, export helpers
-|-- css/                    # Editor styles
-|-- assets/                 # Static images and icons
-|-- studio/                 # Django views, auth, assets, presentations, exports
-|-- ai_jobs/                # AI import job endpoints and orchestration
-|-- bridge/                 # PDF/document parsing, LLM helpers, PPTX exporter
-|-- pptmaker_backend/       # Django settings and root URL routing
-|-- media/                  # Local uploaded/generated media
+|-- backend/
+|   |-- manage.py
+|   |-- pptmaker_backend/   # Django settings and root URL routing
+|   |-- studio/             # Django views, auth, assets, presentations, exports
+|   `-- bridge/             # Document parsing, LLM helpers, PPTX exporter
+|-- frontend/
+|   |-- index.html          # Single-page editor shell
+|   |-- js/                 # Frontend editor modules
+|   |-- css/                # Editor styles
+|   |-- assets/             # Static images and icons
+|   `-- static/             # Extra static source directory for Django
+|-- tests/
+|   `-- browser/            # Optional Playwright/browser probes
 |-- requirements.txt        # Python dependencies
 `-- package.json            # Optional Playwright dependency for browser probes
 ```
@@ -36,9 +39,7 @@ SlideForge/
 - Django 5.2, installed from `requirements.txt`
 - SQLite, used by default through `db.sqlite3`
 - Node.js, optional, only needed for Playwright-based browser checks
-- Optional AI provider credentials for Gemini, Groq, OpenAI, or Ollama
-
-Some import paths use heavier document extraction dependencies such as MinerU. Keep those in an isolated Python or Conda environment when possible.
+- Optional local document extraction tools for PDF processing workflows.
 
 ## Quick Start
 
@@ -64,13 +65,13 @@ cp .env.example .env
 Run database migrations:
 
 ```bash
-python manage.py migrate
+python backend/manage.py migrate
 ```
 
 Start the development server:
 
 ```bash
-python manage.py runserver
+python backend/manage.py runserver
 ```
 
 Open the editor at:
@@ -79,7 +80,7 @@ Open the editor at:
 http://127.0.0.1:8000/
 ```
 
-In development mode, Django serves the editor shell plus the `js/`, `css/`, `assets/`, `static/`, and `media/` paths.
+In development mode, Django serves the editor shell from `frontend/` plus the `/js/`, `/css/`, `/assets/`, `/static/`, and `/media/` paths.
 
 ## Configuration
 
@@ -93,19 +94,6 @@ DJANGO_DEBUG=1
 DJANGO_ALLOWED_HOSTS=127.0.0.1,localhost,testserver
 ```
 
-AI and import settings:
-
-```text
-GOOGLE_API_KEY=
-GROQ_API_KEY=
-OLLAMA_BASE_URL=http://127.0.0.1:11434
-OLLAMA_VISION_MODEL=
-PPTMAKER_SMART_LLM_MODE=auto
-PPTMAKER_ALLOW_REMOTE_LLM=0
-PPTMAKER_CONDA=
-PPTMAKER_BRIDGE_JSON_TIMEOUT=7200
-```
-
 Document extraction settings:
 
 ```text
@@ -114,8 +102,6 @@ PPTMAKER_MINERU_BACKEND=pipeline
 PPTMAKER_MINERU_TIMEOUT_SECONDS=1800
 PPTMAKER_FIGURE_BACKEND=auto
 ```
-
-Remote LLM calls are disabled unless `PPTMAKER_ALLOW_REMOTE_LLM=1` is set in the environment.
 
 ## API Surface
 
@@ -130,21 +116,19 @@ The Django app exposes the editor at `/` and serves backend endpoints under `/ap
 - `POST /api/presentations/`
 - `GET/PATCH/DELETE /api/presentations/<presentation_id>/`
 - `POST /api/presentations/export/pptx/`
-- `POST /api/ai-import-start`
-- `GET /api/ai-import-status`
 
 ## Development
 
 Run Django checks:
 
 ```bash
-python manage.py check
+npm run check:backend
 ```
 
 Run Django tests:
 
 ```bash
-python manage.py test
+npm run test:backend
 ```
 
 Install optional browser tooling:
@@ -156,13 +140,13 @@ npm install
 Run the animation probe when Playwright is installed:
 
 ```bash
-node test-animations.js
+npm run test:animations
 ```
 
 For focused frontend syntax checks, use Node against the files you changed:
 
 ```bash
-node --check js/animations/animation-engine.js
+npm run check:frontend
 ```
 
 ## Mermaid Diagrams
@@ -171,12 +155,12 @@ Use the toolbar button labelled `Flowchart / Mermaid Diagram` or press `Ctrl+Shi
 
 Architecture notes:
 
-- `js/mermaid/mermaid-engine.js` lazy-loads Mermaid from the ESM CDN, validates source, queues async renders, caches SVG, and sanitizes output.
-- `js/mermaid/mermaid-graph.js` parses flowchart Mermaid into SlideForge's graph model, lays out nodes, regenerates Mermaid with `sf:graph` position metadata, and exports custom SVG.
-- `js/mermaid/mermaid-dialog.js` owns visual/code/split modes, templates, direct graph manipulation, theme controls, debounce, diagnostics, and insert/update flow.
-- `js/mermaid/mermaid-object.js` creates and renders canvas objects so diagrams can be moved, resized, copied, duplicated, styled, and animated like other elements.
-- `js/mermaid/mermaid-export.js` handles browser SVG download.
-- `bridge/pptx_exporter.py` exports Mermaid diagrams as SVG when supported and falls back to high-resolution PNG through CairoSVG.
+- `frontend/js/mermaid/mermaid-engine.js` lazy-loads Mermaid from the ESM CDN, validates source, queues async renders, caches SVG, and sanitizes output.
+- `frontend/js/mermaid/mermaid-graph.js` parses flowchart Mermaid into SlideForge's graph model, lays out nodes, regenerates Mermaid with `sf:graph` position metadata, and exports custom SVG.
+- `frontend/js/mermaid/mermaid-dialog.js` owns visual/code/split modes, templates, direct graph manipulation, theme controls, debounce, diagnostics, and insert/update flow.
+- `frontend/js/mermaid/mermaid-object.js` creates and renders canvas objects so diagrams can be moved, resized, copied, duplicated, styled, and animated like other elements.
+- `frontend/js/mermaid/mermaid-export.js` handles browser SVG download.
+- `backend/bridge/pptx_exporter.py` exports Mermaid diagrams as SVG when supported and falls back to high-resolution PNG through CairoSVG.
 
 Migration notes:
 
@@ -188,7 +172,7 @@ Migration notes:
 
 ## Notes
 
-- Local development data lives in `db.sqlite3` and `media/`.
+- Local development data lives in `backend/db.sqlite3` and `backend/media/`.
 - Do not commit `.env`, uploaded media, generated caches, or local browser probe output.
-- The frontend is intentionally framework-light: most editor behavior lives in ES modules under `js/`.
-- PPTX export is implemented in `bridge/pptx_exporter.py` and exposed through the Django presentation export endpoint.
+- The frontend is intentionally framework-light: most editor behavior lives in ES modules under `frontend/js/`.
+- PPTX export is implemented in `backend/bridge/pptx_exporter.py` and exposed through the Django presentation export endpoint.
