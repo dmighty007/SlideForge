@@ -442,6 +442,10 @@ function renderTextContent(elData) {
         return getSafeIconHtml(elData);
     }
 
+    if (elData?.textDocument && typeof renderSemanticTextDocumentToHtml === "function") {
+        return renderSemanticTextDocumentToHtml(elData.textDocument, { bulletStyle: elData.bulletStyle || "default" });
+    }
+
     if (!isStructuredBulletContent(elData.content)) {
         return typeof sanitizeTextHtml === "function"
             ? sanitizeTextHtml(elData.content || "")

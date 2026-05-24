@@ -2,7 +2,7 @@ import { sanitizeMermaidSvg } from "./mermaid-engine.js";
 
 const DEFAULT_NODE_WIDTH = 138;
 const DEFAULT_NODE_HEIGHT = 58;
-const MAX_NODE_WIDTH = 260;
+const MAX_NODE_WIDTH = 520;
 const SAFE_ID_RE = /^[A-Za-z_][\w-]*$/;
 
 function escapeHtml(value = "") {
@@ -113,7 +113,11 @@ function ensureNode(model, node, metadata = {}, previous = null) {
         };
         model.nodes.push(existing);
     } else {
-        existing.label = node.label || existing.label;
+        const nextLabel = node.label || "";
+        const isDescriptiveLabel = nextLabel && nextLabel !== node.id;
+        if (isDescriptiveLabel || !existing.label || existing.label === existing.id) {
+            existing.label = nextLabel || existing.label;
+        }
         existing.shape = node.shape || existing.shape;
     }
     return existing;
@@ -195,7 +199,9 @@ export function parseMermaidToGraph(source = "", previousGraph = null) {
         const pos = previousPositions[node.id] || {};
         if (!Number.isFinite(node.x) && Number.isFinite(Number(pos.x))) node.x = Number(pos.x);
         if (!Number.isFinite(node.y) && Number.isFinite(Number(pos.y))) node.y = Number(pos.y);
-        model.nodePositions[node.id] = { x: Number(node.x) || 0, y: Number(node.y) || 0 };
+        if (Number.isFinite(Number(node.x)) && Number.isFinite(Number(node.y))) {
+            model.nodePositions[node.id] = { x: Number(node.x), y: Number(node.y) };
+        }
     });
     model.lockedLayout = Boolean(previousGraph?.lockedLayout || metadata.lockedLayout);
     model.autoLayout = previousGraph?.autoLayout ?? metadata.autoLayout ?? true;
@@ -239,7 +245,13 @@ export function layoutGraphModel(graph, options = {}) {
     });
     [...byRank.entries()].forEach(([rank, nodes]) => {
         nodes.forEach((node, index) => {
-            const hasPosition = Number.isFinite(Number(node.x)) && Number.isFinite(Number(node.y));
+            const hasPosition =
+                node.x !== null &&
+                node.y !== null &&
+                node.x !== undefined &&
+                node.y !== undefined &&
+                Number.isFinite(Number(node.x)) &&
+                Number.isFinite(Number(node.y));
             if (preserve && hasPosition) return;
             const major = 48 + rank * rankGap;
             const minor = 48 + index * (DEFAULT_NODE_WIDTH + nodeGap);
@@ -257,8 +269,22 @@ export function layoutGraphModel(graph, options = {}) {
         const measured = measureNode(node);
         node.x = Math.round(Number(node.x) || 48);
         node.y = Math.round(Number(node.y) || 48);
-        node.width = Math.max(72, Math.min(MAX_NODE_WIDTH, Number(node.width) || measured.width, measured.width));
-        node.height = Math.max(42, Math.min(220, Number(node.height) || measured.height, measured.height));
+        const explicitWidth = Number(node.width);
+        const explicitHeight = Number(node.height);
+        node.width = Math.max(
+            72,
+            Math.min(
+                MAX_NODE_WIDTH,
+                Number.isFinite(explicitWidth) && explicitWidth > 0 ? Math.max(explicitWidth, measured.width) : measured.width,
+            ),
+        );
+        node.height = Math.max(
+            42,
+            Math.min(
+                320,
+                Number.isFinite(explicitHeight) && explicitHeight > 0 ? Math.max(explicitHeight, measured.height) : measured.height,
+            ),
+        );
         model.nodePositions[node.id] = { x: node.x, y: node.y };
     });
     model.layoutMetadata = { ...(model.layoutMetadata || {}), algorithm: "hierarchical", updatedAt: Date.now() };
@@ -407,7 +433,7 @@ function labelToSvg(node, textColor, defaultFontSize = 16, defaultFontFamily = "
                     .join(" ");
                 tspans.push(`<tspan ${attrs}>${escapeHtml(chunk.text)}</tspan>`);
             });
-            return `<text x="${cx}" y="${startY + lineIndex * lineHeight}" text-anchor="middle" dominant-baseline="middle" class="mermaid-graph-node-label" style="font-family:${fontFamily};font-size:${fontSize}px">${tspans.join("")}</text>`;
+            return `<text x="${cx}" y="${startY + lineIndex * lineHeight}" text-anchor="middle" dominant-baseline="middle" fill="${textColor}" class="mermaid-graph-node-label" style="font-family:${fontFamily};font-size:${fontSize}px;fill:${textColor}">${tspans.join("")}</text>`;
         })
         .join("");
 }
@@ -578,6 +604,8 @@ export function graphToSvg(graph, style = {}, options = {}) {
     const model = layoutGraphModel(graph, { preservePositions: true });
     const bounds = graphBounds(model);
     const selectedIds = new Set(options.selectedIds || (options.selectedId ? [options.selectedId] : []));
+    const showConnectHandles = options.showConnectHandles === true;
+    const showResizeHandles = options.showResizeHandles === true;
     const lineColor = style.lineColor || "#4f46e5";
     const textColor = style.primaryTextColor || "#0f172a";
     const fontFamily = style.fontFamily || "Inter, Arial, sans-serif";
@@ -586,6 +614,10 @@ export function graphToSvg(graph, style = {}, options = {}) {
     const renderMode = style.renderMode || (style.handDrawn ? "sketch" : "real");
     const handDrawn = renderMode !== "real";
     const sketch = renderMode === "sketch";
+    const interactionStyles = [
+        showConnectHandles ? `.mermaid-graph-connect-handle{fill:#ffffff;stroke:${lineColor};stroke-width:2;opacity:.92}` : "",
+        showResizeHandles ? `.mermaid-graph-resize-handle{fill:#ffffff;stroke:#f59e0b;stroke-width:2;cursor:nwse-resize}` : "",
+    ].filter(Boolean).join("\n                ");
     const edges = model.edges
         .map(edge => {
             const from = model.nodes.find(node => node.id === edge.from);
@@ -612,17 +644,25 @@ export function graphToSvg(graph, style = {}, options = {}) {
         .map(node => {
             const active = selectedIds.has(node.id) ? " is-selected" : "";
             const cy = node.y + node.height / 2;
+            const handles = [];
+            if (showConnectHandles) {
+                handles.push(`<circle class="mermaid-graph-connect-handle" data-node-id="${escapeAttr(node.id)}" cx="${node.x + node.width + 9}" cy="${cy}" r="6" />`);
+            }
+            if (showResizeHandles && selectedIds.has(node.id)) {
+                handles.push(`<rect class="mermaid-graph-resize-handle" data-node-id="${escapeAttr(node.id)}" data-resize-handle="br" x="${node.x + node.width - 5}" y="${node.y + node.height - 5}" width="10" height="10" rx="3" />`);
+                handles.push(`<rect class="mermaid-graph-resize-handle" data-node-id="${escapeAttr(node.id)}" data-resize-handle="r" x="${node.x + node.width - 4}" y="${node.y + node.height / 2 - 5}" width="8" height="10" rx="3" />`);
+            }
             return `
             <g class="mermaid-graph-node${active}" data-node-id="${escapeAttr(node.id)}">
                 ${nodeShape(node, { ...style, lineColor })}
                 ${labelToSvg(node, node.style?.text || textColor, fontSize, fontFamily)}
-                <circle class="mermaid-graph-connect-handle" data-node-id="${escapeAttr(node.id)}" cx="${node.x + node.width + 9}" cy="${cy}" r="6" />
+                ${handles.join("")}
             </g>
         `;
         })
         .join("");
     const svg = `
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="${bounds.x} ${bounds.y} ${bounds.width} ${bounds.height}" preserveAspectRatio="xMidYMid meet" role="img">
+        <svg xmlns="http://www.w3.org/2000/svg" width="${bounds.width}" height="${bounds.height}" viewBox="${bounds.x} ${bounds.y} ${bounds.width} ${bounds.height}" preserveAspectRatio="xMidYMid meet" role="img">
             <defs>
                 <filter id="sfMermaidXkcd" x="-8%" y="-8%" width="116%" height="116%">
                     <feTurbulence type="fractalNoise" baseFrequency="0.025" numOctaves="1" seed="7" result="noise" />
@@ -639,7 +679,7 @@ export function graphToSvg(graph, style = {}, options = {}) {
                 .mermaid-graph-node-shape.is-sketch{filter:url(#sfMermaidXkcd)}
                 .mermaid-graph-node.is-selected .mermaid-graph-node-shape,.mermaid-graph-edge.is-selected path{stroke:#f59e0b;stroke-width:3}
                 .mermaid-graph-edge-label.is-selected{fill:#92400e;stroke:#fffbeb}
-                .mermaid-graph-connect-handle{fill:#ffffff;stroke:${lineColor};stroke-width:2;opacity:.92}
+                ${interactionStyles}
             </style>
             <rect x="${bounds.x}" y="${bounds.y}" width="${bounds.width}" height="${bounds.height}" fill="transparent" />
             <g class="mermaid-graph-edges">${edges}</g>

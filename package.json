@@ -8,6 +8,7 @@
     "test:animations": "node tests/browser/test-animations.js"
   },
   "dependencies": {
+    "mermaid": "11.4.1",
     "playwright": "^1.60.0"
   }
 }

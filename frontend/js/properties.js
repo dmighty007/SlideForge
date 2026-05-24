@@ -359,6 +359,9 @@ function bindElementOutlineControls(data) {
             _setElementDomStyleProperty(dom, "borderWidth", nextWidth);
             _setElementDomStyleProperty(dom, "borderColor", nextColor);
             _setElementDomStyleProperty(dom, "borderRadius", nextRadius);
+            if (data.type === "shape" && typeof renderShapeContent === "function") {
+                renderShapeContent(dom, data);
+            }
             if (data.type === "text") {
                 const layout = syncTextBoxLayout(dom, data);
                 if (layout?.autoHeight && Number.isFinite(layout.height)) {
@@ -368,6 +371,8 @@ function bindElementOutlineControls(data) {
             }
         }
         refreshPreviews?.();
+        updateGroupBound();
+        schedulePresentationAutosave?.(150);
     };
 
     styleInput.onchange = () => {
@@ -377,6 +382,7 @@ function bindElementOutlineControls(data) {
     widthInput.onchange = commit;
     widthInput.onblur = commit;
     colorInput.oninput = commit;
+    colorInput.onchange = commit;
     radiusInput.onchange = commit;
     radiusInput.onblur = commit;
 }
@@ -434,8 +440,13 @@ function clearTextFormatting(data = getSelectedElementData()) {
     };
 
     saveStateToUndo();
-    updateElementState(data.id, { content: nextContent, styles: nextStyles, themeManaged: true });
+    const nextTextDocument =
+        typeof createTextDocumentFromLegacyContent === "function"
+            ? createTextDocumentFromLegacyContent(nextContent, { bulletStyle: data.bulletStyle || "default" })
+            : data.textDocument;
+    updateElementState(data.id, { content: nextContent, textDocument: nextTextDocument, styles: nextStyles, themeManaged: true });
     data.content = nextContent;
+    data.textDocument = nextTextDocument;
     data.styles = nextStyles;
     data.themeManaged = true;
 
@@ -505,8 +516,13 @@ function applyTextFormatting(prop, value, options = {}) {
                 _getStructuredEditorMode(inlineContext.editor) === "list"
                     ? parseStructuredBulletEditorHtml(inlineContext.editor)
                     : inlineContext.editor.innerHTML;
-            updateElementState(data.id, { content: nextContent });
+            const nextTextDocument =
+                typeof createTextDocumentFromLegacyContent === "function"
+                    ? createTextDocumentFromLegacyContent(nextContent, { bulletStyle: data.bulletStyle || "default" })
+                    : data.textDocument;
+            updateElementState(data.id, { content: nextContent, textDocument: nextTextDocument });
             data.content = nextContent;
+            data.textDocument = nextTextDocument;
             markTextElementStyleAsLocal(data, prop);
             const layout = syncTextBoxLayout(inlineContext.dom, data);
             if (layout?.autoHeight && Number.isFinite(layout.height)) {
@@ -730,6 +746,9 @@ function syncPdfEmbedDom(data) {
 function syncTextDomContent(data) {
     const dom = document.getElementById(data.id);
     if (!dom) return;
+    if (!data.iconMode && typeof ensureElementTextDocument === "function") {
+        ensureElementTextDocument(data);
+    }
     const contentHost = dom.querySelector(".text-element-content");
     if (contentHost) {
         contentHost.innerHTML = renderTextContent(data);
@@ -808,9 +827,14 @@ function applySidebarTextContent(data, value) {
     const bulletStyleChanged = next.bulletStyle !== (data.bulletStyle || "");
     if (!contentChanged && !bulletStyleChanged) return;
 
-    updateElementState(data.id, next);
+    const nextTextDocument =
+        typeof createTextDocumentFromLegacyContent === "function"
+            ? createTextDocumentFromLegacyContent(next.content, { bulletStyle: next.bulletStyle || data.bulletStyle || "default" })
+            : data.textDocument;
+    updateElementState(data.id, { ...next, textDocument: nextTextDocument });
     data.content = next.content;
     data.bulletStyle = next.bulletStyle;
+    data.textDocument = nextTextDocument;
 
     const dom = document.getElementById(data.id);
     const contentHost = dom?.querySelector(".text-element-content");
@@ -858,9 +882,14 @@ function applyTextBulletState(data, nextKind, nextStyle = "default") {
         }
     }
 
-    updateElementState(data.id, { content: nextContent, bulletStyle: nextBulletStyle });
+    const nextTextDocument =
+        typeof createTextDocumentFromLegacyContent === "function"
+            ? createTextDocumentFromLegacyContent(nextContent, { bulletStyle: nextBulletStyle || "default" })
+            : data.textDocument;
+    updateElementState(data.id, { content: nextContent, bulletStyle: nextBulletStyle, textDocument: nextTextDocument });
     data.content = nextContent;
     data.bulletStyle = nextBulletStyle;
+    data.textDocument = nextTextDocument;
 
     const dom = document.getElementById(data.id);
     const contentHost = dom?.querySelector(".text-element-content");
@@ -1300,8 +1329,11 @@ function _buildSlideWorkspacePanel(panel) {
 
         if (layoutSelect) {
             layoutSelect.onchange = e => {
-                const layoutId = e.target.value || "blank-titled";
-                applyPresetLayoutToCurrentSlide?.(layoutId);
+                e.target.dataset.pendingLayout = e.target.value || "blank-titled";
+                if (applyBtn) {
+                    applyBtn.dataset.pendingLayout = e.target.dataset.pendingLayout;
+                    applyBtn.classList.add("ring-2", "ring-indigo-200");
+                }
             };
         }
         if (typeof renderPresetSlidePalette === "function") {
@@ -1316,7 +1348,7 @@ function _buildSlideWorkspacePanel(panel) {
 
         if (applyBtn) {
             applyBtn.onclick = () => {
-                const layoutId = layoutSelect?.value || "blank-titled";
+                const layoutId = applyBtn.dataset.pendingLayout || layoutSelect?.value || "blank-titled";
                 applyPresetLayoutToCurrentSlide?.(layoutId);
             };
         }
@@ -1785,12 +1817,25 @@ function _bindFloatingShapeToolbar(data, toolbar) {
     const fillInput = document.getElementById("floating-shape-fill");
     const borderInput = document.getElementById("floating-shape-border");
     const widthSelect = document.getElementById("floating-shape-border-width");
+    const repaintShape = () => {
+        const dom = document.getElementById(data.id);
+        if (dom && data.type === "shape" && typeof renderShapeContent === "function") {
+            renderShapeContent(dom, data);
+        }
+        refreshPreviews?.();
+        updateGroupBound?.();
+        schedulePresentationAutosave?.(150);
+    };
 
     if (fillInput) {
         if (!isControlBeingEdited(fillInput)) {
             fillInput.value = _normalizeColorForInput(data.styles.backgroundColor, "#ffffff");
         }
-        fillInput.oninput = e => updateElementState(data.id, { styles: { backgroundColor: e.target.value } });
+        fillInput.oninput = e => {
+            updateElementStyleState(data.id, { backgroundColor: e.target.value });
+            data.styles.backgroundColor = e.target.value;
+            repaintShape();
+        };
         fillInput.onchange = () => {
             saveStateToUndo();
             if (window.renderSlidesFromState) renderSlidesFromState();
@@ -1808,7 +1853,21 @@ function _bindFloatingShapeToolbar(data, toolbar) {
             const currentBorder = data.styles.border || "0px solid #000000";
             const widthMatch = currentBorder.match(/^(\d+)px/);
             const w = widthMatch ? widthMatch[1] : data.styles.borderWidth || "1";
-            updateElementState(data.id, { styles: { border: `${Math.max(1, w)}px solid ${e.target.value}` } });
+            const width = normalizeBorderWidthValue(w, "1px");
+            const color = _normalizeColorForInput(e.target.value, "#000000");
+            updateElementStyleState(data.id, {
+                border: `${parseFloat(width) || 1}px solid ${color}`,
+                borderStyle: "solid",
+                borderWidth: width,
+                borderColor: color,
+            });
+            Object.assign(data.styles, {
+                border: `${parseFloat(width) || 1}px solid ${color}`,
+                borderStyle: "solid",
+                borderWidth: width,
+                borderColor: color,
+            });
+            repaintShape();
         };
         borderInput.onchange = () => {
             saveStateToUndo();
@@ -1826,16 +1885,38 @@ function _bindFloatingShapeToolbar(data, toolbar) {
         widthSelect.onchange = e => {
             const w = parseInt(e.target.value) || 0;
             if (w === 0) {
-                updateElementState(data.id, { styles: { border: "none" } });
+                updateElementStyleState(data.id, {
+                    border: "none",
+                    borderStyle: "none",
+                    borderWidth: "0px",
+                    borderColor: data.styles.borderColor || "#000000",
+                });
+                Object.assign(data.styles, {
+                    border: "none",
+                    borderStyle: "none",
+                    borderWidth: "0px",
+                    borderColor: data.styles.borderColor || "#000000",
+                });
             } else {
                 const borderMatches = (data.styles.border || "").match(
                     /solid\s+(#[0-9a-fA-F]{3,6}|rgb\([^)]+\)|[a-zA-Z]+)/,
                 );
-                const color = borderMatches ? borderMatches[1] : "#000000";
-                updateElementState(data.id, { styles: { border: `${w}px solid ${color}` } });
+                const color = _normalizeColorForInput(data.styles.borderColor || (borderMatches ? borderMatches[1] : "#000000"), "#000000");
+                updateElementStyleState(data.id, {
+                    border: `${w}px solid ${color}`,
+                    borderStyle: "solid",
+                    borderWidth: `${w}px`,
+                    borderColor: color,
+                });
+                Object.assign(data.styles, {
+                    border: `${w}px solid ${color}`,
+                    borderStyle: "solid",
+                    borderWidth: `${w}px`,
+                    borderColor: color,
+                });
             }
             saveStateToUndo();
-            if (window.renderSlidesFromState) renderSlidesFromState();
+            repaintShape();
         };
     }
 }
@@ -4580,8 +4661,13 @@ function applyStyle(prop, value) {
             }
 
             if (nextContent !== data.content) {
-                updateElementState(id, { content: nextContent });
+                const nextTextDocument =
+                    typeof createTextDocumentFromLegacyContent === "function"
+                        ? createTextDocumentFromLegacyContent(nextContent, { bulletStyle: data.bulletStyle || "default" })
+                        : data.textDocument;
+                updateElementState(id, { content: nextContent, textDocument: nextTextDocument });
                 data.content = nextContent;
+                data.textDocument = nextTextDocument;
                 contentChanged = true;
             }
 

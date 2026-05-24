@@ -118,6 +118,35 @@ function _scaleConnectorPointsForPageSetup(points, scaleX, scaleY, sizeScale) {
 
 function _scaleDrawingObjectForPageSetup(element, scaleX, scaleY, sizeScale) {
     if (!element || typeof element !== "object") return element;
+    if (Number(element.schemaVersion) >= 2 && element.geometry && typeof element.geometry === "object") {
+        const next = JSON.parse(JSON.stringify(element));
+        const geometry = next.geometry;
+        if (Array.isArray(geometry.points)) {
+            geometry.points = _scaleConnectorPointsForPageSetup(geometry.points, scaleX, scaleY, sizeScale);
+        }
+        const x = Number(geometry.x);
+        const y = Number(geometry.y);
+        const width = Number(geometry.width);
+        const height = Number(geometry.height);
+        if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(width) && Number.isFinite(height)) {
+            const nextWidth = width * sizeScale;
+            const nextHeight = height * sizeScale;
+            geometry.x = _layoutNumber((x + width / 2) * scaleX - nextWidth / 2);
+            geometry.y = _layoutNumber((y + height / 2) * scaleY - nextHeight / 2);
+            geometry.width = Math.max(1, _layoutNumber(nextWidth));
+            geometry.height = Math.max(1, _layoutNumber(nextHeight));
+        } else {
+            if (Number.isFinite(x)) geometry.x = _layoutNumber(x * scaleX);
+            if (Number.isFinite(y)) geometry.y = _layoutNumber(y * scaleY);
+        }
+        if (next.style && Number.isFinite(Number(next.style.strokeWidth))) {
+            next.style.strokeWidth = Math.max(0.5, _layoutNumber(Number(next.style.strokeWidth) * sizeScale));
+        }
+        if (next.style && Number.isFinite(Number(next.style.fontSize))) {
+            next.style.fontSize = Math.max(6, _layoutNumber(Number(next.style.fontSize) * sizeScale));
+        }
+        return next;
+    }
     if (element.type === "freehand" && Array.isArray(element.points)) {
         return {
             ...element,

@@ -3940,6 +3940,15 @@ function buildPresetSlideState(
         id: generateId("el"),
         themeManaged: true,
     })).filter(el => !el.footerRole);
+    elements = elements.map(el => {
+        if (!el || el.type !== "text" || el.iconMode || el.textDocument || typeof createTextDocumentFromLegacyContent !== "function") {
+            return el;
+        }
+        return {
+            ...el,
+            textDocument: createTextDocumentFromLegacyContent(el.content || "", { bulletStyle: el.bulletStyle || "default" }),
+        };
+    });
     if (
         (typeof scalePresetElementsForPageSetup === "function" || typeof scaleSlideElementsForPageSetup === "function") &&
         typeof getPresentationPageSetupConfig === "function" &&

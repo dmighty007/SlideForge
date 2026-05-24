@@ -64,6 +64,39 @@ export class ExportManager {
     }
 
     static generateSVG(elements, viewport, slideWidth = 1024, slideHeight = 768) {
+        if (Array.isArray(elements) && elements.some(el => Number(el?.schemaVersion) >= 2)) {
+            const normalized = elements.map(el => {
+                if (!(Number(el?.schemaVersion) >= 2)) return el;
+                const style = el.style || {};
+                const geometry = el.geometry || {};
+                const common = {
+                    id: el.id,
+                    strokeColor: style.strokeColor,
+                    backgroundColor: style.backgroundColor,
+                    fillStyle: style.fillStyle,
+                    strokeWidth: style.strokeWidth,
+                    strokeStyle: style.strokeStyle,
+                    opacity: el.opacity ?? style.opacity,
+                    role: el.role,
+                };
+                if (["stroke", "highlightStroke", "freeformPath", "laserTrail", "gesture"].includes(el.kind)) {
+                    return { ...common, type: "freehand", points: geometry.points || [] };
+                }
+                if (["label", "sticky"].includes(el.kind)) {
+                    return { ...common, type: "text", x: geometry.x, y: geometry.y, text: geometry.text, fontSize: style.fontSize, fontFamily: style.fontFamily };
+                }
+                return {
+                    ...common,
+                    type: "draw_shape",
+                    shapeType: geometry.shapeType || (el.kind === "arrow" ? "arrow" : "rectangle"),
+                    x: geometry.x,
+                    y: geometry.y,
+                    width: geometry.width,
+                    height: geometry.height,
+                };
+            });
+            return this.generateSVG(normalized, viewport, slideWidth, slideHeight);
+        }
         if (!elements || elements.length === 0) {
             return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${slideWidth} ${slideHeight}" width="100%" height="100%"><rect width="100%" height="100%" fill="white"/></svg>`;
         }

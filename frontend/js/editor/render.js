@@ -1177,10 +1177,59 @@ function _whiteboardFillAttrs(el = {}) {
 function _createSlideWhiteboardLayer(slide, slideWidth, slideHeight) {
     const elements = Array.isArray(slide?.whiteboardElements) ? slide.whiteboardElements : [];
     if (!elements.length) return null;
+    if ((slide?.elements || []).some(el => el.type === "whiteboard" && el.annotationMirror)) return null;
     const layer = document.createElement("div");
     layer.className = "whiteboard-slide-layer";
+    const annotationRenderer = window.SlideForgeAnnotation?.SvgStaticRenderer;
+    if (annotationRenderer?.renderSvg) {
+        layer.innerHTML = annotationRenderer.renderSvg(elements, slideWidth, slideHeight);
+        return layer;
+    }
     const nodes = elements
         .map(el => {
+            if (Number(el.schemaVersion) >= 2 && el.kind && el.geometry) {
+                const style = el.style || {};
+                const geometry = el.geometry || {};
+                if (["stroke", "highlightStroke", "freeformPath", "laserTrail", "gesture"].includes(el.kind)) {
+                    el = {
+                        id: el.id,
+                        type: "freehand",
+                        points: geometry.points || [],
+                        strokeColor: style.strokeColor,
+                        strokeWidth: style.strokeWidth,
+                        strokeStyle: style.strokeStyle,
+                        opacity: el.opacity ?? style.opacity,
+                    };
+                } else if (["label", "sticky"].includes(el.kind)) {
+                    el = {
+                        id: el.id,
+                        type: "text",
+                        x: geometry.x,
+                        y: geometry.y,
+                        text: geometry.text,
+                        strokeColor: style.strokeColor,
+                        fontSize: style.fontSize,
+                        fontFamily: style.fontFamily,
+                        opacity: el.opacity ?? style.opacity,
+                    };
+                } else {
+                    el = {
+                        id: el.id,
+                        type: "draw_shape",
+                        shapeType: geometry.shapeType || (el.kind === "arrow" ? "arrow" : "rectangle"),
+                        x: geometry.x,
+                        y: geometry.y,
+                        width: geometry.width,
+                        height: geometry.height,
+                        strokeColor: style.strokeColor,
+                        backgroundColor: style.backgroundColor,
+                        fillStyle: style.fillStyle,
+                        strokeWidth: style.strokeWidth,
+                        strokeStyle: style.strokeStyle,
+                        opacity: el.opacity ?? style.opacity,
+                    };
+                }
+            }
             if (el.type === "freehand") {
                 const points = Array.isArray(el.points) ? el.points : [];
                 if (!points.length) return "";
@@ -2155,6 +2204,16 @@ function _createStaticNode(elData, options = {}) {
         };
         requestAnimationFrame(renderMermaidObject);
     } else if (elData.type === "whiteboard") {
+        const selectWhiteboardElement = event => {
+            if (document.body.classList.contains("play-mode-active")) return;
+            if (document.body.classList.contains("whiteboard-mode-active")) return;
+            if (typeof window.selectElement !== "function") return;
+            const isMultiSelect = event.shiftKey || event.metaKey || event.ctrlKey;
+            window.selectElement(elData.id, isMultiSelect ? "add" : "replace");
+            event.stopPropagation();
+        };
+        el.addEventListener("pointerdown", selectWhiteboardElement);
+        el.addEventListener("mousedown", selectWhiteboardElement);
         const canvas = document.createElement("canvas");
         canvas.className = "whiteboard-object-canvas";
         canvas.style.width = "100%";
@@ -2351,6 +2410,9 @@ function renderIconContentHost(contentHost, elData) {
 
 function _applyTypeContent(el, elData, options = {}) {
     if (elData.type === "text") {
+        if (!elData.iconMode && typeof ensureElementTextDocument === "function") {
+            ensureElementTextDocument(elData);
+        }
         _installStructuredEditorShortcuts();
         const contentHost = document.createElement("div");
         contentHost.className = "text-element-content";
@@ -2436,10 +2498,22 @@ function _applyTypeContent(el, elData, options = {}) {
                     _getStructuredEditorMode(contentHost) === "list"
                         ? parseStructuredBulletEditorHtml(contentHost, { preserveTrailingEmpty: true })
                         : parseEditableStructuredText(contentHost.textContent || "", elData.content);
-                updateElementState(el.id, { content: nextContent });
+                const nextTextDocument =
+                    typeof createTextDocumentFromLegacyContent === "function"
+                        ? createTextDocumentFromLegacyContent(nextContent, { bulletStyle: elData.bulletStyle || "default" })
+                        : elData.textDocument;
+                updateElementState(el.id, { content: nextContent, textDocument: nextTextDocument });
                 elData.content = nextContent;
+                elData.textDocument = nextTextDocument;
             } else {
-                updateElementState(el.id, { content: contentHost.innerHTML });
+                const nextHtml = contentHost.innerHTML;
+                const nextTextDocument =
+                    typeof createTextDocumentFromLegacyContent === "function"
+                        ? createTextDocumentFromLegacyContent(nextHtml, { bulletStyle: elData.bulletStyle || "default" })
+                        : elData.textDocument;
+                updateElementState(el.id, { content: nextHtml, textDocument: nextTextDocument });
+                elData.content = nextHtml;
+                elData.textDocument = nextTextDocument;
                 captureInlineSelection();
             }
             const layout = syncTextBoxLayout(el, elData);
@@ -2469,6 +2543,10 @@ function _applyTypeContent(el, elData, options = {}) {
                 }
                 updateElementState(el.id, { content: nextContent });
                 elData.content = nextContent;
+                if (typeof createTextDocumentFromLegacyContent === "function") {
+                    elData.textDocument = createTextDocumentFromLegacyContent(nextContent, { bulletStyle: elData.bulletStyle || "default" });
+                    updateElementState(el.id, { textDocument: elData.textDocument });
+                }
                 delete contentHost.dataset.structuredEdit;
                 delete contentHost.dataset.structuredEditMode;
                 delete contentHost.dataset.structuredEditBulletStyle;
@@ -2482,7 +2560,14 @@ function _applyTypeContent(el, elData, options = {}) {
                 contentHost.innerHTML = renderTextContent({ ...elData, content: nextContent });
                 contentHost.style.whiteSpace = "";
             } else {
-                updateElementState(el.id, { content: contentHost.innerHTML });
+                const nextHtml = contentHost.innerHTML;
+                const nextTextDocument =
+                    typeof createTextDocumentFromLegacyContent === "function"
+                        ? createTextDocumentFromLegacyContent(nextHtml, { bulletStyle: elData.bulletStyle || "default" })
+                        : elData.textDocument;
+                updateElementState(el.id, { content: nextHtml, textDocument: nextTextDocument });
+                elData.content = nextHtml;
+                elData.textDocument = nextTextDocument;
             }
             const layout = syncTextBoxLayout(el, elData);
             if (layout?.autoHeight && Number.isFinite(layout.height)) {
@@ -2820,6 +2905,16 @@ function _applyTypeContent(el, elData, options = {}) {
             window.openMermaidDialog?.(elData.id);
         });
     } else if (elData.type === "whiteboard") {
+        const selectWhiteboardElement = event => {
+            if (document.body.classList.contains("play-mode-active")) return;
+            if (document.body.classList.contains("whiteboard-mode-active")) return;
+            if (typeof window.selectElement !== "function") return;
+            const isMultiSelect = event.shiftKey || event.metaKey || event.ctrlKey;
+            window.selectElement(elData.id, isMultiSelect ? "add" : "replace");
+            event.stopPropagation();
+        };
+        el.addEventListener("pointerdown", selectWhiteboardElement);
+        el.addEventListener("mousedown", selectWhiteboardElement);
         const canvas = document.createElement("canvas");
         canvas.className = "whiteboard-object-canvas";
         canvas.style.width = "100%";

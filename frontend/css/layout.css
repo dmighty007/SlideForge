@@ -886,6 +886,10 @@ body.slide-rail-collapsed .slide-rail-title span {
     pointer-events: none;
 }
 
+body.slide-rail-collapsed #slide-previews {
+    display: none !important;
+}
+
 body.slide-rail-collapsed .slide-rail-title span {
     display: none;
 }
@@ -1486,6 +1490,85 @@ body.workspace-review #properties-content::before {
     .command-k-button {
         min-width: 34px;
         padding: 0 9px;
+    }
+}
+
+/* Final mobile responsiveness repair. Keep this after legacy toolbar rules. */
+@media (max-width: 720px) {
+    body.slide-rail-collapsed #slide-rail {
+        width: 0 !important;
+        min-width: 0 !important;
+        border-right: 0 !important;
+        box-shadow: none !important;
+        overflow: hidden;
+        transform: translateX(-100%) !important;
+    }
+
+    body.slide-rail-collapsed #slide-rail .slide-rail-header {
+        display: none !important;
+    }
+
+    body.slide-rail-collapsed .slide-rail-edge-toggle {
+        left: 12px;
+        bottom: 24px;
+    }
+
+    #insert-toolbar-row,
+    #insert-toolbar-row.toolbar-secondary-row {
+        top: 136px;
+        left: 8px;
+        right: 8px;
+        width: auto;
+        transform: none;
+        justify-content: flex-start;
+    }
+
+    #insert-toolbar-row .toolbar-secondary-bar,
+    #insert-toolbar-row.insert-toolbar,
+    #insert-toolbar-row .insert-toolbar {
+        width: 100%;
+        max-width: 100%;
+        max-height: none;
+        flex-wrap: wrap;
+        align-content: flex-start;
+        justify-content: flex-start;
+        overflow-x: hidden;
+        overflow-y: visible;
+    }
+
+    #insert-toolbar-row .toolbar-cluster {
+        flex: 0 1 auto;
+        max-width: 100%;
+    }
+
+    #zoom-engine {
+        padding-top: 188px;
+    }
+}
+
+@media (max-width: 420px) {
+    #insert-toolbar-row,
+    #insert-toolbar-row.toolbar-secondary-row {
+        top: 132px;
+    }
+
+    #insert-toolbar-row .toolbar-secondary-bar,
+    #insert-toolbar-row .insert-toolbar {
+        gap: 3px;
+        padding: 4px;
+    }
+
+    #insert-toolbar-row .toolbar-cluster {
+        gap: 1px;
+        padding-inline: 2px;
+    }
+
+    #insert-toolbar-row .insert-tool-btn,
+    #insert-toolbar-row .toolbar-secondary-bar .insert-tool-btn {
+        width: 28px;
+        min-width: 28px;
+        height: 28px;
+        min-height: 28px;
     }
 }
 

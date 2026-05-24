@@ -188,7 +188,11 @@ export function buildRenderModel(document = {}, style = {}, options = {}) {
 
 export function renderDocumentToSvg(document = {}, style = {}, options = {}) {
     const renderModel = buildRenderModel(document, style, options);
-    return graphToSvg(renderModel.graph, style, { selectedIds: renderModel.selectedIds });
+    return graphToSvg(renderModel.graph, style, {
+        selectedIds: renderModel.selectedIds,
+        showConnectHandles: options.showConnectHandles,
+        showResizeHandles: options.showResizeHandles,
+    });
 }
 
 export function applyPresentationPreset(document = {}, presetId = "branch-reveal") {

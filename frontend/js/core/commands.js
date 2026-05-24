@@ -262,6 +262,9 @@ function addElement(type, options = {}) {
         id,
         type,
         ...(type === "text" ? { bulletStyle: "default", autoHeight: true } : {}),
+        ...(type === "text" && typeof createTextDocumentFromLegacyContent === "function"
+            ? { textDocument: createTextDocumentFromLegacyContent("Double click to edit text", { bulletStyle: "default" }) }
+            : {}),
         ...(type === "table" ? { tableData: createDefaultTableData(3, 4) } : {}),
         ...(type === "shape" ? { shapeType } : {}),
         ...(type === "image" ? { lockAspectRatio: true, imageAspectRatio: 1.5 } : {}),
@@ -3539,9 +3542,13 @@ const _presentationToolsState = {
     bound: false,
     chalkEnabled: false,
     laserEnabled: false,
+    spotlightEnabled: false,
+    frozen: false,
     isDrawing: false,
     lastDrawPoint: null,
     chalkColor: "#fff59d",
+    currentStroke: null,
+    tempStrokes: [],
 };
 
 function _presentationToolsElements() {
@@ -3566,6 +3573,14 @@ function _presentationToolsElements() {
         contextLaserBtn: document.getElementById("present-context-laser-btn"),
         contextChalkBtn: document.getElementById("present-context-chalk-btn"),
         contextClearBtn: document.getElementById("present-context-clear-btn"),
+        saveAnnotationsBtn: document.getElementById("present-save-annotations-btn"),
+        undoAnnotationBtn: document.getElementById("present-undo-annotation-btn"),
+        freezeAnnotationsBtn: document.getElementById("present-freeze-annotations-btn"),
+        spotlightBtn: document.getElementById("present-spotlight-btn"),
+        contextSaveBtn: document.getElementById("present-context-save-btn"),
+        contextUndoBtn: document.getElementById("present-context-undo-btn"),
+        contextFreezeBtn: document.getElementById("present-context-freeze-btn"),
+        contextSpotlightBtn: document.getElementById("present-context-spotlight-btn"),
         contextFullscreenBtn: document.getElementById("present-context-fullscreen-btn"),
         contextExitBtn: document.getElementById("present-context-exit-btn"),
     };
@@ -3579,6 +3594,10 @@ function _updatePresentationToolButtons() {
         contextLaserBtn,
         fullscreenBtn,
         contextFullscreenBtn,
+        freezeAnnotationsBtn,
+        spotlightBtn,
+        contextFreezeBtn,
+        contextSpotlightBtn,
         menuToggle,
         chalkTools,
         chalkColorChip,
@@ -3587,6 +3606,10 @@ function _updatePresentationToolButtons() {
     laserBtn?.classList.toggle("is-active", _presentationToolsState.laserEnabled);
     contextChalkBtn?.classList.toggle("is-active", _presentationToolsState.chalkEnabled);
     contextLaserBtn?.classList.toggle("is-active", _presentationToolsState.laserEnabled);
+    freezeAnnotationsBtn?.classList.toggle("is-active", _presentationToolsState.frozen);
+    contextFreezeBtn?.classList.toggle("is-active", _presentationToolsState.frozen);
+    spotlightBtn?.classList.toggle("is-active", _presentationToolsState.spotlightEnabled);
+    contextSpotlightBtn?.classList.toggle("is-active", _presentationToolsState.spotlightEnabled);
     const fullscreen = !!document.fullscreenElement;
     fullscreenBtn?.classList.toggle("is-active", fullscreen);
     contextFullscreenBtn?.classList.toggle("is-active", fullscreen);
@@ -3683,6 +3706,91 @@ function _drawPresentationSegment(from, to) {
     ctx.stroke();
 }
 
+function _redrawPresentationTemporaryAnnotations() {
+    const { chalkboard } = _presentationToolsElements();
+    const ctx = chalkboard?.getContext("2d");
+    if (!ctx || !chalkboard) return;
+    ctx.clearRect(0, 0, chalkboard.width, chalkboard.height);
+    _presentationToolsState.tempStrokes.forEach(stroke => {
+        ctx.save();
+        ctx.strokeStyle = stroke.color || "#fff59d";
+        ctx.lineWidth = Number(stroke.width) || 5;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.globalAlpha = stroke.opacity ?? 0.95;
+        (stroke.points || []).forEach((point, index, points) => {
+            if (!index) return;
+            const prev = points[index - 1];
+            ctx.beginPath();
+            ctx.moveTo(prev.x, prev.y);
+            ctx.lineTo(point.x, point.y);
+            ctx.stroke();
+        });
+        ctx.restore();
+    });
+}
+
+function undoPresentationAnnotation() {
+    _presentationToolsState.tempStrokes.pop();
+    _redrawPresentationTemporaryAnnotations();
+}
+
+function savePresentationAnnotationsToSlide() {
+    const slide = state?.slides?.[currentSlideIndex];
+    if (!slide || !_presentationToolsState.tempStrokes.length) return;
+    const existing = Array.isArray(slide.whiteboardElements) ? slide.whiteboardElements : [];
+    const next = _presentationToolsState.tempStrokes.map((stroke, index) => ({
+        id: `anno_present_${Date.now()}_${index}`,
+        schemaVersion: 2,
+        kind: "stroke",
+        role: "presenter-pen",
+        geometry: {
+            points: (stroke.points || []).map(point => ({
+                x: Number(point.x) || 0,
+                y: Number(point.y) || 0,
+                pressure: point.pressure ?? 0.6,
+                t: point.t || Date.now(),
+            })),
+        },
+        style: {
+            strokeColor: stroke.color || "#fff59d",
+            strokeWidth: Number(stroke.width) || 5,
+            strokeStyle: "solid",
+            backgroundColor: "transparent",
+            fillStyle: "none",
+            roughness: 0,
+            opacity: stroke.opacity ?? 0.95,
+        },
+        metadata: { source: "presentation-live-annotation" },
+        zIndex: existing.length + index,
+        opacity: stroke.opacity ?? 0.95,
+        groupId: null,
+        locked: false,
+        visible: true,
+        export: { includeInPdf: true, includeInPng: true, includeInSvg: true, flatten: false },
+        presentation: { mode: "persistent", audienceVisible: true },
+        animation: { type: "strokeDraw", delay: 0, duration: Math.max(500, (stroke.points || []).length * 7), sequence: null },
+    }));
+    saveStateToUndo?.();
+    slide.whiteboardElements = [...existing, ...next];
+    _presentationToolsState.tempStrokes = [];
+    _redrawPresentationTemporaryAnnotations();
+    refreshPreviews?.();
+    schedulePresentationAutosave?.(150);
+}
+
+function setPresentationFreezeAnnotations(enabled) {
+    _presentationToolsState.frozen = !!enabled;
+    _updatePresentationToolButtons();
+}
+
+function setPresentationSpotlightActive(enabled) {
+    _presentationToolsState.spotlightEnabled = !!enabled;
+    const { wrapper } = _presentationToolsElements();
+    wrapper?.classList.toggle("presentation-spotlight-active", _presentationToolsState.spotlightEnabled);
+    _updatePresentationToolButtons();
+}
+
 function _updatePresentationCursorMode() {
     const { wrapper } = _presentationToolsElements();
     if (!wrapper) return;
@@ -3694,6 +3802,11 @@ function _updatePresentationCursorMode() {
 }
 
 function _updatePresentationLaserPosition(event) {
+    if (_presentationToolsState.spotlightEnabled) {
+        const { wrapper } = _presentationToolsElements();
+        wrapper?.style.setProperty("--spotlight-x", `${event.clientX}px`);
+        wrapper?.style.setProperty("--spotlight-y", `${event.clientY}px`);
+    }
     if (!_presentationToolsState.laserEnabled || !document.body.classList.contains("play-mode-active")) return;
     const { laser } = _presentationToolsElements();
     if (!laser) return;
@@ -3727,6 +3840,8 @@ function clearPresentationChalkboard() {
     const { chalkboard } = _presentationToolsElements();
     const ctx = chalkboard?.getContext("2d");
     if (!ctx || !chalkboard) return;
+    _presentationToolsState.tempStrokes = [];
+    _presentationToolsState.currentStroke = null;
     ctx.clearRect(0, 0, chalkboard.width, chalkboard.height);
 }
 
@@ -3755,6 +3870,14 @@ function initPresentationTools() {
         contextLaserBtn,
         contextChalkBtn,
         contextClearBtn,
+        saveAnnotationsBtn,
+        undoAnnotationBtn,
+        freezeAnnotationsBtn,
+        spotlightBtn,
+        contextSaveBtn,
+        contextUndoBtn,
+        contextFreezeBtn,
+        contextSpotlightBtn,
         contextFullscreenBtn,
         contextExitBtn,
     } = _presentationToolsElements();
@@ -3770,6 +3893,22 @@ function initPresentationTools() {
     });
     clearBtn?.addEventListener("click", () => {
         clearPresentationChalkboard();
+        closePresentationMenus();
+    });
+    saveAnnotationsBtn?.addEventListener("click", () => {
+        savePresentationAnnotationsToSlide();
+        closePresentationMenus();
+    });
+    undoAnnotationBtn?.addEventListener("click", () => {
+        undoPresentationAnnotation();
+        closePresentationMenus();
+    });
+    freezeAnnotationsBtn?.addEventListener("click", () => {
+        setPresentationFreezeAnnotations(!_presentationToolsState.frozen);
+        closePresentationMenus();
+    });
+    spotlightBtn?.addEventListener("click", () => {
+        setPresentationSpotlightActive(!_presentationToolsState.spotlightEnabled);
         closePresentationMenus();
     });
     presenterBtn?.addEventListener("click", () => {
@@ -3819,6 +3958,22 @@ function initPresentationTools() {
         clearPresentationChalkboard();
         closePresentationMenus();
     });
+    contextSaveBtn?.addEventListener("click", () => {
+        savePresentationAnnotationsToSlide();
+        closePresentationMenus();
+    });
+    contextUndoBtn?.addEventListener("click", () => {
+        undoPresentationAnnotation();
+        closePresentationMenus();
+    });
+    contextFreezeBtn?.addEventListener("click", () => {
+        setPresentationFreezeAnnotations(!_presentationToolsState.frozen);
+        closePresentationMenus();
+    });
+    contextSpotlightBtn?.addEventListener("click", () => {
+        setPresentationSpotlightActive(!_presentationToolsState.spotlightEnabled);
+        closePresentationMenus();
+    });
     contextFullscreenBtn?.addEventListener("click", async () => {
         if (document.fullscreenElement) {
             await _syncBrowserFullscreen(false);
@@ -3836,10 +3991,17 @@ function initPresentationTools() {
     chalkboard.addEventListener("pointerdown", event => {
         _updatePresentationLaserPosition(event);
         if (!_presentationToolsState.chalkEnabled) return;
+        if (_presentationToolsState.frozen) return;
         const point = _getPresentationStagePoint(event);
         if (!point) return;
         _presentationToolsState.isDrawing = true;
         _presentationToolsState.lastDrawPoint = point;
+        _presentationToolsState.currentStroke = {
+            color: _presentationToolsState.chalkColor,
+            width: 5,
+            opacity: 0.95,
+            points: [{ ...point, pressure: event.pressure || 0.6, t: Date.now() }],
+        };
         _drawPresentationSegment(point, point);
         chalkboard.setPointerCapture?.(event.pointerId);
         event.preventDefault();
@@ -3847,17 +4009,27 @@ function initPresentationTools() {
     chalkboard.addEventListener("pointermove", event => {
         _updatePresentationLaserPosition(event);
         if (!_presentationToolsState.chalkEnabled || !_presentationToolsState.isDrawing) return;
+        if (_presentationToolsState.frozen) return;
         const point = _getPresentationStagePoint(event);
         if (!point || !_presentationToolsState.lastDrawPoint) return;
         _drawPresentationSegment(_presentationToolsState.lastDrawPoint, point);
         _presentationToolsState.lastDrawPoint = point;
+        _presentationToolsState.currentStroke?.points?.push({ ...point, pressure: event.pressure || 0.6, t: Date.now() });
         event.preventDefault();
     });
     chalkboard.addEventListener("pointerup", () => {
+        if (_presentationToolsState.currentStroke?.points?.length > 1) {
+            _presentationToolsState.tempStrokes.push(_presentationToolsState.currentStroke);
+        }
+        _presentationToolsState.currentStroke = null;
         _presentationToolsState.isDrawing = false;
         _presentationToolsState.lastDrawPoint = null;
     });
     chalkboard.addEventListener("pointerleave", () => {
+        if (_presentationToolsState.currentStroke?.points?.length > 1) {
+            _presentationToolsState.tempStrokes.push(_presentationToolsState.currentStroke);
+        }
+        _presentationToolsState.currentStroke = null;
         _presentationToolsState.isDrawing = false;
         _presentationToolsState.lastDrawPoint = null;
     });
@@ -3911,6 +4083,12 @@ function initPresentationTools() {
         } else if (key === "x") {
             event.preventDefault();
             clearPresentationChalkboard();
+        } else if ((event.ctrlKey || event.metaKey) && key === "z") {
+            event.preventDefault();
+            undoPresentationAnnotation();
+        } else if (key === "s") {
+            event.preventDefault();
+            savePresentationAnnotationsToSlide();
         } else if (key === "m") {
             event.preventDefault();
             togglePresentationMenu();
@@ -4400,7 +4578,7 @@ function _schedulePresentationSlideAnimations(slideIndex) {
         if (!document.body.classList.contains("play-mode-active")) return;
         const safeIndex = Math.max(0, Math.min(Number(slideIndex) || 0, Math.max(0, (state.slides?.length || 1) - 1)));
         if (typeof Reveal !== "undefined" && typeof Reveal.slide === "function") {
-            Reveal.slide(safeIndex, 0, 0);
+            Reveal.slide(safeIndex, 0, -1);
         }
         window.requestAnimationFrame(() => {
             if (!document.body.classList.contains("play-mode-active")) return;
@@ -4468,7 +4646,7 @@ function presentationGoToSlide(index) {
     const safeIndex = Math.max(0, Math.min(Number(index) || 0, Math.max(0, (state.slides?.length || 1) - 1)));
     currentSlideIndex = safeIndex;
     if (typeof Reveal !== "undefined" && typeof Reveal.slide === "function") {
-        Reveal.slide(safeIndex, 0, 0);
+        Reveal.slide(safeIndex, 0, -1);
     } else {
         _preparePresentationSlideAnimations(safeIndex);
     }
@@ -4476,12 +4654,12 @@ function presentationGoToSlide(index) {
 
 function presentationNextStep() {
     if (!document.body.classList.contains("play-mode-active")) return false;
-    if (_revealNextAnimationGroup()) return true;
-    if (_revealNextAdvancedAnimationGroup()) return true;
     if (_hasRevealFragmentAdvance(false)) {
         _syncPresenterPayload();
         return true;
     }
+    if (_revealNextAnimationGroup()) return true;
+    if (_revealNextAdvancedAnimationGroup()) return true;
     const nextIndex = Math.min((state.slides?.length || 1) - 1, currentSlideIndex + 1);
     if (nextIndex === currentSlideIndex) return true;
     presentationGoToSlide(nextIndex);
@@ -4511,7 +4689,10 @@ async function togglePlayMode() {
     const indices = Reveal.getIndices?.() || {};
     const targetH = Number.isInteger(indices.h) ? indices.h : currentSlideIndex;
     const targetV = Number.isInteger(indices.v) ? indices.v : 0;
-    const targetF = Number.isInteger(indices.f) ? indices.f : 0;
+    // Reveal uses -1/undefined as the "before the first fragment" state.
+    // Starting play mode at fragment 0 makes the first text/object reveal
+    // appear already visible instead of animating on the first advance.
+    const targetF = willPlay ? -1 : Number.isInteger(indices.f) ? indices.f : -1;
 
     // CRITICAL: requestFullscreen() must be called SYNCHRONOUSLY within the
     // user gesture call stack. Any await/microtask before it will invalidate
@@ -4759,6 +4940,14 @@ function exportPresentationPPTX() {
     }
 }
 
+function exportPresentationSceneSVG() {
+    if (typeof window.exportCurrentSlideSceneSVG === "function") {
+        window.exportCurrentSlideSceneSVG();
+    } else {
+        console.error("exportCurrentSlideSceneSVG function not found. Ensure rendering export engine is loaded.");
+    }
+}
+
 // ─── Command Palette ──────────────────────────────────────────────────────────
 
 const COMMANDS = [
@@ -4788,6 +4977,7 @@ const COMMANDS = [
     { id: "ai-cleanup", title: "AI Clean Up Slide", icon: "fa-wand-magic-sparkles", action: aiCleanUpSlide },
     { id: "present", title: "Toggle Presentation Mode", icon: "fa-play", action: togglePlayMode },
     { id: "export-pdf", title: "Export to PDF", icon: "fa-file-pdf", action: exportPresentationPDF },
+    { id: "export-scene-svg", title: "Export Current Slide SVG", icon: "fa-vector-square", action: exportPresentationSceneSVG },
     { id: "export-pptx", title: "Export to PPTX", icon: "fa-file-powerpoint", action: exportPresentationPPTX },
     { id: "export-zip", title: "Export to Web (ZIP)", icon: "fa-file-zipper", action: exportPresentationZip },
     { id: "export-json", title: "Export to JSON", icon: "fa-file-code", action: exportPresentationJson },

@@ -1,4 +1,6 @@
-const MERMAID_CDN_URL = "https://cdn.jsdelivr.net/npm/mermaid@latest/dist/mermaid.esm.min.mjs";
+const MERMAID_VERSION = "11.4.1";
+const MERMAID_LOCAL_URL = "./vendor/mermaid/mermaid.esm.min.mjs";
+const MERMAID_CDN_URL = `https://cdn.jsdelivr.net/npm/mermaid@${MERMAID_VERSION}/dist/mermaid.esm.min.mjs`;
 const SAFE_SVG_TAGS = new Set([
     "svg", "g", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "text", "tspan", "defs", "marker",
     "linearGradient", "radialGradient", "stop", "style", "title", "desc", "use", "pattern", "clipPath", "mask",
@@ -43,7 +45,7 @@ function idle() {
 
 export async function loadMermaid() {
     if (!mermaidPromise) {
-        mermaidPromise = import(MERMAID_CDN_URL).then(module => {
+        mermaidPromise = import(MERMAID_LOCAL_URL).catch(() => import(MERMAID_CDN_URL)).then(module => {
             const mermaid = module.default || module;
             mermaid.initialize({
                 startOnLoad: false,
@@ -58,6 +60,15 @@ export async function loadMermaid() {
         });
     }
     return mermaidPromise;
+}
+
+export function getMermaidRuntimeInfo() {
+    return {
+        version: MERMAID_VERSION,
+        localUrl: MERMAID_LOCAL_URL,
+        fallbackUrl: MERMAID_CDN_URL,
+        pinned: true,
+    };
 }
 
 export function sanitizeMermaidSvg(rawSvg = "") {
@@ -95,8 +106,8 @@ export function sanitizeMermaidSvg(rawSvg = "") {
             }
         }
     }
-    svg.removeAttribute("height");
-    svg.removeAttribute("width");
+    svg.setAttribute("width", "100%");
+    svg.setAttribute("height", "100%");
     svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
     svg.setAttribute("role", "img");
     return new XMLSerializer().serializeToString(svg);

@@ -1,5 +1,8 @@
-import { DrawingEngine } from "./DrawingEngine.js";
-import { ExportManager } from "./ExportManager.js";
+import { AnnotationEngine } from "../annotation/engine/AnnotationEngine.js";
+import { AnnotationSerializer } from "../annotation/engine/AnnotationSerializer.js";
+import { ExportRenderer } from "../annotation/renderers/ExportRenderer.js";
+import { SvgStaticRenderer } from "../annotation/renderers/SvgStaticRenderer.js";
+import { SCIENTIFIC_ANNOTATION_PRESETS } from "../annotation/objects/objectTypes.js";
 import { RoughRenderer } from "./RoughRenderer.js";
 import { StrokeRenderer } from "./StrokeRenderer.js";
 
@@ -12,18 +15,22 @@ let repositionTimer = null;
 let livePersistTimer = null;
 let whiteboardSessionUndoCaptured = false;
 let exitingWhiteboard = false;
+let radialMenuBound = false;
 
 const STROKE_SWATCHES = ["#1f2937", "#e03131", "#2f9e44", "#1971c2", "#f08c00", "#6741d9"];
 const BG_SWATCHES = ["transparent", "#ffc9c9", "#b2f2bb", "#a5d8ff", "#fff3bf", "#ffd43b"];
 const WHITEBOARD_TOOLS = [
     { id: "select", icon: "fa-solid fa-arrow-pointer", label: "Select / Move", primary: true },
     { id: "pen", icon: "fa-solid fa-pen", label: "Pen", primary: true },
-    { id: "rectangle", icon: "fa-regular fa-square", label: "Rectangle", primary: true },
-    { id: "ellipse", icon: "fa-regular fa-circle", label: "Ellipse", primary: true },
-    { id: "line", icon: "fa-solid fa-minus", label: "Line", primary: true },
+    { id: "highlighter", icon: "fa-solid fa-highlighter", label: "Highlighter", primary: true, mapsTo: "pen" },
     { id: "arrow", icon: "fa-solid fa-arrow-right", label: "Arrow", primary: true },
-    { id: "text", icon: "fa-solid fa-font", label: "Text", primary: true },
+    { id: "callout", icon: "fa-regular fa-comment-dots", label: "Callout", primary: true, mapsTo: "rectangle" },
+    { id: "lasso", icon: "fa-solid fa-object-group", label: "Lasso select", primary: true, mapsTo: "select" },
     { id: "eraser", icon: "fa-solid fa-eraser", label: "Eraser", primary: true },
+    { id: "text", icon: "fa-solid fa-font", label: "Label" },
+    { id: "rectangle", icon: "fa-regular fa-square", label: "Box emphasis" },
+    { id: "ellipse", icon: "fa-regular fa-circle", label: "Molecule / ROI highlight" },
+    { id: "line", icon: "fa-solid fa-minus", label: "Connector" },
     { id: "diamond", icon: "fa-solid fa-diamond", label: "Diamond" },
     { id: "triangle", icon: "fa-solid fa-play -rotate-90", label: "Triangle" },
     { id: "star", icon: "fa-regular fa-star", label: "Star" },
@@ -32,11 +39,18 @@ const WHITEBOARD_TOOLS = [
 ];
 
 function getEngine() {
-    if (!engine) engine = new DrawingEngine("slideforge-whiteboard", { showGrid: false, allowPanZoom: false });
+    if (!engine) engine = new AnnotationEngine("slideforge-whiteboard", { showGrid: false, allowPanZoom: false });
     return engine;
 }
 
 window.getWhiteboardEngine = getEngine;
+window.SlideForgeAnnotation = {
+    ...(window.SlideForgeAnnotation || {}),
+    AnnotationSerializer,
+    ExportRenderer,
+    SvgStaticRenderer,
+    SCIENTIFIC_ANNOTATION_PRESETS,
+};
 
 function registerEscHandler() {
     if (escHandler) return;
@@ -115,6 +129,54 @@ function closeWhiteboardBlockingOverlays() {
     document.getElementById("export-menu-dropdown")?.classList.remove("show");
 }
 
+function ensureWhiteboardRadialMenu() {
+    let menu = document.getElementById("whiteboard-radial-menu");
+    if (menu) return menu;
+    menu = document.createElement("div");
+    menu.id = "whiteboard-radial-menu";
+    menu.className = "whiteboard-radial-menu hidden";
+    menu.innerHTML = `
+        <button type="button" data-tool="select" title="Select"><i class="fa-solid fa-arrow-pointer"></i></button>
+        <button type="button" data-tool="pen" title="Pen"><i class="fa-solid fa-pen"></i></button>
+        <button type="button" data-tool="highlighter" title="Highlighter"><i class="fa-solid fa-highlighter"></i></button>
+        <button type="button" data-tool="arrow" title="Arrow"><i class="fa-solid fa-arrow-right"></i></button>
+        <button type="button" data-tool="callout" title="Callout"><i class="fa-regular fa-comment-dots"></i></button>
+        <button type="button" data-tool="eraser" title="Eraser"><i class="fa-solid fa-eraser"></i></button>
+    `;
+    menu.addEventListener("click", event => {
+        const button = event.target?.closest?.("button[data-tool]");
+        if (!button) return;
+        window.setWhiteboardTool?.(button.dataset.tool);
+        menu.classList.add("hidden");
+    });
+    document.body.appendChild(menu);
+    return menu;
+}
+
+function openWhiteboardRadialMenu(event) {
+    if (!document.body.classList.contains("whiteboard-mode-active")) return;
+    event.preventDefault();
+    const menu = ensureWhiteboardRadialMenu();
+    const margin = 12;
+    const width = 244;
+    const height = 48;
+    menu.classList.remove("hidden");
+    menu.style.left = `${Math.min(window.innerWidth - width - margin, Math.max(margin, event.clientX - width / 2))}px`;
+    menu.style.top = `${Math.min(window.innerHeight - height - margin, Math.max(margin, event.clientY - height / 2))}px`;
+}
+
+function bindWhiteboardRadialMenu() {
+    if (radialMenuBound) return;
+    radialMenuBound = true;
+    const canvas = document.getElementById("slideforge-whiteboard");
+    canvas?.addEventListener("contextmenu", openWhiteboardRadialMenu);
+    document.addEventListener("mousedown", event => {
+        const menu = document.getElementById("whiteboard-radial-menu");
+        if (!menu || menu.classList.contains("hidden") || menu.contains(event.target)) return;
+        menu.classList.add("hidden");
+    });
+}
+
 function makeElementId(prefix = "el") {
     const generator = getCallableGlobal("generateId");
     if (generator) return generator(prefix);
@@ -181,19 +243,40 @@ function pxNumber(value, fallback = 1) {
     return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function getSlideCoordinateTransform() {
+    const slideEl = getActiveSlideElement();
+    const rect = slideEl?.getBoundingClientRect?.();
+    const config =
+        typeof getPresentationPageSetupConfig === "function"
+            ? getPresentationPageSetupConfig()
+            : { width: rect?.width || 1024, height: rect?.height || 768 };
+    const slideWidth = Math.max(1, Number(config.width) || 1024);
+    const slideHeight = Math.max(1, Number(config.height) || 768);
+    const renderedWidth = Math.max(1, rect?.width || slideWidth);
+    const renderedHeight = Math.max(1, rect?.height || slideHeight);
+    return {
+        slideWidth,
+        slideHeight,
+        renderedWidth,
+        renderedHeight,
+        slideToCanvasX: renderedWidth / slideWidth,
+        slideToCanvasY: renderedHeight / slideHeight,
+        canvasToSlideX: slideWidth / renderedWidth,
+        canvasToSlideY: slideHeight / renderedHeight,
+    };
+}
+
+function scaleDrawingElements(elements = [], scaleX = 1, scaleY = 1) {
+    return (Array.isArray(elements) ? elements : []).map(element => scaleDrawingElement(element, scaleX, scaleY));
+}
+
 function whiteboardSlideElementsToDrawingElements(slide) {
-    const elements = [];
-    (slide?.elements || []).forEach(el => {
-        if (el.type !== "whiteboard" || !el.drawingElement) return;
-        const viewBox = el.drawingViewBox || {};
-        const scaleX = pxNumber(el.width, viewBox.width || 1) / Math.max(1, Number(viewBox.width) || pxNumber(el.width, 1));
-        const scaleY = pxNumber(el.height, viewBox.height || 1) / Math.max(1, Number(viewBox.height) || pxNumber(el.height, 1));
-        elements.push(globalizeDrawingElement(scaleDrawingElement(el.drawingElement, scaleX, scaleY), Number(el.x) || 0, Number(el.y) || 0, el.id));
-    });
-    if (!elements.length && Array.isArray(slide?.whiteboardElements)) {
-        return cloneElements(slide.whiteboardElements);
-    }
-    return elements;
+    const transform = getSlideCoordinateTransform();
+    return scaleDrawingElements(
+        AnnotationSerializer.annotationsToDrawingElements(AnnotationSerializer.slideToAnnotations(slide)),
+        transform.slideToCanvasX,
+        transform.slideToCanvasY,
+    );
 }
 
 function drawingElementsToSlideElements(drawingElements, previousElements = []) {
@@ -226,6 +309,22 @@ function drawingElementsToSlideElements(drawingElements, previousElements = []) 
             fragmentIndex: previous?.fragmentIndex ?? null,
         };
     });
+}
+
+function migrateSlideAnnotationsIfNeeded(slide) {
+    if (!slide) return [];
+    const annotations = AnnotationSerializer.slideToAnnotations(slide);
+    const migratedSketchIds = new Set(
+        annotations
+            .map(annotation => annotation.metadata?.sourceElementId)
+            .filter(Boolean),
+    );
+    const sketchAnnotations = AnnotationSerializer.migrateLegacySketches(slide).filter(
+        annotation => !migratedSketchIds.has(annotation.metadata?.sourceElementId),
+    );
+    const nextAnnotations = [...annotations, ...sketchAnnotations];
+    AnnotationSerializer.commitAnnotationsToSlide(slide, nextAnnotations, { removeEmbeddedWhiteboards: true });
+    return nextAnnotations;
 }
 
 function renderDrawingElementToCanvas(canvas, whiteboardObject) {
@@ -288,16 +387,28 @@ function persistWhiteboardToSlide({ renderSlide = false, finalizeActive = false,
     const previousElements = slide.elements || [];
     const drawingElements = engine.getElements();
     const selectedDrawingId = engine.selectedElementId;
-    const whiteboardSlideElements = drawingElementsToSlideElements(drawingElements, previousElements);
+    const transform = getSlideCoordinateTransform();
+    const logicalDrawingElements = scaleDrawingElements(drawingElements, transform.canvasToSlideX, transform.canvasToSlideY);
+    const annotations = AnnotationSerializer.drawingElementsToAnnotations(logicalDrawingElements);
+    const whiteboardSlideElements = drawingElementsToSlideElements(logicalDrawingElements, previousElements);
     whiteboardSlideElements.forEach((slideElement, index) => {
+        slideElement.annotationMirror = true;
+        slideElement.annotationId = annotations[index]?.id || logicalDrawingElements[index]?.id || slideElement.id;
+        if (annotations[index]) {
+            annotations[index].metadata = {
+                ...(annotations[index].metadata || {}),
+                sourceElementId: slideElement.id,
+                mirroredAsElement: true,
+            };
+        }
         if (engine.elements[index]) engine.elements[index].sourceElementId = slideElement.id;
     });
+    AnnotationSerializer.commitAnnotationsToSlide(slide, annotations, { removeEmbeddedWhiteboards: false });
     slide.elements = [
         ...previousElements.filter(el => el.type !== "whiteboard"),
         ...whiteboardSlideElements,
     ];
-    slide.whiteboardElements = [];
-    const selectedSlideElement = whiteboardSlideElements.find((slideElement, index) => drawingElements[index]?.id === selectedDrawingId);
+    const selectedAnnotation = annotations.find(annotation => annotation.id === selectedDrawingId || annotation.id === logicalDrawingElements.find(el => el.id === selectedDrawingId)?.sourceAnnotationId);
     if (typeof window.schedulePresentationAutosave === "function") {
         window.schedulePresentationAutosave(250);
     }
@@ -306,9 +417,10 @@ function persistWhiteboardToSlide({ renderSlide = false, finalizeActive = false,
     }
     if (renderSlide && typeof window.renderSlidesFromState === "function") {
         window.renderSlidesFromState({ preserveState: true });
-        if (preserveSelection && selectedSlideElement?.id) {
+        if (preserveSelection && selectedAnnotation?.id) {
             requestAnimationFrame(() => {
-                if (typeof window.selectElement === "function") window.selectElement(selectedSlideElement.id);
+                const mirror = whiteboardSlideElements.find(el => el.annotationId === selectedAnnotation.id || el.id === selectedAnnotation.metadata?.sourceElementId);
+                if (mirror?.id && typeof window.selectElement === "function") window.selectElement(mirror.id);
             });
         }
         return;
@@ -335,7 +447,8 @@ function syncWhiteboardFromSlide({ force = false } = {}) {
     if (!force && activeSlideKey === key) return;
     activeSlideKey = key;
     syncingFromSlide = true;
-    getEngine().setElements(whiteboardSlideElementsToDrawingElements(slide));
+    const annotations = migrateSlideAnnotationsIfNeeded(slide);
+    getEngine().setAnnotationObjects?.(annotations);
     syncingFromSlide = false;
 }
 
@@ -407,7 +520,7 @@ function updateWhiteboardUi() {
     WHITEBOARD_TOOLS.forEach(({ id: tool }) => {
         const btn = document.getElementById(`wb-tool-${tool}`);
         if (!btn) return;
-        const active = activeEngine.activeTool === tool;
+        const active = (activeEngine.annotationTool || activeEngine.activeTool) === tool;
         btn.classList.toggle("bg-indigo-50", active);
         btn.classList.toggle("text-indigo-600", active);
         btn.classList.toggle("font-bold", active);
@@ -517,6 +630,12 @@ function renderStylePanel(activeEngine) {
                 ${optionButton("Send backward", false, "sendWhiteboardBackward()", '<i class="fa-solid fa-arrow-down"></i>')}
                 ${optionButton("Bring forward", false, "bringWhiteboardForward()", '<i class="fa-solid fa-arrow-up"></i>')}
                 ${optionButton("Bring to front", false, "bringWhiteboardToFront()", '<i class="fa-solid fa-angles-up"></i>')}
+            </div>
+        </div>
+        <div class="wb-panel-section">
+            <div class="wb-panel-label">Scientific presets</div>
+            <div class="wb-science-preset-row">
+                ${SCIENTIFIC_ANNOTATION_PRESETS.map(preset => `<button type="button" class="wb-science-preset" title="${preset.label}" onclick="setWhiteboardScientificPreset('${preset.id}')"><i class="fa-solid ${preset.icon}"></i><span>${preset.label}</span></button>`).join("")}
             </div>
         </div>
         <div class="wb-panel-section">
@@ -678,6 +797,7 @@ window.toggleWhiteboardMode = function () {
     const activeEngine = getEngine();
     activeEngine.setOptions({ showGrid: false, allowPanZoom: false });
     activeEngine.setupEventHandlers();
+    bindWhiteboardRadialMenu();
     startPositionTracking();
     setTimeout(() => {
         container.style.opacity = "1";
@@ -719,6 +839,7 @@ window.exitWhiteboardMode = function (options = {}) {
     container.style.pointerEvents = "none";
     const canvas = document.getElementById("slideforge-whiteboard");
     if (canvas) canvas.style.pointerEvents = "none";
+    document.getElementById("whiteboard-radial-menu")?.classList.add("hidden");
     document.body.classList.remove("whiteboard-mode-active");
     toolbar.style.opacity = "0";
     toolbar.style.pointerEvents = "none";
@@ -730,6 +851,7 @@ window.exitWhiteboardMode = function (options = {}) {
         guide.style.transform = "translateY(16px)";
     }
     btn?.classList.remove("bg-indigo-100", "ring-2", "ring-indigo-300");
+    container.style.display = "none";
     setTimeout(() => {
         container.style.display = "none";
         if (guide) guide.style.display = "none";
@@ -742,8 +864,51 @@ window.exitWhiteboardMode = function (options = {}) {
 };
 
 window.setWhiteboardTool = function (tool) {
-    getEngine()?.setTool(tool);
+    const activeEngine = getEngine();
+    const config = WHITEBOARD_TOOLS.find(item => item.id === tool);
+    if (activeEngine) activeEngine.annotationTool = tool;
+    if (tool === "highlighter") {
+        activeEngine.annotationRole = "highlighter";
+        activeEngine?.updateSelectedStyle({
+            strokeColor: "#facc15",
+            strokeWidth: 14,
+            opacity: 0.38,
+            fillStyle: "none",
+        });
+    } else if (tool === "callout") {
+        activeEngine.annotationRole = "figure-callout";
+        activeEngine?.updateSelectedStyle({
+            strokeColor: "#2563eb",
+            backgroundColor: "#dbeafe",
+            fillStyle: "solid",
+            strokeWidth: 2,
+            opacity: 0.92,
+        });
+    } else if (activeEngine) {
+        activeEngine.annotationRole = null;
+    }
+    activeEngine?.setTool(config?.mapsTo || tool);
     document.getElementById("whiteboard-more-tools")?.classList.add("hidden");
+    updateWhiteboardUi();
+};
+
+window.setWhiteboardScientificPreset = function (presetId) {
+    const activeEngine = getEngine();
+    const preset = SCIENTIFIC_ANNOTATION_PRESETS.find(item => item.id === presetId);
+    if (!activeEngine || !preset) return;
+    if (preset.tool === "moleculeHighlight") {
+        activeEngine.updateSelectedStyle({ strokeColor: "#14b8a6", backgroundColor: "#ccfbf1", fillStyle: "solid", strokeWidth: 3, opacity: 0.72 });
+        activeEngine.setTool("ellipse");
+    } else if (preset.tool === "pathwayArrow") {
+        activeEngine.updateSelectedStyle({ strokeColor: "#7c3aed", backgroundColor: "transparent", fillStyle: "none", strokeWidth: 4, opacity: 1 });
+        activeEngine.setTool("curve_arrow");
+    } else if (preset.tool === "equationMarker") {
+        activeEngine.updateSelectedStyle({ strokeColor: "#f97316", backgroundColor: "#ffedd5", fillStyle: "solid", strokeWidth: 2, opacity: 0.62 });
+        activeEngine.setTool("rectangle");
+    } else {
+        activeEngine.updateSelectedStyle({ strokeColor: "#2563eb", backgroundColor: "#dbeafe", fillStyle: "solid", strokeWidth: 2, opacity: 0.9 });
+        activeEngine.setTool(preset.tool === "callout" ? "rectangle" : "text");
+    }
     updateWhiteboardUi();
 };
 
@@ -837,7 +1002,11 @@ window.exportWhiteboardSVG = function () {
         alert("The whiteboard is empty. Draw something first.");
         return;
     }
-    const svg = ExportManager.generateSVG(activeEngine.elements, activeEngine.viewport);
+    const slideConfig =
+        typeof window.getPresentationPageSetupConfig === "function"
+            ? window.getPresentationPageSetupConfig()
+            : { width: 1024, height: 768 };
+    const svg = ExportRenderer.generateSVG(activeEngine.getAnnotationObjects?.() || activeEngine.elements, activeEngine.viewport, slideConfig.width, slideConfig.height);
     const blob = new Blob([svg], { type: "image/svg+xml" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

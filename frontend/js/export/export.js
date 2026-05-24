@@ -175,11 +175,40 @@ async function getCurrentAppCssForZip() {
         document.querySelector('link[href*="/css/styles.css"]');
     const href = stylesheet?.getAttribute("href") || "css/styles.css";
     try {
-        const response = await fetch(new URL(href, window.location.href).toString(), { cache: "no-store" });
-        return response.ok ? await response.text() : "";
+        const url = new URL(href, window.location.href);
+        const response = await fetch(url.toString(), { cache: "no-store" });
+        if (!response.ok) return "";
+        return await inlineCssImportsForZip(await response.text(), url);
     } catch (_err) {
         return "";
     }
+}
+
+async function inlineCssImportsForZip(css = "", baseUrl, seen = new Set()) {
+    const importRegex = /@import\s+(?:url\()?["']?([^"')]+)["']?\)?\s*;/gi;
+    let result = "";
+    let cursor = 0;
+    let match;
+    while ((match = importRegex.exec(css))) {
+        result += css.slice(cursor, match.index);
+        cursor = match.index + match[0].length;
+        const importHref = match[1];
+        try {
+            const importUrl = new URL(importHref, baseUrl);
+            if (seen.has(importUrl.href)) continue;
+            seen.add(importUrl.href);
+            const response = await fetch(importUrl.href, { cache: "no-store" });
+            if (!response.ok) continue;
+            const importedCss = await response.text();
+            result += `\n/* inlined ${importHref} */\n`;
+            result += await inlineCssImportsForZip(importedCss, importUrl, seen);
+            result += "\n";
+        } catch (_err) {
+            result += `\n/* skipped unresolved import ${importHref} */\n`;
+        }
+    }
+    result += css.slice(cursor);
+    return result;
 }
 
 async function getCurrentAppScriptForZip(path) {
@@ -1307,6 +1336,8 @@ body {
 
 function generateViewerJs() {
     return `
+${sanitizeHtml.toString()}
+
 const animationEffects = ['fade-in', 'slide-up', 'slide-down', 'slide-left', 'slide-right', 'zoom-in', 'pop-in', 'wipe-in', 'pulse', 'glow'];
 const MOLECULE_EMBED_NGL_SRC = ${JSON.stringify(typeof MOLECULE_EMBED_NGL_SRC === "string" ? MOLECULE_EMBED_NGL_SRC : "https://unpkg.com/ngl@2.4.0/dist/ngl.js")};
 
@@ -2471,6 +2502,45 @@ function renderConnectorElement(el, elData) {
 }
 
 function renderTextContent(elData) {
+    if (elData.textDocument && Array.isArray(elData.textDocument.blocks)) {
+        const escape = value => String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+        const runHtml = run => {
+            let inner = escape(run?.text || run?.altText || run?.latex || '');
+            const styles = [];
+            (Array.isArray(run?.marks) ? run.marks : []).forEach(mark => {
+                if (!mark) return;
+                if (mark.type === 'bold') styles.push('font-weight:700');
+                if (mark.type === 'italic') styles.push('font-style:italic');
+                if (mark.type === 'underline') styles.push('text-decoration:underline');
+                if (mark.type === 'strike') styles.push('text-decoration:line-through');
+                if (mark.type === 'subscript') styles.push('vertical-align:sub;font-size:0.72em');
+                if (mark.type === 'superscript') styles.push('vertical-align:super;font-size:0.72em');
+                if (mark.type === 'style' && mark.style) {
+                    Object.entries(mark.style).forEach(([prop, value]) => {
+                        if (!/(?:expression\s*\(|javascript:|data:text\/html|url\s*\()/i.test(String(value || ''))) {
+                            styles.push(String(prop).replace(/[A-Z]/g, m => '-' + m.toLowerCase()) + ':' + String(value));
+                        }
+                    });
+                }
+            });
+            return styles.length ? '<span style="' + styles.join(';') + '">' + inner + '</span>' : inner;
+        };
+        return elData.textDocument.blocks.map(block => {
+            const inner = (block.children || []).map(runHtml).join('') || '<br>';
+            if (block.type === 'listItem') {
+                const level = Math.max(0, Number(block.list?.level) || 0);
+                const style = block.list?.style || elData.bulletStyle || 'default';
+                const marker = block.list?.kind === 'numbered' ? String(block.list?.ordinal || 1) + '.' : '•';
+                return '<div class="ppt-bullet-block" data-bullet-style="' + escape(style) + '"><div class="ppt-bullet-row" style="--bullet-indent:' + (level * 20) + 'px;"><span class="ppt-bullet-marker">' + marker + '</span><span class="ppt-bullet-text">' + inner + '</span></div></div>';
+            }
+            if (block.type === 'heading') return '<h' + (block.level || 1) + '>' + inner + '</h' + (block.level || 1) + '>';
+            return inner;
+        }).join('<br>');
+    }
     if (Array.isArray(elData.content)) {
         const bulletStyle = (elData.bulletStyle && BULLET_STYLE_THEMES[elData.bulletStyle]) ? elData.bulletStyle : 'default';
         let html = '<div class="ppt-bullet-block" data-bullet-style="' + bulletStyle + '">';

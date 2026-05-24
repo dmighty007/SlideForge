@@ -43,6 +43,7 @@ export class DrawingEngine {
         this.roughness = 1.6;
         this.bowing = 1.0;
         this.opacity = 1;
+        this.annotationRole = null;
         this.fontFamily = '"Virgil", "Comic Sans MS", "Segoe Print", cursive';
         this.fontSize = 22;
 
@@ -130,6 +131,8 @@ export class DrawingEngine {
             roughness: this.roughness,
             bowing: this.bowing,
             opacity: this.opacity,
+            role: this.annotationRole || overrides.role || type,
+            blendMode: this.annotationRole === "highlighter" ? "multiply" : "normal",
             ...overrides,
         };
     }
@@ -201,7 +204,7 @@ export class DrawingEngine {
             }
             const hit = this.hitTest(worldPt);
             this.selectedElementId = hit?.id || null;
-            if (hit) {
+            if (hit && !hit.locked) {
                 this.history.pushState(this.elements);
                 this.isMovingSelection = true;
                 this.moveStart = {
@@ -391,13 +394,19 @@ export class DrawingEngine {
                 d: "diamond",
                 l: "line",
                 a: "arrow",
+                h: "highlighter",
+                c: "callout",
                 t: "text",
                 e: "eraser",
             };
             const nextTool = toolKeys[e.key.toLowerCase()];
             if (nextTool) {
                 e.preventDefault();
-                this.setTool(nextTool);
+                if (typeof window.setWhiteboardTool === "function" && ["highlighter", "callout"].includes(nextTool)) {
+                    window.setWhiteboardTool(nextTool);
+                } else {
+                    this.setTool(nextTool);
+                }
                 return;
             }
         }
@@ -414,6 +423,20 @@ export class DrawingEngine {
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
             e.preventDefault();
             this.duplicateSelected();
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "l") {
+            e.preventDefault();
+            this.toggleSelectedLock();
+        }
+        if (e.key === "[" || e.key === "]") {
+            e.preventDefault();
+            const delta = e.key === "]" ? 1 : -1;
+            this.updateSelectedStyle({ strokeWidth: Math.max(1, (Number(this.strokeWidth) || 2) + delta) });
+        }
+        if (/^[1-6]$/.test(e.key) && typeof window.setWhiteboardColor === "function") {
+            const swatches = ["#1f2937", "#e03131", "#2f9e44", "#1971c2", "#f08c00", "#6741d9"];
+            e.preventDefault();
+            window.setWhiteboardColor(swatches[Number(e.key) - 1]);
         }
         if (e.key === "Delete" || e.key === "Backspace") {
             if (this.selectedElementId) {
@@ -928,7 +951,7 @@ export class DrawingEngine {
 
     duplicateSelected() {
         const selected = this.getSelectedElement();
-        if (!selected) return;
+        if (!selected || selected.locked) return;
         this.history.pushState(this.elements);
         const copy = JSON.parse(JSON.stringify(selected));
         copy.id = `${selected.id}_copy_${Date.now()}`;
@@ -940,8 +963,19 @@ export class DrawingEngine {
         this.emitChange();
     }
 
+    toggleSelectedLock() {
+        const selected = this.getSelectedElement();
+        if (!selected || selected.locked) return;
+        this.history.pushState(this.elements);
+        selected.locked = !selected.locked;
+        this.requestRender();
+        this.emitChange();
+    }
+
     deleteSelected() {
         if (!this.selectedElementId) return;
+        const selected = this.getSelectedElement();
+        if (selected?.locked) return;
         this.history.pushState(this.elements);
         this.elements = this.elements.filter(el => el.id !== this.selectedElementId);
         this.selectedElementId = null;

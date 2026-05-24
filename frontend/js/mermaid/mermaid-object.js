@@ -1,7 +1,10 @@
 import { normalizeMermaidStyle, renderMermaid, sanitizeMermaidSvg } from "./mermaid-engine.js";
-import { canUseVisualGraph, graphToSvg, parseMermaidToGraph } from "./mermaid-graph.js";
-import { createGraphDocument, documentToGraphModel, renderDocumentToSvg } from "./mermaid-document.js";
+import { canUseVisualGraph, graphToSvg } from "./mermaid-graph.js";
+import { renderDocumentToSvg } from "./mermaid-document.js";
 import { DEFAULT_MERMAID_TEMPLATE, inferMermaidType } from "./mermaid-templates.js";
+import { ensureGraphElementDocument } from "../graph/schema/migrations.js";
+import { MermaidExporter } from "../graph/parsers/MermaidExporter.js";
+import { SvgGraphRenderer } from "../graph/renderers/SvgGraphRenderer.js";
 
 function readGlobal(name, fallback = null) {
     try {
@@ -22,6 +25,13 @@ export function createMermaidElementData(overrides = {}) {
     const theme = overrides.theme || "default";
     const id = overrides.id || callGlobal("generateId", "el") || `el_mermaid_${Date.now()}`;
     const zIndex = callGlobal("getNextZIndex") || 1;
+    const graphState = canUseVisualGraph(source) || overrides.graphDocument || overrides.graphModel
+        ? ensureGraphElementDocument({
+            ...overrides,
+            mermaidSource: source,
+            style: normalizeMermaidStyle(overrides.style || {}),
+        })
+        : { graphDocument: null, graphModel: null };
     return {
         id,
         type: "mermaid",
@@ -39,15 +49,9 @@ export function createMermaidElementData(overrides = {}) {
         svgContent: sanitizeMermaidSvg(overrides.svgContent || ""),
         svgManualEdits: Boolean(overrides.svgManualEdits),
         editMode: ["visual", "code", "split"].includes(overrides.editMode) ? overrides.editMode : "visual",
-        graphDocument: overrides.graphDocument || (canUseVisualGraph(source) ? createGraphDocument({
-            mermaidSource: source,
-            graphModel: overrides.graphModel || null,
-            styles: overrides.style || {},
-            routingStyle: overrides.routingStyle,
-            autoLayout: overrides.autoLayout,
-            lockedLayout: overrides.lockedLayout,
-        }) : null),
-        graphModel: overrides.graphModel || (overrides.graphDocument ? documentToGraphModel(overrides.graphDocument) : (canUseVisualGraph(source) ? parseMermaidToGraph(source, null) : null)),
+        graphDocument: graphState.graphDocument,
+        graphModel: graphState.graphModel,
+        semanticGraphVersion: graphState.graphDocument?.schemaVersion || null,
         nodePositions: overrides.nodePositions || {},
         lockedLayout: Boolean(overrides.lockedLayout),
         autoLayout: overrides.autoLayout !== false,
@@ -91,6 +95,27 @@ export function updateMermaidElement(id, updates = {}, options = {}) {
     if (updates.style !== undefined) element.style = normalizeMermaidStyle(updates.style);
     if (updates.graphModel !== undefined) element.graphModel = updates.graphModel;
     if (updates.graphDocument !== undefined) element.graphDocument = updates.graphDocument;
+    if (
+        element.graphDocument ||
+        element.graphModel ||
+        updates.mermaidSource !== undefined ||
+        updates.graphModel !== undefined ||
+        updates.graphDocument !== undefined
+    ) {
+        const shouldKeepGraph = updates.mermaidSource !== undefined
+            ? (canUseVisualGraph(element.mermaidSource || "") || updates.graphDocument || updates.graphModel)
+            : (canUseVisualGraph(element.mermaidSource || "") || element.graphDocument || element.graphModel);
+        const graphState = shouldKeepGraph
+            ? ensureGraphElementDocument(element)
+            : { graphDocument: null, graphModel: null };
+        element.graphDocument = graphState.graphDocument;
+        element.graphModel = graphState.graphModel;
+        element.semanticGraphVersion = graphState.graphDocument?.schemaVersion || null;
+        if (element.graphDocument?.nodes?.length && updates.mermaidSource === undefined) {
+            element.mermaidSource = MermaidExporter.fromGraphDocument(element.graphDocument);
+            element.mermaidType = inferMermaidType(element.mermaidSource);
+        }
+    }
     const dom = document.getElementById(id);
     if (dom) renderMermaidElement(dom, element, { force: true, updateState: false });
     if (options.render !== false) callGlobal("renderSlidesFromState", { preserveState: true });
@@ -118,17 +143,16 @@ export function renderMermaidElement(host, elData = {}, options = {}) {
     }
 
     const currentSvg = sanitizeMermaidSvg(elData.svgContent || "");
-    if ((elData.graphDocument || elData.graphModel) && canUseVisualGraph(elData.mermaidSource || "")) {
-        if (!elData.graphDocument) elData.graphDocument = createGraphDocument({
-            mermaidSource: elData.mermaidSource || "",
-            graphModel: elData.graphModel,
-            styles: elData.style || {},
-            routingStyle: elData.routingStyle,
-            autoLayout: elData.autoLayout,
-            lockedLayout: elData.lockedLayout,
-        });
-        elData.graphModel = documentToGraphModel(elData.graphDocument);
-        const svg = renderDocumentToSvg(elData.graphDocument, normalizeMermaidStyle(elData.style || {}), { selectedId: "" }) || graphToSvg(elData.graphModel, normalizeMermaidStyle(elData.style || {}), { selectedId: "" });
+    const shouldUseSemanticGraph = (elData.graphDocument || elData.graphModel) && (canUseVisualGraph(elData.mermaidSource || "") || elData.graphDocument?.nodes?.length);
+    if (shouldUseSemanticGraph) {
+        const graphState = ensureGraphElementDocument(elData);
+        elData.graphDocument = graphState.graphDocument;
+        elData.graphModel = graphState.graphModel;
+        elData.semanticGraphVersion = graphState.graphDocument?.schemaVersion || null;
+        const svg = SvgGraphRenderer.render(elData.graphDocument, {
+            style: normalizeMermaidStyle(elData.style || {}),
+            selectedIds: [],
+        }) || renderDocumentToSvg(elData.graphDocument, normalizeMermaidStyle(elData.style || {}), { selectedId: "" }) || graphToSvg(elData.graphModel, normalizeMermaidStyle(elData.style || {}), { selectedId: "" });
         svgHost.innerHTML = svg || currentSvg || `<div class="mermaid-render-status"><i class="fa-solid fa-diagram-project"></i><span>Diagram</span></div>`;
         elData.svgContent = svg || currentSvg;
         return;

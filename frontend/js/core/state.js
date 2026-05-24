@@ -628,10 +628,12 @@ const SAFE_TEXT_STYLE_PROPS = new Set([
 ]);
 const SAFE_ELEMENT_STYLE_PROPS = new Set([
     "backgroundColor",
+    "border",
     "borderColor",
     "borderRadius",
     "borderStyle",
     "borderWidth",
+    "boxShadow",
     "color",
     "fontFamily",
     "fontSize",
@@ -640,7 +642,14 @@ const SAFE_ELEMENT_STYLE_PROPS = new Set([
     "fill",
     "letterSpacing",
     "lineHeight",
+    "minHeight",
+    "minWidth",
     "opacity",
+    "padding",
+    "paddingBottom",
+    "paddingLeft",
+    "paddingRight",
+    "paddingTop",
     "stroke",
     "text",
     "textAlign",
@@ -1085,6 +1094,15 @@ function normalizeStateIds() {
                           minAutoFitFontSize: Number.isFinite(Number(safeEl.minAutoFitFontSize))
                               ? Math.max(6, Math.min(72, Number(safeEl.minAutoFitFontSize)))
                               : undefined,
+                          textDocument:
+                              typeof createTextDocumentFromLegacyContent === "function"
+                                  ? createTextDocumentFromLegacyContent(safeEl.textDocument || safeEl.content, {
+                                        bulletStyle:
+                                            typeof safeEl.bulletStyle === "string" && safeEl.bulletStyle
+                                                ? safeEl.bulletStyle
+                                                : "default",
+                                    })
+                                  : safeEl.textDocument,
                           themeManaged: safeEl.themeManaged ?? true,
                       }
                     : fallbackType === "table"
@@ -1173,7 +1191,18 @@ function normalizeStateIds() {
                               : fallbackType === "molecule" && typeof createDefaultMoleculeContent === "function"
                                 ? createDefaultMoleculeContent()
                               : "",
-                styles: { ...fallbackStyles, ...sanitizeElementStyles(safeEl.styles || {}) },
+                styles: (() => {
+                    const rawStyles = safeEl.styles && typeof safeEl.styles === "object" ? safeEl.styles : null;
+                    const normalizedStyles = { ...fallbackStyles, ...sanitizeElementStyles(rawStyles || {}) };
+                    if (
+                        (fallbackType === "text" || fallbackType === "table") &&
+                        rawStyles &&
+                        !Object.prototype.hasOwnProperty.call(rawStyles, "textAlign")
+                    ) {
+                        delete normalizedStyles.textAlign;
+                    }
+                    return normalizedStyles;
+                })(),
             };
         });
 

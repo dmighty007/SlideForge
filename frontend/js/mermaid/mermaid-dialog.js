@@ -6,12 +6,14 @@ import {
     SCIENTIFIC_WORKFLOW_PRIMITIVES,
     applyPresentationPreset,
     createGraphDocument,
-    deriveMermaidFromDocument,
     documentToGraphModel,
-    renderDocumentToSvg,
     updateDocumentFromGraphModel,
 } from "./mermaid-document.js";
 import { DEFAULT_MERMAID_TEMPLATE, MERMAID_TEMPLATES, inferMermaidType } from "./mermaid-templates.js";
+import { ensureGraphElementDocument, ensureSemanticGraphDocument } from "../graph/schema/migrations.js";
+import { MermaidExporter } from "../graph/parsers/MermaidExporter.js";
+import { SvgGraphRenderer } from "../graph/renderers/SvgGraphRenderer.js";
+import { validateScientificGraph } from "../graph/schema/validationRules.js";
 
 const THEMES = ["default", "neutral", "dark", "forest", "base"];
 let dialogState = null;
@@ -475,7 +477,7 @@ function setEditorValue(value) {
 function syncEditorFromGraph() {
     if (!dialogState?.graphModel) return;
     dialogState.suppressEditorSync = true;
-    setEditorValue(dialogState.graphDocument ? deriveMermaidFromDocument(dialogState.graphDocument) : graphToMermaid(dialogState.graphModel));
+    setEditorValue(dialogState.graphDocument ? MermaidExporter.fromGraphDocument(dialogState.graphDocument) : graphToMermaid(dialogState.graphModel));
     dialogState.suppressEditorSync = false;
 }
 
@@ -483,11 +485,16 @@ function syncDocumentFromGraph(interaction = "graph-update") {
     if (!dialogState?.graphModel) return null;
     const style = getSelectedStyle();
     dialogState.graphModel.style = style;
-    dialogState.graphDocument = updateDocumentFromGraphModel(
+    const updatedDocument = updateDocumentFromGraphModel(
         dialogState.graphDocument || createGraphDocument({ graphModel: dialogState.graphModel, styles: style }),
         dialogState.graphModel,
         { interaction, styles: style },
     );
+    dialogState.graphDocument = ensureSemanticGraphDocument(updatedDocument, {
+        mermaidSource: getEditorValue(),
+        style,
+        graphModel: dialogState.graphModel,
+    });
     dialogState.graphDocument.styles = style;
     dialogState.graphModel = documentToGraphModel(dialogState.graphDocument);
     dialogState.graphModel.style = style;
@@ -501,13 +508,17 @@ function rebuildGraphFromEditor(options = {}) {
         dialogState.graphDocument = null;
         return null;
     }
-    dialogState.graphDocument = createGraphDocument({
+    const legacyDocument = createGraphDocument({
         mermaidSource: source,
         graphModel: options.forceLayout ? null : dialogState.graphModel,
         styles: getSelectedStyle(),
         routingStyle: dialogState.routingStyle,
         autoLayout: dialogState.autoLayout,
         lockedLayout: dialogState.lockedLayout,
+    });
+    dialogState.graphDocument = ensureSemanticGraphDocument(legacyDocument, {
+        mermaidSource: source,
+        style: getSelectedStyle(),
     });
     dialogState.graphModel = documentToGraphModel(dialogState.graphDocument);
     dialogState.graphModel.style = getSelectedStyle();
@@ -687,6 +698,7 @@ function installGraphInteraction(preview) {
     if (!preview || preview.dataset.graphInteractionInstalled === "true") return;
     preview.dataset.graphInteractionInstalled = "true";
     let drag = null;
+    let resize = null;
     let edgeLabelDrag = null;
     let connect = null;
     let marquee = null;
@@ -705,10 +717,29 @@ function installGraphInteraction(preview) {
     };
     preview.addEventListener("pointerdown", event => {
         if (!dialogState?.graphModel || dialogState.editMode === "code") return;
+        const resizeHandle = event.target.closest?.(".mermaid-graph-resize-handle");
         const handle = event.target.closest?.(".mermaid-graph-connect-handle");
         const edgeLabelEl = event.target.closest?.(".mermaid-graph-edge-label");
         const nodeEl = event.target.closest?.(".mermaid-graph-node");
         const edgeEl = event.target.closest?.(".mermaid-graph-edge");
+        if (resizeHandle) {
+            const id = resizeHandle.dataset.nodeId;
+            const node = dialogState.graphModel.nodes.find(item => item.id === id);
+            if (!node || node.locked) return;
+            selectGraphItem("node", id);
+            const point = getPoint(event);
+            resize = {
+                id,
+                handle: resizeHandle.dataset.resizeHandle || "br",
+                startX: point.x,
+                startY: point.y,
+                width: node.width,
+                height: node.height,
+            };
+            preview.setPointerCapture?.(event.pointerId);
+            event.preventDefault();
+            return;
+        }
         if (edgeLabelEl) {
             const id = edgeLabelEl.dataset.edgeId;
             const edge = dialogState.graphModel.edges.find(item => item.id === id);
@@ -788,6 +819,18 @@ function installGraphInteraction(preview) {
                 y: Math.round((edgeLabelDrag.offsetY + point.y - edgeLabelDrag.startY) / 5) * 5,
             };
             renderGraphPreview({ syncEditor: false, updateCanvas: false });
+        } else if (resize) {
+            const node = dialogState.graphModel.nodes.find(item => item.id === resize.id);
+            if (!node) return;
+            const dx = point.x - resize.startX;
+            const dy = point.y - resize.startY;
+            node.width = Math.max(88, Math.min(520, Math.round((resize.width + dx) / 10) * 10));
+            if (resize.handle === "br") {
+                node.height = Math.max(48, Math.min(320, Math.round((resize.height + dy) / 10) * 10));
+            }
+            dialogState.graphModel.nodePositions[node.id] = { x: node.x, y: node.y };
+            markManualGraphLayout();
+            renderGraphPreview({ syncEditor: false, updateCanvas: false });
         } else if (drag) {
             drag.nodes.forEach(snapshot => {
                 const node = dialogState.graphModel.nodes.find(item => item.id === snapshot.id);
@@ -796,7 +839,7 @@ function installGraphInteraction(preview) {
                 node.y = Math.round((snapshot.y + point.y - drag.startY) / 10) * 10;
                 dialogState.graphModel.nodePositions[node.id] = { x: node.x, y: node.y };
             });
-            softRelaxAroundSelection();
+            markManualGraphLayout();
             renderGraphPreview({ syncEditor: false, updateCanvas: false });
         } else if (marquee) {
             marquee.current = point;
@@ -808,6 +851,10 @@ function installGraphInteraction(preview) {
         if (drag) {
             drag = null;
             commitGraphChange("Node moved", { syncEditor: true });
+        }
+        if (resize) {
+            resize = null;
+            commitGraphChange("Node resized", { syncEditor: true });
         }
         if (edgeLabelDrag) {
             edgeLabelDrag = null;
@@ -908,6 +955,16 @@ function softRelaxAroundSelection() {
     }
 }
 
+function markManualGraphLayout() {
+    if (!dialogState?.graphModel) return;
+    dialogState.graphModel.autoLayout = false;
+    dialogState.graphModel.lockedLayout = true;
+    dialogState.autoLayout = false;
+    dialogState.lockedLayout = true;
+    const layoutMode = document.getElementById("mermaid-layout-mode");
+    if (layoutMode) layoutMode.value = "manual";
+}
+
 function openInlineEditor(id, options = {}) {
     const model = dialogState?.graphModel;
     const item = model?.nodes?.find(node => node.id === id) || model?.edges?.find(edge => edge.id === id);
@@ -985,7 +1042,7 @@ function getPreviewSvgContent() {
     if (dialogState?.graphModel) {
         if (!dialogState.graphDocument) syncDocumentFromGraph("export-preview");
         return dialogState.graphDocument
-            ? renderDocumentToSvg(dialogState.graphDocument, getSelectedStyle(), { selectedIds: [] })
+            ? SvgGraphRenderer.render(dialogState.graphDocument, { style: getSelectedStyle(), selectedIds: [] })
             : graphToSvg(dialogState.graphModel, getSelectedStyle(), { selectedIds: [] });
     }
     const preview = document.getElementById("mermaid-preview");
@@ -1268,6 +1325,7 @@ function nudgeSelection(key, amount) {
         node.y += dy;
         dialogState.graphModel.nodePositions[node.id] = { x: node.x, y: node.y };
     });
+    markManualGraphLayout();
     commitGraphChange("Moved", { syncEditor: true });
 }
 
@@ -1293,6 +1351,7 @@ function alignSelectionCenterline() {
         node.y = Math.round((centerY - node.height / 2) / 10) * 10;
         dialogState.graphModel.nodePositions[node.id] = { x: node.x, y: node.y };
     });
+    markManualGraphLayout();
     commitGraphChange("Selection aligned", { syncEditor: true });
 }
 
@@ -1309,7 +1368,9 @@ function layoutSelection() {
         .forEach((node, index) => {
             node.x = bounds.x + index * 190;
             node.y = bounds.y;
+            dialogState.graphModel.nodePositions[node.id] = { x: node.x, y: node.y };
         });
+    markManualGraphLayout();
     commitGraphChange("Selection arranged", { syncEditor: true });
 }
 
@@ -1427,13 +1488,22 @@ function renderGraphPreview(options = {}) {
     if (dialogState.graphDocument) dialogState.graphDocument.styles = style;
     if (!dialogState.graphDocument) syncDocumentFromGraph("render");
     const svg = dialogState.graphDocument
-        ? renderDocumentToSvg(dialogState.graphDocument, style, { selectedIds: getSelectedIds() })
-        : graphToSvg(dialogState.graphModel, style, { selectedIds: getSelectedIds() });
+        ? SvgGraphRenderer.render(dialogState.graphDocument, {
+            style,
+            selectedIds: getSelectedIds(),
+            showConnectHandles: true,
+            showResizeHandles: true,
+        })
+        : graphToSvg(dialogState.graphModel, style, {
+            selectedIds: getSelectedIds(),
+            showConnectHandles: true,
+            showResizeHandles: true,
+        });
     preview.innerHTML = svg;
     installGraphInteraction(preview);
     preview.classList.remove("is-loading");
     dialogState.lastValidSvg = svg;
-    dialogState.lastValidSource = dialogState.graphDocument ? deriveMermaidFromDocument(dialogState.graphDocument) : graphToMermaid(dialogState.graphModel);
+    dialogState.lastValidSource = dialogState.graphDocument ? MermaidExporter.fromGraphDocument(dialogState.graphDocument) : graphToMermaid(dialogState.graphModel);
     dialogState.lastValidTheme = getSelectedTheme();
     dialogState.lastValidStyle = style;
     if (options.updateCanvas !== false) updateLiveCanvasObject(dialogState.lastValidSource, svg);
@@ -1451,6 +1521,14 @@ function schedulePreview(options = {}) {
 async function runValidation({ force = false } = {}) {
     const source = getEditorValue();
     const result = await validateMermaid(source);
+    if (result.ok && dialogState?.graphDocument?.nodes?.length) {
+        const scientific = validateScientificGraph(dialogState.graphDocument);
+        if (scientific.warnings?.length) {
+            const message = `${result.message} ${scientific.warnings[0].message}`;
+            if (force) setDiagnostics(message, null);
+            return { ...result, message, scientificWarnings: scientific.warnings };
+        }
+    }
     if (force || !result.ok) setDiagnostics(result.message, result.ok);
     return result;
 }
@@ -1501,6 +1579,10 @@ function updateLiveCanvasObject(source, svg) {
         if (typeof saveStateToUndo === "function") saveStateToUndo();
         dialogState.undoCaptured = true;
     }
+    const graphDocument = dialogState.graphDocument
+        ? ensureSemanticGraphDocument(dialogState.graphDocument, { mermaidSource: source, style: getSelectedStyle(), graphModel: dialogState.graphModel })
+        : null;
+    const graphModel = graphDocument ? documentToGraphModel(graphDocument) : dialogState.graphModel;
     Object.assign(element, {
         mermaidSource: source,
         mermaidType: inferMermaidType(source),
@@ -1509,13 +1591,14 @@ function updateLiveCanvasObject(source, svg) {
         svgContent: svg,
         svgManualEdits: Boolean(dialogState.hasPartEdits),
         editMode: dialogState.editMode || "split",
-        graphModel: dialogState.graphModel,
-        graphDocument: dialogState.graphDocument,
-        nodePositions: dialogState.graphModel?.nodePositions || {},
-        lockedLayout: Boolean(dialogState.graphModel?.lockedLayout),
-        autoLayout: dialogState.graphModel?.autoLayout !== false,
-        routingStyle: dialogState.graphModel?.routingStyle || "orthogonal",
-        connectionStyle: dialogState.graphModel?.connectionStyle || "arrow",
+        graphModel,
+        graphDocument,
+        semanticGraphVersion: graphDocument?.schemaVersion || null,
+        nodePositions: graphModel?.nodePositions || {},
+        lockedLayout: Boolean(graphModel?.lockedLayout),
+        autoLayout: graphModel?.autoLayout !== false,
+        routingStyle: graphModel?.routingStyle || "orthogonal",
+        connectionStyle: graphModel?.connectionStyle || "arrow",
     });
     const dom = document.getElementById(element.id);
     if (dom && typeof window.renderMermaidElement === "function") {
@@ -1531,9 +1614,9 @@ async function applyMermaidDialog() {
     let style = getSelectedStyle();
     if (dialogState?.graphModel) {
         syncDocumentFromGraph("apply");
-        source = dialogState.graphDocument ? deriveMermaidFromDocument(dialogState.graphDocument) : graphToMermaid(dialogState.graphModel);
+        source = dialogState.graphDocument ? MermaidExporter.fromGraphDocument(dialogState.graphDocument) : graphToMermaid(dialogState.graphModel);
         svg = dialogState.graphDocument
-            ? renderDocumentToSvg(dialogState.graphDocument, style, { selectedIds: [] })
+            ? SvgGraphRenderer.render(dialogState.graphDocument, { style, selectedIds: [] })
             : graphToSvg(dialogState.graphModel, style, { selectedIds: [] });
     } else if (
         source !== dialogState?.lastValidSource ||
@@ -1571,6 +1654,7 @@ async function applyMermaidDialog() {
                 editMode: dialogState.editMode || "split",
                 graphModel: dialogState.graphModel,
                 graphDocument: dialogState.graphDocument,
+                semanticGraphVersion: dialogState.graphDocument?.schemaVersion || null,
                 nodePositions: dialogState.graphModel?.nodePositions || {},
                 lockedLayout: Boolean(dialogState.graphModel?.lockedLayout),
                 autoLayout: dialogState.graphModel?.autoLayout !== false,
@@ -1590,6 +1674,7 @@ async function applyMermaidDialog() {
             editMode: dialogState.editMode || "split",
             graphModel: dialogState.graphModel,
             graphDocument: dialogState.graphDocument,
+            semanticGraphVersion: dialogState.graphDocument?.schemaVersion || null,
             nodePositions: dialogState.graphModel?.nodePositions || {},
             lockedLayout: Boolean(dialogState.graphModel?.lockedLayout),
             autoLayout: dialogState.graphModel?.autoLayout !== false,
@@ -1604,6 +1689,9 @@ export function openMermaidDialog(editingId = null, pendingCommand = null) {
     const shell = ensureDialog();
     const element = editingId ? getCurrentMermaidElement(editingId) : null;
     const source = element?.mermaidSource || DEFAULT_MERMAID_TEMPLATE.source;
+    const graphState = element && (element.graphDocument || element.graphModel || canUseVisualGraph(source))
+        ? ensureGraphElementDocument(element)
+        : null;
     dialogState?.disposeEditor?.();
     dialogState = {
         editingId: element?.id || null,
@@ -1615,15 +1703,15 @@ export function openMermaidDialog(editingId = null, pendingCommand = null) {
         selectedPart: null,
         selectedGraphItem: null,
         selectedGraphIds: [],
-        graphDocument: element?.graphDocument || (canUseVisualGraph(source) ? createGraphDocument({
+        graphDocument: graphState?.graphDocument || (canUseVisualGraph(source) ? ensureSemanticGraphDocument(createGraphDocument({
             mermaidSource: source,
             graphModel: element?.graphModel || null,
             styles: element?.style || {},
             routingStyle: element?.routingStyle,
             autoLayout: element?.autoLayout,
             lockedLayout: element?.lockedLayout,
-        }) : null),
-        graphModel: null,
+        }), { mermaidSource: source, style: element?.style || {} }) : null),
+        graphModel: graphState?.graphModel || null,
         editMode: element?.editMode || "visual",
         autoLayout: element?.autoLayout !== false,
         lockedLayout: Boolean(element?.lockedLayout),
@@ -1631,9 +1719,9 @@ export function openMermaidDialog(editingId = null, pendingCommand = null) {
         undoCaptured: false,
         pendingCommand,
     };
-    dialogState.graphModel = dialogState.graphDocument
+    dialogState.graphModel = dialogState.graphModel || (dialogState.graphDocument
         ? documentToGraphModel(dialogState.graphDocument)
-        : (canUseVisualGraph(source) ? parseMermaidToGraph(source, element?.graphModel || null) : null);
+        : (canUseVisualGraph(source) ? parseMermaidToGraph(source, element?.graphModel || null) : null));
     shell.classList.remove("hidden");
     const panel = shell.querySelector(".mermaid-dialog-panel");
     if (panel && !panel.style.left) {

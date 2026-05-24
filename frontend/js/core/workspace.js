@@ -190,7 +190,16 @@ function executeSlashCommand(index = slashSelectedIndex) {
 }
 
 function initWorkspaceShell() {
-    document.body.classList.remove("slide-rail-collapsed");
+    const compactRailQuery = window.matchMedia?.("(max-width: 720px)");
+    document.body.classList.toggle("slide-rail-collapsed", Boolean(compactRailQuery?.matches));
+    compactRailQuery?.addEventListener?.("change", event => {
+        document.body.classList.toggle("slide-rail-collapsed", event.matches);
+        window.requestAnimationFrame(() => {
+            window.resetZoom?.();
+            window.handleEditorViewportResize?.();
+            window.centerSlide?.();
+        });
+    });
     localStorage.removeItem("slideforge_slide_rail_collapsed");
     localStorage.removeItem("slideforge_workspace_mode");
     setWorkspaceMode("slides");

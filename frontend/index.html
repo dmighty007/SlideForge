@@ -265,6 +265,9 @@
                             <button onclick="closeExportMenu(); exportPresentationPNG()" class="toolbar-user-menu-item">
                                 <i class="fa-regular fa-image w-4 text-center"></i> Slide Image (PNG)
                             </button>
+                            <button onclick="closeExportMenu(); exportCurrentSlideSceneSVG()" class="toolbar-user-menu-item">
+                                <i class="fa-solid fa-vector-square w-4 text-center"></i> Deterministic SVG
+                            </button>
                             <button onclick="closeExportMenu(); exportPresentationPPTX()" class="toolbar-user-menu-item">
                                 <i class="fa-solid fa-file-powerpoint w-4 text-center"></i> PowerPoint (PPTX)
                             </button>
@@ -526,6 +529,18 @@
                             <button id="present-clear-chalk-btn" class="presentation-menu-item" type="button">
                                 <i class="fa-solid fa-eraser"></i><span>Clear Chalk</span>
                             </button>
+                            <button id="present-save-annotations-btn" class="presentation-menu-item" type="button">
+                                <i class="fa-solid fa-floppy-disk"></i><span>Save Annotations</span>
+                            </button>
+                            <button id="present-undo-annotation-btn" class="presentation-menu-item" type="button">
+                                <i class="fa-solid fa-rotate-left"></i><span>Undo Annotation</span>
+                            </button>
+                            <button id="present-freeze-annotations-btn" class="presentation-menu-item" type="button">
+                                <i class="fa-solid fa-lock"></i><span>Freeze Annotations</span>
+                            </button>
+                            <button id="present-spotlight-btn" class="presentation-menu-item" type="button">
+                                <i class="fa-solid fa-circle-dot"></i><span>Spotlight</span>
+                            </button>
                             <button id="present-presenter-btn" class="presentation-menu-item" type="button">
                                 <i class="fa-solid fa-tablet-screen-button"></i><span>Presenter View</span>
                             </button>
@@ -547,6 +562,18 @@
                         </button>
                         <button id="present-context-clear-btn" class="presentation-menu-item" type="button">
                             <i class="fa-solid fa-eraser"></i><span>Clear Chalk</span>
+                        </button>
+                        <button id="present-context-save-btn" class="presentation-menu-item" type="button">
+                            <i class="fa-solid fa-floppy-disk"></i><span>Save to Slide</span>
+                        </button>
+                        <button id="present-context-undo-btn" class="presentation-menu-item" type="button">
+                            <i class="fa-solid fa-rotate-left"></i><span>Undo</span>
+                        </button>
+                        <button id="present-context-freeze-btn" class="presentation-menu-item" type="button">
+                            <i class="fa-solid fa-lock"></i><span>Freeze</span>
+                        </button>
+                        <button id="present-context-spotlight-btn" class="presentation-menu-item" type="button">
+                            <i class="fa-solid fa-circle-dot"></i><span>Spotlight</span>
                         </button>
                         <button id="present-context-exit-btn" class="presentation-menu-item" type="button">
                             <i class="fa-solid fa-xmark"></i><span>Exit Present</span>
@@ -1179,6 +1206,7 @@
     <script src="js/animations/animation-examples.js"></script>
     <script src="js/animations/animation-properties-tests.js"></script>
     <script src="js/text/textContent.js"></script>
+    <script src="js/text/document/TextDocument.js"></script>
     <script src="js/editor/themes.js"></script>
     <script src="js/editor/masterSlides.js?v=20260519-present-fixes"></script>
     <script src="js/embeds/htmlEmbed.js"></script>
@@ -1191,6 +1219,7 @@
     <script src="js/properties.js"></script>
     <script src="js/editor/interact.js"></script>
     <script src="js/export/export.js?v=20260503-crop-margin"></script>
+    <script type="module" src="js/rendering/export/ExportController.js"></script>
     <script src="js/editor/components.js"></script>
     <script src="js/core/commands.js?v=20260519-no-slide-transition"></script>
     <script src="js/core/workspace.js?v=20260524-ai-native-layout"></script>

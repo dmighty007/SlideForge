@@ -942,6 +942,8 @@ body.play-mode-active {
     margin: auto;
     width: var(--slide-width, 1024px);
     height: var(--slide-height, 768px);
+    max-width: calc(100vw - 36px);
+    max-height: calc(100vh - 128px);
     transform-origin: center center;
     pointer-events: none;
 }
@@ -949,6 +951,11 @@ body.play-mode-active {
 .presentation-chalkboard {
     z-index: 20;
     background: transparent;
+}
+
+.presentation-chalkboard:not(.is-active) {
+    width: 0;
+    height: 0;
 }
 
 .presentation-chalkboard.is-active {
@@ -959,6 +966,8 @@ body.play-mode-active {
     z-index: 10050;
     position: fixed;
     inset: auto;
+    left: 50%;
+    top: 50%;
     width: 24px;
     height: 24px;
     margin: 0;
@@ -1022,6 +1031,16 @@ body.play-mode-active {
 
 .presentation-laser.is-active {
     opacity: 1;
+}
+
+.presentation-spotlight-active::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 9997;
+    pointer-events: none;
+    background: radial-gradient(circle at var(--spotlight-x, 50%) var(--spotlight-y, 50%), transparent 0 150px, rgba(2, 6, 23, 0.56) 230px);
+    transition: opacity 0.16s ease;
 }
 
 .presentation-cursor-chalk,
@@ -2214,6 +2233,76 @@ body.whiteboard-mode-active .reveal .slides section.present .whiteboard-slide-la
 
 .whiteboard-more-tools.hidden {
     display: none;
+}
+
+.whiteboard-radial-menu {
+    position: fixed;
+    z-index: 10070;
+    display: grid;
+    grid-template-columns: repeat(6, 36px);
+    gap: 4px;
+    padding: 6px;
+    border: 1px solid rgba(226, 232, 240, 0.86);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 18px 46px rgba(15, 23, 42, 0.2);
+    backdrop-filter: blur(16px);
+}
+
+.whiteboard-radial-menu.hidden {
+    display: none;
+}
+
+.whiteboard-radial-menu button {
+    width: 36px;
+    height: 36px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: #334155;
+    transition:
+        background-color 0.15s ease,
+        color 0.15s ease,
+        transform 0.15s ease;
+}
+
+.whiteboard-radial-menu button:hover {
+    transform: translateY(-1px);
+    background: #eef2ff;
+    color: #4f46e5;
+}
+
+.wb-science-preset-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px;
+}
+
+.wb-science-preset {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 30px;
+    padding: 6px 8px;
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    border-radius: 8px;
+    background: rgba(248, 250, 252, 0.92);
+    color: #334155;
+    font-size: 11px;
+    font-weight: 700;
+    text-align: left;
+    transition:
+        background-color 0.15s ease,
+        border-color 0.15s ease,
+        transform 0.15s ease;
+}
+
+.wb-science-preset:hover {
+    transform: translateY(-1px);
+    border-color: rgba(99, 102, 241, 0.35);
+    background: #eef2ff;
+    color: #4338ca;
 }
 
 .whiteboard-text-editor {
