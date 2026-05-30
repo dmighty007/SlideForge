@@ -1240,7 +1240,7 @@ function _buildSlideWorkspacePanel(panel) {
                 <select id="prop-slide-bg-three-style" class="w-full text-xs">
                     <option value="orbital" ${(background?.style || "orbital") === "orbital" ? "selected" : ""}>Orbital field</option>
                     <option value="mesh" ${background?.style === "mesh" ? "selected" : ""}>Connected mesh</option>
-                    <option value="particles" ${background?.style === "particles" ? "selected" : ""}>Soft particles</option>
+                    <option value="particles" ${background?.style === "particles" ? "selected" : ""}>Soft spheres</option>
                     <option value="lattice" ${background?.style === "lattice" ? "selected" : ""}>Depth lattice</option>
                     <option value="wave" ${background?.style === "wave" ? "selected" : ""}>Wave surface</option>
                     <option value="vortex" ${background?.style === "vortex" ? "selected" : ""}>Vortex spiral</option>

@@ -24,3 +24,4 @@ tests/*
 !tests/browser/
 tests/browser/*
 !tests/browser/test-ui-smoke.js
+!tests/browser/test-phase2-functional.js

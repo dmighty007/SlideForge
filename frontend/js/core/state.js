@@ -126,6 +126,22 @@ let state = buildDefaultPresentationState();
 let currentSlideIndex = 0;
 let undoStack = [];
 let redoStack = [];
+Object.defineProperties(window, {
+    state: {
+        configurable: true,
+        get: () => state,
+        set: value => {
+            if (value && typeof value === "object") state = value;
+        },
+    },
+    currentSlideIndex: {
+        configurable: true,
+        get: () => currentSlideIndex,
+        set: value => {
+            setCurrentSlideIndex(Number(value) || 0);
+        },
+    },
+});
 let currentPresentationId = null;
 let currentPresentationAutosaveVersion = 0;
 let currentPresentationTitle = "Untitled Presentation";

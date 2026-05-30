@@ -467,12 +467,63 @@ function _colorToThreeInt(value, fallback = 0x2563eb) {
     return (rgb.r << 16) + (rgb.g << 8) + rgb.b;
 }
 
+function _createThemeMotionSpriteTexture(THREE) {
+    const textureCanvas = document.createElement("canvas");
+    textureCanvas.width = 96;
+    textureCanvas.height = 96;
+    const ctx = textureCanvas.getContext("2d");
+    if (!ctx) return null;
+    const gradient = ctx.createRadialGradient(48, 48, 0, 48, 48, 48);
+    gradient.addColorStop(0, "rgba(255,255,255,0.95)");
+    gradient.addColorStop(0.28, "rgba(255,255,255,0.62)");
+    gradient.addColorStop(0.64, "rgba(255,255,255,0.2)");
+    gradient.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 96, 96);
+    const texture = new THREE.CanvasTexture(textureCanvas);
+    texture.needsUpdate = true;
+    return texture;
+}
+
 function _makeSeededRandom(seed = 1) {
     let value = Math.max(1, Math.floor(seed) % 2147483647);
     return () => {
         value = (value * 16807) % 2147483647;
         return (value - 1) / 2147483646;
     };
+}
+
+function _themeMotionSphereConfig(style) {
+    return {
+        orbital: { count: 7, radius: 0.11, opacity: 0.14, spread: 3.5 },
+        mesh: { count: 5, radius: 0.08, opacity: 0.1, spread: 3.8 },
+        particles: { count: 10, radius: 0.07, opacity: 0.12, spread: 4.4 },
+        lattice: { count: 6, radius: 0.075, opacity: 0.11, spread: 3.2 },
+        wave: { count: 7, radius: 0.09, opacity: 0.12, spread: 4.1 },
+        vortex: { count: 8, radius: 0.085, opacity: 0.13, spread: 3.6 },
+    }[style] || { count: 6, radius: 0.09, opacity: 0.12, spread: 3.6 };
+}
+
+const THEME_MOTION_MAX_WEBGL_BACKGROUNDS = 6;
+const _themeMotionWebglWrappers = new Set();
+
+function _touchThemeMotionWebglWrapper(wrapper) {
+    if (!wrapper) return;
+    _themeMotionWebglWrappers.delete(wrapper);
+    _themeMotionWebglWrappers.add(wrapper);
+}
+
+function _pruneThemeMotionWebglWrappers(activeWrapper = null) {
+    Array.from(_themeMotionWebglWrappers).forEach(wrapper => {
+        if (!document.contains(wrapper) || typeof wrapper._disposeThemeMotion !== "function") {
+            _themeMotionWebglWrappers.delete(wrapper);
+        }
+    });
+    while (_themeMotionWebglWrappers.size > THEME_MOTION_MAX_WEBGL_BACKGROUNDS) {
+        const candidate = Array.from(_themeMotionWebglWrappers).find(wrapper => wrapper !== activeWrapper);
+        if (!candidate) return;
+        candidate._disposeThemeMotion?.();
+    }
 }
 
 function _themeMotionCount(style, fallback = 96) {
@@ -609,10 +660,32 @@ function _renderCanvasThemeMotion(
         return { width, height };
     };
 
+    let mouseX = 0;
+    let mouseY = 0;
+    let currentOffsetX = 0;
+    let currentOffsetY = 0;
+    const onMouseMove = (event) => {
+        mouseX = (event.clientX / window.innerWidth) * 2 - 1;
+        mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+    };
+    if (!reduceMotion) {
+        window.addEventListener("mousemove", onMouseMove);
+    }
+
+    let motionTime = 0.35 + Number(slideIndex || 0) * 0.08;
+    let lastActiveTimestamp = 0;
     const draw = timestamp => {
         const { width, height } = resize();
         const active = _isThemeMotionActive(wrapper, forPreview);
-        const t = reduceMotion || !active ? 0.35 + Number(slideIndex || 0) * 0.08 : timestamp / 5200;
+        if (!reduceMotion && active) {
+            if (lastActiveTimestamp) {
+                motionTime += Math.min(80, Math.max(0, timestamp - lastActiveTimestamp)) / 5200;
+            }
+            lastActiveTimestamp = timestamp;
+        } else {
+            lastActiveTimestamp = 0;
+        }
+        const t = motionTime;
         const gradient = ctx.createLinearGradient(0, 0, width, height);
         gradient.addColorStop(0, colors.bgSolid);
         gradient.addColorStop(0.52, _rgb(colors.accent2, 0.12));
@@ -621,9 +694,19 @@ function _renderCanvasThemeMotion(
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, width, height);
 
-        const projected = points.map((point, index) =>
-            _themeMotionCanvasPoint(normalized.style, point, index, points.length, width, height, t),
-        );
+        if (!reduceMotion && active) {
+            currentOffsetX += (mouseX * 40 - currentOffsetX) * 0.05;
+            currentOffsetY += (-mouseY * 40 - currentOffsetY) * 0.05;
+        }
+
+        const projected = points.map((point, index) => {
+            const p = _themeMotionCanvasPoint(normalized.style, point, index, points.length, width, height, t);
+            if (!reduceMotion && active) {
+                p.x += currentOffsetX * (point.z || 0.5);
+                p.y += currentOffsetY * (point.z || 0.5);
+            }
+            return p;
+        });
 
         if (normalized.style !== "particles") {
             ctx.lineWidth = ["mesh", "lattice", "wave"].includes(normalized.style) ? 1.1 : 0.75;
@@ -646,13 +729,20 @@ function _renderCanvasThemeMotion(
 
         projected.forEach((point, index) => {
             const radius = normalized.style === "particles" ? 1.6 + point.z * 2.8 : 1.2 + point.z * 2.2;
-            ctx.fillStyle = _rgb(index % 3 === 0 ? colors.accent2 : colors.accent, 0.22 + point.z * 0.18);
+            const pulse = !reduceMotion && active ? Math.sin(t * 10 + index) * 0.08 : 0;
+            ctx.fillStyle = _rgb(index % 3 === 0 ? colors.accent2 : colors.accent, 0.22 + point.z * 0.18 + pulse);
             ctx.beginPath();
             ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
             ctx.fill();
         });
 
-        if (!reduceMotion && document.contains(wrapper)) {
+        if (!document.contains(wrapper)) {
+            if (!reduceMotion) {
+                window.removeEventListener("mousemove", onMouseMove);
+            }
+            return;
+        }
+        if (!reduceMotion) {
             if (active) requestAnimationFrame(draw);
             else window.setTimeout(() => requestAnimationFrame(draw), 320);
         }
@@ -695,22 +785,47 @@ function _tryRenderThreeThemeMotion(
     }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    const pointTexture = _createThemeMotionSpriteTexture(THREE);
     const points = new THREE.Points(
         geometry,
         new THREE.PointsMaterial({
             color: _colorToThreeInt(colors.accent),
             size:
                 normalized.style === "particles"
-                    ? 0.075
+                    ? 0.18
                     : ["lattice", "wave", "vortex"].includes(normalized.style)
-                      ? 0.058
-                      : 0.048,
+                      ? 0.135
+                      : 0.12,
+            map: pointTexture || undefined,
             transparent: true,
-            opacity: normalized.style === "particles" ? 0.58 : 0.52,
+            opacity: normalized.style === "particles" ? 0.52 : 0.46,
             depthWrite: false,
+            blending: THREE.AdditiveBlending,
         }),
     );
     scene.add(points);
+
+    const sphereGroup = new THREE.Group();
+    const sphereConfig = _themeMotionSphereConfig(normalized.style);
+    const sphereGeometry = new THREE.SphereGeometry(sphereConfig.radius, 24, 16);
+    for (let i = 0; i < sphereConfig.count; i += 1) {
+        const sphereMaterial = new THREE.MeshBasicMaterial({
+            color: _colorToThreeInt(i % 2 ? colors.accent2 : colors.accent),
+            transparent: true,
+            opacity: sphereConfig.opacity * (0.72 + random() * 0.46),
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+        });
+        const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+        const point = _themeMotionPoint(normalized.style, i + count, count + sphereConfig.count, random);
+        sphere.position.set(point.x * 0.92, point.y * 0.92, point.z * 0.92);
+        const scale = 0.9 + random() * 1.8;
+        sphere.scale.setScalar(scale);
+        sphere.userData.phase = random() * Math.PI * 2;
+        sphereGroup.add(sphere);
+    }
+    scene.add(sphereGroup);
+
     let lines = null;
     if (normalized.style !== "particles") {
         const linePositions = [];
@@ -774,24 +889,104 @@ function _tryRenderThreeThemeMotion(
     const reduceMotion =
         forPreview ||
         (typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+
+    let mouseX = 0;
+    let mouseY = 0;
+    let targetX = 0;
+    let targetY = 0;
+    const onMouseMove = (event) => {
+        mouseX = (event.clientX / window.innerWidth) * 2 - 1;
+        mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+    };
+    if (!reduceMotion) {
+        window.addEventListener("mousemove", onMouseMove);
+    }
+
+    let disposed = false;
+    const dispose = () => {
+        if (disposed) return;
+        disposed = true;
+        _themeMotionWebglWrappers.delete(wrapper);
+        if (!reduceMotion) {
+            window.removeEventListener("mousemove", onMouseMove);
+        }
+        geometry.dispose();
+        points.material.dispose();
+        if (pointTexture) pointTexture.dispose();
+        sphereGeometry.dispose();
+        sphereGroup.children.forEach(sphere => sphere.material.dispose());
+        if (lines) {
+            lines.geometry.dispose();
+            lines.material.dispose();
+        }
+        renderer.dispose();
+        renderer.forceContextLoss?.();
+        wrapper._disposeThemeMotion = null;
+        if (wrapper.dataset.renderer === "three") wrapper.dataset.renderer = "canvas";
+    };
+    wrapper._disposeThemeMotion = dispose;
+    _touchThemeMotionWebglWrapper(wrapper);
+    _pruneThemeMotionWebglWrappers(wrapper);
+
+    let motionTime = 0.4 + Number(slideIndex || 0) * 0.06;
+    let lastActiveTimestamp = 0;
     const renderFrame = timestamp => {
+        if (disposed) return;
         resize();
         const active = _isThemeMotionActive(wrapper, forPreview);
-        const t = reduceMotion || !active ? 0.4 + Number(slideIndex || 0) * 0.06 : timestamp / 7000;
+        if (active) {
+            _touchThemeMotionWebglWrapper(wrapper);
+            _pruneThemeMotionWebglWrappers(wrapper);
+            if (lastActiveTimestamp) {
+                motionTime += Math.min(80, Math.max(0, timestamp - lastActiveTimestamp)) / 7000;
+            }
+            lastActiveTimestamp = timestamp;
+        } else {
+            lastActiveTimestamp = 0;
+        }
+        const t = motionTime;
         points.rotation.y = t * (normalized.style === "vortex" ? 1.05 : normalized.style === "mesh" ? 0.8 : 0.55);
         points.rotation.x = normalized.style === "wave" ? -0.55 + Math.sin(t) * 0.05 : Math.sin(t) * 0.16;
         if (lines) {
             lines.rotation.copy(points.rotation);
         }
-        renderer.render(scene, camera);
-        if (!document.contains(wrapper)) {
-            geometry.dispose();
-            points.material.dispose();
+        sphereGroup.rotation.y = points.rotation.y * 0.72;
+        sphereGroup.rotation.x = points.rotation.x * 0.54;
+        sphereGroup.children.forEach((sphere, index) => {
+            const phase = sphere.userData.phase || 0;
+            const pulse = 1 + Math.sin(t * 2.2 + phase) * 0.08;
+            const base = 0.9 + (index % 4) * 0.18;
+            sphere.scale.setScalar(base * pulse);
+        });
+
+        if (!reduceMotion && active) {
+            targetX = mouseX * 0.15;
+            targetY = mouseY * 0.15;
+            camera.position.x += (targetX - camera.position.x) * 0.02;
+            camera.position.y += (targetY - camera.position.y) * 0.02;
+            scene.rotation.x += (-targetY * 0.5 - scene.rotation.x) * 0.02;
+            scene.rotation.y += (targetX * 0.5 - scene.rotation.y) * 0.02;
+            
+            // Organic pulsing
+            light.intensity = 0.7 + Math.sin(t * 12) * 0.15;
+            const baseOpacity = normalized.style === "particles" ? 0.52 : 0.46;
+            points.material.opacity = baseOpacity + Math.sin(t * 8) * 0.08;
             if (lines) {
-                lines.geometry.dispose();
-                lines.material.dispose();
+                const lineBaseOpacity = normalized.style === "orbital" ? 0.24 : 0.38;
+                lines.material.opacity = lineBaseOpacity + Math.cos(t * 6) * 0.05;
             }
-            renderer.dispose();
+            camera.position.z = 5.6 + Math.sin(t * 4) * 0.1;
+        }
+
+        try {
+            renderer.render(scene, camera);
+        } catch (err) {
+            console.warn("3D background renderer stopped:", err);
+            dispose();
+            return;
+        }
+        if (!document.contains(wrapper)) {
+            dispose();
             return;
         }
         if (!reduceMotion) {
@@ -810,17 +1005,46 @@ function createThemeThreeBackgroundNode(normalized, options = {}) {
     wrapper.dataset.threeStyle = normalized.style || "orbital";
     const colors = _themeMotionColors(options.theme || null);
     wrapper.style.background = _themeMotionBackground(normalized.style || "orbital", colors);
+    const shouldUseThree =
+        !options.forPreview &&
+        Number(options.slideIndex ?? currentSlideIndex) === getActiveSlideMediaIndex() &&
+        document.visibilityState !== "hidden";
     const canvas = document.createElement("canvas");
     canvas.className = "slide-background-three-canvas";
     canvas.setAttribute("aria-hidden", "true");
     wrapper.appendChild(canvas);
-    if (!_tryRenderThreeThemeMotion(canvas, wrapper, normalized, options)) {
+    if (!shouldUseThree || !_tryRenderThreeThemeMotion(canvas, wrapper, normalized, options)) {
         wrapper.dataset.renderer = "canvas";
-        _renderCanvasThemeMotion(canvas, wrapper, normalized, options);
+        _renderCanvasThemeMotion(canvas, wrapper, normalized, { ...options, forPreview: true });
     } else {
         wrapper.dataset.renderer = "three";
     }
     return wrapper;
+}
+
+function cleanupSlideBackground3D(root = document) {
+    root.querySelectorAll?.(".slide-background-three").forEach(wrapper => {
+        if (typeof wrapper._disposeThemeMotion === "function") {
+            wrapper._disposeThemeMotion();
+            wrapper._disposeThemeMotion = null;
+        }
+    });
+}
+
+function _resetThemeThreeBackgroundRenderer(wrapper, normalized, options = {}) {
+    if (!wrapper || !normalized) return;
+    cleanupSlideBackground3D(wrapper);
+    wrapper.textContent = "";
+    const canvas = document.createElement("canvas");
+    canvas.className = "slide-background-three-canvas";
+    canvas.setAttribute("aria-hidden", "true");
+    wrapper.appendChild(canvas);
+    if (options.useThree && _tryRenderThreeThemeMotion(canvas, wrapper, normalized, options)) {
+        wrapper.dataset.renderer = "three";
+    } else {
+        wrapper.dataset.renderer = "canvas";
+        _renderCanvasThemeMotion(canvas, wrapper, normalized, { ...options, forPreview: true });
+    }
 }
 
 function createSlideBackgroundNode(
@@ -895,6 +1119,25 @@ function syncActiveSlideMedia() {
     Array.from(container.children).forEach((section, index) => {
         const isActive = pageActive && index === activeIndex;
         section.toggleAttribute("data-media-active", isActive);
+
+        const threeBackground = section.querySelector(".slide-background-three");
+        if (threeBackground) {
+            const normalized = normalizeSlideBackground(state.slides?.[index]?.background);
+            if (normalized?.type === "three") {
+                const theme = typeof getPresentationTheme === "function" ? getPresentationTheme() : null;
+                if (isActive && threeBackground.dataset.renderer !== "three") {
+                    _resetThemeThreeBackgroundRenderer(threeBackground, normalized, {
+                        forPreview: false,
+                        slideIndex: index,
+                        theme,
+                        useThree: true,
+                    });
+                } else if (isActive) {
+                    _touchThemeMotionWebglWrapper(threeBackground);
+                    _pruneThemeMotionWebglWrappers(threeBackground);
+                }
+            }
+        }
 
         section.querySelectorAll("video").forEach(video => {
             if (!isActive) {
@@ -1802,6 +2045,7 @@ function renderSlidesFromState(options = {}) {
         state.slides.forEach((slide, slideIndex) => ensureEditableMasterFooterElements(slide, slideIndex, theme));
         syncAllSlideFooterNumbers();
     }
+    cleanupSlideBackground3D(container);
     container.innerHTML = "";
     state.slides.forEach((slide, slideIndex) => {
         const section = document.createElement("section");

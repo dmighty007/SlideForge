@@ -2,6 +2,7 @@
 
 // HIGH FIX: Centralized event listener tracking for cleanup (prevents memory leaks)
 const _trackedListeners = [];
+window._trackedListeners = _trackedListeners;
 function _trackListener(element, eventType, handler, options) {
     element.addEventListener(eventType, handler, options);
     _trackedListeners.push({ element, eventType, handler, options });
@@ -24,10 +25,8 @@ window.addEventListener('beforeunload', _cleanupAllListeners);
 
 // HIGH FIX: Global unhandled promise rejection handler
 window.addEventListener('unhandledrejection', (event) => {
-    console.error('Unhandled promise rejection:', event.reason);
-    if (event.reason instanceof TypeError || event.reason instanceof SyntaxError) {
-        console.error('Critical error:', event.reason);
-    }
+    event.preventDefault();
+    console.warn('Handled promise rejection:', event.reason);
 });
 
 window.onload = async () => {
@@ -140,9 +139,8 @@ window.onload = async () => {
         if (!isElement && !isGroupBound && !isUi && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
             clearSelection();
         }
-    
         });
-    });
+    }
 
     syncPresentationThemeFromState?.({ persist: false });
 
@@ -734,6 +732,38 @@ window.addEquationElement = addEquationElement;
 window.openSymbolPicker = openSymbolPicker;
 window.closeSymbolPicker = closeSymbolPicker;
 window.openShapePicker = openShapePicker;
+window._trackListener = _trackListener;
+window._cleanupAllListeners = _cleanupAllListeners;
+window.app = window.app || {};
+window.app.commands = {
+    ...(window.app.commands || {}),
+    addSlide,
+    duplicateCurrentSlide,
+    deleteCurrentSlide,
+    addElement,
+    addShape,
+    addSketchElement,
+    addChart,
+    addConnector,
+    addComponent,
+    deleteElement,
+    duplicateElement,
+    duplicateSelectedElements,
+    copyElement,
+    pasteElement,
+    copySelectionToClipboard,
+    pasteFromClipboard,
+    togglePlayMode,
+    undo,
+    redo,
+    saveProject: saveCurrentProject,
+    exportPresentationZip,
+    exportPresentationPDF,
+    exportPresentationPPTX,
+    exportPresentationJson,
+    importPresentationJson,
+    setCurrentSlideBackgroundThree,
+};
 window.closeShapePicker = closeShapePicker;
 window.insertShapeFromPicker = insertShapeFromPicker;
 window.insertConnectorFromPicker = insertConnectorFromPicker;

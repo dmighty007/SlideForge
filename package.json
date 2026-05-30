@@ -6,6 +6,7 @@
     "check:frontend": "node --check frontend/js/core/commands.js && node --check frontend/js/core/state.js && node --check frontend/js/core/main.js && node --check frontend/js/editor/render.js && node --check frontend/js/properties.js && node --check frontend/js/editor/slide-presets.js",
     "test:backend": "python3 backend/manage.py test studio",
     "test:animations": "node tests/browser/test-animations.js",
+    "test:phase2": "node tests/browser/test-phase2-functional.js",
     "test:ui": "node tests/browser/test-ui-smoke.js"
   },
   "dependencies": {
