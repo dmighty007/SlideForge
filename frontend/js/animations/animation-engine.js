@@ -1300,43 +1300,55 @@ class AnimationEngine {
         return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, alpha))})`;
     }
 
-    // IMPROVED: Elegant Fade In - Smooth fade with subtle scale
+    // IMPROVED: Elegant Fade In - Smooth fade with anticipation (Apple-style)
     _applyElegantFadeIn(element, animation, progress) {
         const startOpacity = animation.startOpacity ?? 0;
         const endOpacity = animation.endOpacity ?? 1;
         const startScale = animation.startScale ?? 0.95;
         const endScale = animation.endScale ?? 1;
 
-        const opacity = interpolate(startOpacity, endOpacity, progress);
-        const scale = interpolate(startScale, endScale, progress);
+        // Ease-out cubic for responsive entrance
+        const easeOutCubic = 1 - Math.pow(1 - progress, 3);
+        
+        const opacity = interpolate(startOpacity, endOpacity, easeOutCubic);
+        const scale = interpolate(startScale, endScale, easeOutCubic);
 
         element.style.opacity = String(Math.max(0, Math.min(1, opacity)));
         this._setTransform(element, `scale3d(${scale}, ${scale}, 1)`);
     }
 
-    // IMPROVED: Elegant Fade Out - Smooth fade with subtle scale
+    // IMPROVED: Elegant Fade Out - Smooth fade with confident exit
     _applyElegantFadeOut(element, animation, progress) {
         const startOpacity = animation.startOpacity ?? 1;
         const endOpacity = animation.endOpacity ?? 0;
         const startScale = animation.startScale ?? 1;
-        const endScale = animation.endScale ?? 0.95;
+        const endScale = animation.endScale ?? 0.92;
 
-        const opacity = interpolate(startOpacity, endOpacity, progress);
-        const scale = interpolate(startScale, endScale, progress);
+        // Ease-in cubic for confident exit (opposite of entrance)
+        const easeInCubic = Math.pow(progress, 3);
+        
+        const opacity = interpolate(startOpacity, endOpacity, easeInCubic);
+        const scale = interpolate(startScale, endScale, easeInCubic);
 
         element.style.opacity = String(Math.max(0, Math.min(1, opacity)));
         this._setTransform(element, `scale3d(${scale}, ${scale}, 1)`);
     }
 
-    // IMPROVED: Fade with Blur - Fade in/out combined with blur effect
+    // IMPROVED: Fade with Blur - Blur reduces first, opacity continues (natural focus effect)
     _applyFadeWithBlur(element, animation, progress) {
         const startOpacity = animation.startOpacity ?? 0;
         const endOpacity = animation.endOpacity ?? 1;
-        const startBlur = animation.startBlur ?? 15;
+        const startBlur = animation.startBlur ?? 16;
         const endBlur = animation.endBlur ?? 0;
 
-        const opacity = interpolate(startOpacity, endOpacity, progress);
-        const blur = interpolate(startBlur, endBlur, progress);
+        // Blur reduces faster (first 60% of time), creating "coming into focus" effect
+        const blurProgress = Math.min(1, progress / 0.6);
+        const blurEaseOut = 1 - Math.pow(1 - blurProgress, 2.5);
+        const blur = interpolate(startBlur, endBlur, blurEaseOut);
+
+        // Opacity follows ease-out curve for responsive feel
+        const opacityEaseOut = 1 - Math.pow(1 - progress, 3);
+        const opacity = interpolate(startOpacity, endOpacity, opacityEaseOut);
 
         element.style.opacity = String(Math.max(0, Math.min(1, opacity)));
         element.style.filter = `blur(${Math.max(0, blur)}px)`;
@@ -1408,109 +1420,158 @@ class AnimationEngine {
         element.dataset.sfDiffuseContainer = "true";
     }
 
-    // Sparkle diffuse effect
+    // Sparkle diffuse effect - Professional timing with stagger
     _applyDiffuseSparkle(element, animation, progress, intensity) {
         const container = element.querySelector(".sf-diffuse-container");
         if (!container) return;
 
         const particles = container.querySelectorAll(".sf-diffuse-particle");
+        const staggerDelay = (animation.staggerDelay || 30) / (animation.duration || 500);
+        
         particles.forEach((particle, index) => {
+            // Staggered start: each particle starts slightly after previous
+            const particleProgress = Math.max(0, progress - (index * staggerDelay));
+            const particleProgressNorm = Math.min(1, particleProgress / (1 - index * staggerDelay));
+            
             const angle = (index / particles.length) * Math.PI * 2;
-            const distance = progress * (animation.disperseDistance || 100);
+            const distance = particleProgressNorm * (animation.disperseDistance || 80);
             const x = Math.cos(angle) * distance;
             const y = Math.sin(angle) * distance;
 
-            const scale = 1 - progress;
-            const opacity = intensity * (1 - progress * 0.5);
+            // Ease-out curve for scale: starts full, shrinks smoothly
+            const easeOutProgress = 1 - Math.pow(1 - particleProgressNorm, 3);
+            const scale = Math.max(0.1, 1 - easeOutProgress);
+            
+            // Opacity follows ease-out: stays visible longer, then fades
+            const opacityEaseOut = 1 - Math.pow(1 - particleProgressNorm, 2);
+            const opacity = Math.max(0, intensity * (1 - opacityEaseOut * 0.8));
 
             particle.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${scale})`;
             particle.style.opacity = String(Math.max(0, Math.min(1, opacity)));
         });
 
-        // Fade main element
-        const opacity = interpolate(animation.startOpacity ?? 1, animation.endOpacity ?? 0, progress);
+        // Fade main element: faster in first 60%, then slow
+        const fadeEaseOut = 1 - Math.pow(1 - progress, 2.5);
+        const opacity = interpolate(animation.startOpacity ?? 1, animation.endOpacity ?? 0, fadeEaseOut);
         element.style.opacity = String(Math.max(0, Math.min(1, opacity)));
     }
 
-    // Wave diffuse effect
+    // Wave diffuse effect - Professional timing with stagger
     _applyDiffuseWave(element, animation, progress, intensity) {
         const container = element.querySelector(".sf-diffuse-container");
         if (!container) return;
 
         const particles = container.querySelectorAll(".sf-diffuse-particle");
+        const staggerDelay = (animation.staggerDelay || 30) / (animation.duration || 500);
         const waveLength = animation.waveLength || 8;
         
         particles.forEach((particle, index) => {
-            const wavePhase = (index / waveLength) * Math.PI * 2;
-            const distance = progress * (animation.disperseDistance || 120);
-            const waveOffset = Math.sin(progress * Math.PI * 2 + wavePhase) * 30;
+            // Staggered start
+            const particleProgress = Math.max(0, progress - (index * staggerDelay));
+            const particleProgressNorm = Math.min(1, particleProgress / (1 - index * staggerDelay));
             
-            const x = Math.cos(wavePhase) * distance + waveOffset;
-            const y = Math.sin(wavePhase) * distance + Math.sin(progress * Math.PI) * 40;
+            const wavePhase = (index / waveLength) * Math.PI * 2;
+            const distance = particleProgressNorm * (animation.disperseDistance || 100);
+            
+            // Wave motion with harmonic oscillation
+            const waveOscillation = Math.sin(particleProgressNorm * Math.PI * 2 + wavePhase) * 20;
+            const x = Math.cos(wavePhase) * distance + waveOscillation;
+            const y = Math.sin(wavePhase) * distance + Math.sin(particleProgressNorm * Math.PI) * 30;
 
-            const scale = 1 - progress * 0.7;
-            const opacity = intensity * Math.cos(progress * Math.PI * 2 + wavePhase) * 0.5 + 0.5;
+            // Smooth ease-out scale
+            const easeOutProgress = 1 - Math.pow(1 - particleProgressNorm, 3);
+            const scale = Math.max(0.05, 1 - easeOutProgress * 0.6);
+            
+            // Opacity with subtle pulsing
+            const opacityWave = Math.abs(Math.cos(particleProgressNorm * Math.PI * 2 + wavePhase)) * 0.3 + 0.7;
+            const opacity = Math.max(0, intensity * (1 - particleProgressNorm) * opacityWave);
 
             particle.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${scale})`;
             particle.style.opacity = String(Math.max(0, Math.min(1, opacity)));
         });
 
-        const opacity = interpolate(animation.startOpacity ?? 1, animation.endOpacity ?? 0, progress);
+        // Main element fade with cubic easing
+        const fadeEaseOut = 1 - Math.pow(1 - progress, 2.2);
+        const opacity = interpolate(animation.startOpacity ?? 1, animation.endOpacity ?? 0, fadeEaseOut);
         element.style.opacity = String(Math.max(0, Math.min(1, opacity)));
     }
 
-    // Smoke diffuse effect
+    // Smoke diffuse effect - Professional timing with stagger
     _applyDiffuseSmoke(element, animation, progress, intensity) {
         const container = element.querySelector(".sf-diffuse-container");
         if (!container) return;
 
         const particles = container.querySelectorAll(".sf-diffuse-particle");
+        const staggerDelay = (animation.staggerDelay || 30) / (animation.duration || 500);
+        
         particles.forEach((particle, index) => {
-            const angle = (index / particles.length) * Math.PI * 2 + Math.sin(progress * Math.PI) * 0.5;
-            const distance = progress * (animation.disperseDistance || 150) + Math.random() * 50;
+            // Staggered start: creates cascade effect
+            const particleProgress = Math.max(0, progress - (index * staggerDelay));
+            const particleProgressNorm = Math.min(1, particleProgress / (1 - index * staggerDelay));
             
-            const x = Math.cos(angle) * distance;
-            const y = Math.sin(angle) * distance - progress * 80;
+            // Angled dispersion with upward drift
+            const angle = (index / particles.length) * Math.PI * 2 + Math.sin(particleProgressNorm * Math.PI) * 0.3;
+            const distance = particleProgressNorm * (animation.disperseDistance || 120);
+            
+            const x = Math.cos(angle) * distance + (Math.random() - 0.5) * 40;
+            const y = Math.sin(angle) * distance - particleProgressNorm * 100; // Upward drift
 
-            const scale = (1 - progress) * (0.8 + Math.random() * 0.4);
-            const opacity = intensity * (1 - progress);
+            // Ease-out scale for organic dissipation
+            const easeOutProgress = 1 - Math.pow(1 - particleProgressNorm, 2.8);
+            const scale = Math.max(0.05, (1 - particleProgressNorm * 0.5) * (0.8 + Math.random() * 0.4));
+            
+            // Opacity: holds longer at start, fades faster at end
+            const opacity = Math.max(0, intensity * Math.pow(1 - particleProgressNorm, 1.5));
 
             particle.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${scale})`;
             particle.style.opacity = String(Math.max(0, Math.min(1, opacity)));
         });
 
-        const opacity = interpolate(animation.startOpacity ?? 1, animation.endOpacity ?? 0, progress);
+        // Smooth fade with ease-out
+        const fadeEaseOut = 1 - Math.pow(1 - progress, 2.4);
+        const opacity = interpolate(animation.startOpacity ?? 1, animation.endOpacity ?? 0, fadeEaseOut);
         element.style.opacity = String(Math.max(0, Math.min(1, opacity)));
     }
 
-    // Dissolve diffuse effect
+    // Dissolve diffuse effect - Professional timing with stagger
     _applyDiffuseDissolve(element, animation, progress, intensity) {
         const container = element.querySelector(".sf-diffuse-container");
         if (!container) return;
 
         const particles = container.querySelectorAll(".sf-diffuse-particle");
+        const staggerDelay = (animation.staggerDelay || 30) / (animation.duration || 500);
+        
         particles.forEach((particle, index) => {
+            // Staggered start: offset each particle
+            const particleProgress = Math.max(0, progress - (index * staggerDelay * 1.5)); // Extra stagger for dissolve
+            const particleProgressNorm = Math.min(1, particleProgress / (1 - index * staggerDelay));
+            
             const seed = index * 12.9898;
             const randomX = Math.sin(seed) * 0.5 + 0.5;
             const randomY = Math.sin(seed * 78.233) * 0.5 + 0.5;
-
-            const angle = randomX * Math.PI * 2;
-            const distance = progress * (animation.disperseDistance || 80);
             
-            const x = Math.cos(angle) * distance;
-            const y = Math.sin(angle) * distance;
+            // Scattered movement pattern
+            const distance = particleProgressNorm * (animation.disperseDistance || 75);
+            const x = (randomX - 0.5) * distance * 2;
+            const y = (randomY - 0.5) * distance * 2;
 
-            const delayedProgress = Math.max(0, progress - (index / particles.length) * 0.3);
-            const scale = 1 - delayedProgress * 1.2;
-            const opacity = intensity * (1 - delayedProgress);
+            // Ease-out cubic for smooth dissipation
+            const easeOutProgress = 1 - Math.pow(1 - particleProgressNorm, 3.5);
+            const scale = Math.max(0.02, 1 - easeOutProgress * 0.7);
+            
+            // Opacity: starts visible, quickly fades
+            const opacity = Math.max(0, intensity * Math.pow(1 - particleProgressNorm, 2.2));
 
-            particle.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${Math.max(0, scale)})`;
+            particle.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${scale})`;
             particle.style.opacity = String(Math.max(0, Math.min(1, opacity)));
         });
 
-        const opacity = interpolate(animation.startOpacity ?? 1, animation.endOpacity ?? 0, progress);
+        // Main fade: medium speed with ease-out
+        const fadeEaseOut = 1 - Math.pow(1 - progress, 2.3);
+        const opacity = interpolate(animation.startOpacity ?? 1, animation.endOpacity ?? 0, fadeEaseOut);
         element.style.opacity = String(Math.max(0, Math.min(1, opacity)));
     }
+
 }
 
 // Global animation engine instance
