@@ -5,7 +5,8 @@
     "check:backend": "python3 backend/manage.py check",
     "check:frontend": "node --check frontend/js/core/commands.js && node --check frontend/js/core/state.js && node --check frontend/js/core/main.js",
     "test:backend": "python3 backend/manage.py test studio",
-    "test:animations": "node tests/browser/test-animations.js"
+    "test:animations": "node tests/browser/test-animations.js",
+    "test:ui": "node tests/browser/test-ui-smoke.js"
   },
   "dependencies": {
     "mermaid": "11.4.1",

@@ -19,3 +19,8 @@ node_modules/
 .tmp*
 fresh-repo/
 tests/
+!tests/
+tests/*
+!tests/browser/
+tests/browser/*
+!tests/browser/test-ui-smoke.js
