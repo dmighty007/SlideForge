@@ -4155,9 +4155,6 @@ const _presentationRuntimeState = {
 };
 const _PRESENTER_SYNC_STORAGE_KEY = "slideforge_presenter_sync";
 const _PRESENTER_COMMAND_STORAGE_KEY = "slideforge_presenter_command";
-// Industry-standard animation durations (Apple/Google/Figma principles)
-const PRESENTATION_SLIDE_TRANSITION_MS = 350;
-const PRESENTATION_CROSSFADE_TRANSITION_MS = 600;  // Increased from 500ms for smoother fade
 const PRESENTATION_SLIDE_TRANSITIONS = new Set(["fade", "diffuse", "slide", "convex", "concave", "zoom"]);
 
 function _importantStyle(el, prop, value) {
@@ -4174,10 +4171,9 @@ function _getPresentationSlideTransition(slideIndex = currentSlideIndex) {
     return PRESENTATION_SLIDE_TRANSITIONS.has(transition) ? transition : "none";
 }
 
-function _getPresentationSlideTransitionDuration(type) {
-    return type === "fade" || type === "diffuse"
-        ? PRESENTATION_CROSSFADE_TRANSITION_MS
-        : PRESENTATION_SLIDE_TRANSITION_MS;
+function _getRevealPresentationSlideTransition(slideIndex = currentSlideIndex) {
+    const transition = _getPresentationSlideTransition(slideIndex);
+    return transition === "diffuse" ? "fade" : transition;
 }
 
 function _clearPresentationSlideTransition() {
@@ -4199,203 +4195,6 @@ function _clearPresentationSlideTransition() {
             "will-change",
         ]);
     });
-}
-
-function _getPresentationTransitionTransforms(type, direction) {
-    const sign = direction >= 0 ? 1 : -1;
-    switch (type) {
-        case "slide":
-            return {
-                incomingFrom: `translateX(${sign * 1.5}%)`,
-                incomingTo: "translateX(0)",
-                outgoingTo: `translateX(${-sign * 1.5}%)`,
-            };
-        case "zoom":
-            return {
-                incomingFrom: "scale(1.08)",
-                incomingTo: "scale(1)",
-                outgoingTo: "scale(0.92)",
-            };
-        case "convex":
-            return {
-                incomingFrom: `perspective(2200px) rotateY(${sign * 2.5}deg) scale(0.95)`,
-                incomingTo: "perspective(1800px) rotateY(0deg) scale(1)",
-                outgoingTo: `perspective(2200px) rotateY(${-sign * 2.5}deg) scale(0.95)`,
-            };
-        case "concave":
-            return {
-                incomingFrom: `perspective(2200px) rotateY(${-sign * 2.5}deg) scale(0.95)`,
-                incomingTo: "perspective(1800px) rotateY(0deg) scale(1)",
-                outgoingTo: `perspective(2200px) rotateY(${sign * 2.5}deg) scale(0.95)`,
-            };
-        default:
-            return {
-                incomingFrom: "translateX(0)",
-                incomingTo: "translateX(0)",
-                outgoingTo: "translateX(0)",
-            };
-    }
-}
-
-function _createPresentationSlideTransitionClone(sourceSection, slideWidth, slideHeight, scale) {
-    const clone = sourceSection.cloneNode(true);
-    clone.removeAttribute("id");
-    clone.classList.remove("present", "past", "future");
-    _importantStyle(clone, "position", "absolute");
-    _importantStyle(clone, "left", "0");
-    _importantStyle(clone, "top", "0");
-    _importantStyle(clone, "width", `${slideWidth}px`);
-    _importantStyle(clone, "height", `${slideHeight}px`);
-    _importantStyle(clone, "margin", "0");
-    _importantStyle(clone, "transform-origin", "top left");
-    _importantStyle(clone, "transform", `scale(${scale})`);
-    _importantStyle(clone, "visibility", "visible");
-    _importantStyle(clone, "opacity", "1");
-    _importantStyle(clone, "pointer-events", "none");
-    return clone;
-}
-
-function _capturePresentationSlideTransition(fromIndex, toIndex) {
-    if (!document.body.classList.contains("play-mode-active")) return null;
-    if (fromIndex === toIndex) return null;
-    const type = _getPresentationSlideTransition(toIndex);
-    if (type === "none") return null;
-
-    const outgoingSection =
-        document.querySelector(`.reveal .slides > section.presentation-slide[data-slide-index="${fromIndex}"]`) ||
-        document.querySelector(".reveal .slides > section.present");
-    const incomingSourceSection = document.querySelector(
-        `.reveal .slides > section.presentation-slide[data-slide-index="${toIndex}"]`,
-    );
-    const slidesEl = document.querySelector(".reveal .slides");
-    if (!outgoingSection || !slidesEl || !incomingSourceSection) return null;
-
-    _clearPresentationSlideTransition();
-
-    const slideConfig =
-        typeof getPresentationPageSetupConfig === "function"
-            ? getPresentationPageSetupConfig()
-            : { width: 1024, height: 768 };
-    const slideWidth = Math.max(1, Number(slideConfig.width) || 1024);
-    const slideHeight = Math.max(1, Number(slideConfig.height) || 768);
-    const slidesRect = slidesEl.getBoundingClientRect();
-    const scale = Math.max(0.001, slidesRect.width / slideWidth);
-    const cloneShell = document.createElement("div");
-    cloneShell.className = "presentation-slide-transition-clone";
-    cloneShell.setAttribute("aria-hidden", "true");
-    _importantStyle(cloneShell, "position", "fixed");
-    _importantStyle(cloneShell, "left", `${slidesRect.left}px`);
-    _importantStyle(cloneShell, "top", `${slidesRect.top}px`);
-    _importantStyle(cloneShell, "width", `${slidesRect.width}px`);
-    _importantStyle(cloneShell, "height", `${slidesRect.height}px`);
-    _importantStyle(cloneShell, "overflow", "hidden");
-    _importantStyle(cloneShell, "z-index", "9050");
-    _importantStyle(cloneShell, "pointer-events", "none");
-    _importantStyle(cloneShell, "opacity", "1");
-    _importantStyle(cloneShell, "transform", "translate3d(0, 0, 0)");
-    _importantStyle(cloneShell, "will-change", "opacity, transform");
-
-    const clone = _createPresentationSlideTransitionClone(outgoingSection, slideWidth, slideHeight, scale);
-    _importantStyle(clone, "z-index", "1");
-    cloneShell.appendChild(clone);
-    const incomingClone =
-        type === "fade" || type === "diffuse"
-            ? _createPresentationSlideTransitionClone(incomingSourceSection, slideWidth, slideHeight, scale)
-            : null;
-    if (incomingClone) {
-        _importantStyle(incomingClone, "z-index", "2");
-        _importantStyle(incomingClone, "opacity", "0");
-        // Don't blur the incoming slide - it should appear clear
-        cloneShell.appendChild(incomingClone);
-    }
-    document.body.appendChild(cloneShell);
-
-    const direction = toIndex > fromIndex ? 1 : -1;
-    const transforms = _getPresentationTransitionTransforms(type, direction);
-
-    return () => {
-        const incomingSection = document.querySelector(
-            `.reveal .slides > section.presentation-slide[data-slide-index="${toIndex}"]`,
-        );
-        if (!incomingSection) {
-            cloneShell.remove();
-            return;
-        }
-
-        incomingSection.classList.add("presentation-slide-transitioning");
-        _importantStyle(incomingSection, "transition", "none");
-        _importantStyle(incomingSection, "will-change", "opacity, transform");
-        _importantStyle(incomingSection, "backface-visibility", "hidden");
-        _importantStyle(incomingSection, "transform-origin", "center center");
-        _importantStyle(incomingSection, "opacity", incomingClone ? "0" : "1");
-        _importantStyle(incomingSection, "transform", incomingClone ? "scale(1)" : transforms.incomingFrom);
-        _importantStyle(cloneShell, "transition", "none");
-
-        // Force the browser to commit the initial opacity/filter values. Without
-        // this, Chromium can coalesce the setup and target styles into one paint,
-        // which makes Fade/Diffuse feel like a jump instead of a gradual dissolve.
-        cloneShell.getBoundingClientRect();
-
-        requestAnimationFrame(() => {
-            if (!document.body.classList.contains("play-mode-active")) {
-                _clearPresentationSlideTransition();
-                return;
-            }
-            // Use double RAF to ensure layout is committed before animation starts
-            requestAnimationFrame(() => {
-            const duration = _getPresentationSlideTransitionDuration(type);
-            // For fade/diffuse: use slower, more graceful easing
-            // Entrances: ease-out for responsive feel
-            // Exits: ease-out cubic (not ease-in) for smooth fade
-            // Fades: smooth ease-in-out for gradual transition
-            const easingEntrance = "cubic-bezier(0.25, 0.46, 0.45, 0.94)";  // Ease-out cubic
-            const easingExit = type === "fade" || type === "diffuse" 
-                ? "cubic-bezier(0.25, 0.46, 0.45, 0.94)"                 // Ease-out (smoother for fade)
-                : "cubic-bezier(0.55, 0.06, 0.75, 0.54)";                // Ease-in cubic (for 3D)
-            const easingFade = "cubic-bezier(0.25, 0.46, 0.45, 0.94)";   // Smooth ease-out
-            
-            const incomingTransitionStyle = `transform ${duration}ms ${easingEntrance}`;
-            const outgoingTransitionStyle = `opacity ${duration}ms ${easingFade}, transform ${duration}ms ${easingExit}, filter ${duration}ms ${easingFade}`;
-            if (incomingClone) {
-                // For fade/diffuse: clean opacity crossfade without blur artifacts
-                // Incoming: ease-out (appear quickly then settle)
-                // Outgoing: linear (consistent smooth fade) for professional feel
-                const incomingEase = "cubic-bezier(0.25, 0.46, 0.45, 0.94)";  // Ease-out
-                const outgoingEase = "cubic-bezier(0.4, 0.0, 0.6, 1.0)";      // Linear-like smooth
-                const cloneTransitionStyleIn = `opacity ${duration}ms ${incomingEase}`;
-                const cloneTransitionStyleOut = `opacity ${duration}ms ${outgoingEase}`;
-                _importantStyle(incomingClone, "transition", cloneTransitionStyleIn);
-                _importantStyle(incomingClone, "opacity", "1");
-                _importantStyle(clone, "transition", cloneTransitionStyleOut);
-                _importantStyle(clone, "opacity", "0");
-                // No blur effects - pure clean opacity fade
-            } else {
-                _importantStyle(incomingSection, "transition", incomingTransitionStyle);
-                _importantStyle(cloneShell, "transition", outgoingTransitionStyle);
-                _importantStyle(incomingSection, "transform", transforms.incomingTo);
-                _importantStyle(cloneShell, "opacity", "0");
-                _importantStyle(cloneShell, "transform", transforms.outgoingTo);
-            }
-            _presentationRuntimeState.slideTransitionTimer = setTimeout(
-                () => {
-                    cloneShell.remove();
-                    incomingSection.classList.remove("presentation-slide-transitioning");
-                    _removeImportantStyles(incomingSection, [
-                        "opacity",
-                        "transform",
-                        "transform-origin",
-                        "transition",
-                        "filter",
-                        "backface-visibility",
-                        "will-change",
-                    ]);
-                    _presentationRuntimeState.slideTransitionTimer = null;
-                },
-                _getPresentationSlideTransitionDuration(type) + 100,
-            );
-            });
-        });
-    };
 }
 
 function _getAnimatedSlideEntries(slideIndex) {
@@ -4914,12 +4713,17 @@ function _hasRevealFragmentAdvance(reverse = false) {
 
 function presentationGoToSlide(index) {
     const safeIndex = Math.max(0, Math.min(Number(index) || 0, Math.max(0, (state.slides?.length || 1) - 1)));
-    const previousIndex = Math.max(0, Math.min(currentSlideIndex, Math.max(0, (state.slides?.length || 1) - 1)));
-    const playTransition = _capturePresentationSlideTransition(previousIndex, safeIndex);
     currentSlideIndex = safeIndex;
     if (typeof Reveal !== "undefined" && typeof Reveal.slide === "function") {
+        if (document.body.classList.contains("play-mode-active") && typeof Reveal.configure === "function") {
+            const revealTransition = _getRevealPresentationSlideTransition(safeIndex);
+            Reveal.configure({
+                transition: revealTransition,
+                backgroundTransition: revealTransition,
+                transitionSpeed: "default",
+            });
+        }
         Reveal.slide(safeIndex, 0, -1);
-        playTransition?.();
     } else {
         _preparePresentationSlideAnimations(safeIndex);
     }
@@ -5025,13 +4829,14 @@ async function togglePlayMode() {
     }
 
     if (typeof Reveal !== "undefined" && typeof Reveal.configure === "function") {
-        const activeTransition = isPlaying ? _getPresentationSlideTransition(targetH) : "none";
+        const activeTransition = isPlaying ? _getRevealPresentationSlideTransition(targetH) : "none";
         Reveal.configure({
             controls: false,
             progress: false,
             keyboard: false,
             transition: activeTransition,
             backgroundTransition: activeTransition,
+            transitionSpeed: "default",
             disableLayout: isPlaying,
         });
         Reveal.sync?.();

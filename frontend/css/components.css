@@ -891,10 +891,6 @@ body.play-mode-active {
 }
 
 .play-mode-active .reveal .slides,
-.play-mode-active .reveal .slides > section,
-.play-mode-active .reveal .slides > section.present,
-.play-mode-active .reveal .slides > section.past,
-.play-mode-active .reveal .slides > section.future,
 .play-mode-active .reveal .slides > section.stack {
     transition: none !important;
     animation: none !important;
@@ -915,7 +911,6 @@ body.play-mode-active {
     height: var(--slide-height, 768px) !important;
     margin: 0 !important;
     padding: 0 !important;
-    transform: none !important;
     scale: 1 !important;
     zoom: 1 !important;
     border-radius: 0 !important;
@@ -925,14 +920,10 @@ body.play-mode-active {
 
 .play-mode-active .reveal .slides > section.past,
 .play-mode-active .reveal .slides > section.future {
-    visibility: hidden !important;
-    opacity: 0 !important;
     pointer-events: none !important;
 }
 
 .play-mode-active .reveal .slides > section.present {
-    visibility: visible !important;
-    opacity: 1 !important;
     pointer-events: auto !important;
 }
 
