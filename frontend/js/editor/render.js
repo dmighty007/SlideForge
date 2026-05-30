@@ -2324,6 +2324,7 @@ function _applyStylesToElement(el, styles) {
         "fontFamily",
         "fontWeight",
         "fontStyle",
+        "textDecoration",
         "textAlign",
         "lineHeight",
         "textShadow",
@@ -2504,6 +2505,7 @@ function _renderTableDom(container, elData, { interactive = true } = {}) {
                 });
                 cell.addEventListener("dblclick", e => {
                     if (document.body.classList.contains("play-mode-active")) return;
+                    if (cell.contentEditable === "true") return;
                     e.preventDefault();
                     e.stopPropagation();
                     beginTableCellEdit(cell, rowIndex, colIndex);
@@ -3148,6 +3150,47 @@ function renderIconContentHost(contentHost, elData) {
     contentHost.appendChild(icon);
 }
 
+function commitActiveTextEditors() {
+    let committed = false;
+    document.querySelectorAll(".canvas-element[data-type='text']").forEach(dom => {
+        const contentHost = dom.querySelector(".text-element-content");
+        if (!contentHost) return;
+        const isEditing =
+            contentHost.isContentEditable ||
+            contentHost.contentEditable === "true" ||
+            dom.classList.contains("editing-text") ||
+            contentHost.dataset.structuredEdit === "true";
+        if (!isEditing) return;
+        const slideIndex = Number(dom.closest(".presentation-slide")?.dataset?.slideIndex);
+        const slide = Number.isInteger(slideIndex) ? state.slides?.[slideIndex] : state.slides?.[currentSlideIndex];
+        const elData = slide?.elements?.find(item => item.id === dom.id);
+        if (!elData || elData.type !== "text" || elData.iconMode) return;
+
+        const nextContent =
+            contentHost.dataset.structuredEdit === "true"
+                ? _getStructuredEditorMode(contentHost) === "list"
+                    ? parseStructuredBulletEditorHtml(contentHost)
+                    : parseEditableStructuredText(contentHost.textContent || "", elData.content)
+                : contentHost.innerHTML;
+        const nextTextDocument =
+            typeof createTextDocumentFromLegacyContent === "function"
+                ? createTextDocumentFromLegacyContent(nextContent, { bulletStyle: elData.bulletStyle || "default" })
+                : elData.textDocument;
+        updateElementState?.(elData.id, { content: nextContent, textDocument: nextTextDocument });
+        elData.content = nextContent;
+        elData.textDocument = nextTextDocument;
+        committed = true;
+        contentHost.contentEditable = "false";
+        delete contentHost.dataset.structuredEdit;
+        delete contentHost.dataset.structuredEditMode;
+        delete contentHost.dataset.structuredEditBulletStyle;
+        dom.classList.remove("cursor-text", "editing-text");
+        clearActiveInlineEditor?.(contentHost);
+    });
+    if (committed) schedulePresentationAutosave?.(150);
+}
+window.commitActiveTextEditors = commitActiveTextEditors;
+
 function _applyTypeContent(el, elData, options = {}) {
     if (elData.type === "text") {
         if (!elData.iconMode && typeof ensureElementTextDocument === "function") {
@@ -3179,6 +3222,7 @@ function _applyTypeContent(el, elData, options = {}) {
         el.addEventListener("dblclick", event => {
             if (document.body.classList.contains("play-mode-active")) return;
             if (elData.iconMode) return; // Icons are not editable as text
+            if (contentHost.contentEditable === "true") return; // Let browser handle word selection natively
             event.stopPropagation();
             selectElement(elData.id, "replace");
             let isStructured = isStructuredBulletContent(elData.content);

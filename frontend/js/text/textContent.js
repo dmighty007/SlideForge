@@ -317,6 +317,10 @@ function stripInlineTextStylesFromHtml(html, props = []) {
             if (propSet.has("fontSize")) node.style.removeProperty("font-size");
             if (propSet.has("fontWeight")) node.style.removeProperty("font-weight");
             if (propSet.has("fontStyle")) node.style.removeProperty("font-style");
+            if (propSet.has("textDecoration")) {
+                node.style.removeProperty("text-decoration");
+                node.style.removeProperty("text-decoration-line");
+            }
         }
         if (node.tagName === "FONT") {
             if (removeAll || propSet.has("color")) node.removeAttribute("color");

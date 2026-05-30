@@ -1933,6 +1933,11 @@ body.play-mode-active {
     border-style: dashed !important;
     border-width: 1.5px !important;
     box-shadow: 0 0 0 5px rgba(37, 99, 235, 0.1);
+    pointer-events: none;
+}
+
+#group-bound > .resize-handle {
+    pointer-events: auto;
 }
 
 .resize-handle.tl {
@@ -1986,6 +1991,16 @@ body.play-mode-active {
     outline-offset: 3px;
     box-shadow: 0 0 0 5px rgba(14, 165, 233, 0.14);
 }
+
+/* ── Text Selection Highlighting ── */
+.text-element-content::selection,
+.text-element-content *::selection,
+.table-element-cell::selection,
+.table-element-cell *::selection {
+    background: rgba(37, 99, 235, 0.25);
+    color: inherit;
+}
+
 /* ── Micro-animations — expo-out for premium snap ── */
 @keyframes slideInUp {
     0% {

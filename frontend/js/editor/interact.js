@@ -674,7 +674,6 @@ function _setupMarquee() {
                 combined = Array.from(toggled);
             }
             setSelectedIds(combined);
-            state.selectedIds.forEach(id => document.getElementById(id)?.classList.add("selected"));
             buildPropertiesPanel();
             updateGroupBound();
         } else if (!marqueeStart.additive) {

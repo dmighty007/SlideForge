@@ -4811,6 +4811,9 @@ async function togglePlayMode() {
         if (window.getSelection) {
             window.getSelection().removeAllRanges();
         }
+        if (typeof commitActiveTextEditors === "function") {
+            commitActiveTextEditors();
+        }
         document.querySelectorAll('[contenteditable="true"]').forEach(el => {
             el.contentEditable = "false";
         });
@@ -5129,7 +5132,24 @@ const COMMANDS = [
     { id: "export-zip", title: "Export to Web (ZIP)", icon: "fa-file-zipper", action: exportPresentationZip },
     { id: "export-json", title: "Export to JSON", icon: "fa-file-code", action: exportPresentationJson },
     { id: "import-json", title: "Import from JSON", icon: "fa-file-import", action: importPresentationJson },
+    { id: "import-pptx", title: "Import from PPTX", icon: "fa-file-powerpoint", action: triggerImportPptx },
 ];
+
+function triggerImportPptx() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".pptx";
+    input.onchange = e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (typeof importPptx === "function") {
+            importPptx(file);
+        } else {
+            alert("PPTX Importer not loaded!");
+        }
+    };
+    input.click();
+}
 
 let commandPaletteSelectedIndex = 0;
 let commandPaletteResults = [];
@@ -5233,3 +5253,29 @@ function executeCommandPaletteCommand(cmdId) {
 }
 
 window.executeCommandPaletteCommand = executeCommandPaletteCommand;
+
+window.openTransitionsUI = function() {
+    if (typeof clearSelection === "function") {
+        clearSelection();
+    }
+    const rightSidebar = document.getElementById("right-sidebar");
+    if (rightSidebar && rightSidebar.classList.contains("hidden")) {
+        if (typeof togglePropertiesPanel === "function") {
+            togglePropertiesPanel(); 
+        } else {
+            rightSidebar.classList.remove("hidden");
+        }
+    }
+    setTimeout(() => {
+        const el = document.getElementById("prop-slide-transition");
+        if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            el.focus();
+            const originalShadow = el.style.boxShadow;
+            el.style.boxShadow = "0 0 0 2px #4f46e5";
+            setTimeout(() => {
+                el.style.boxShadow = originalShadow;
+            }, 2000);
+        }
+    }, 100);
+};

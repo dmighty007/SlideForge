@@ -36,27 +36,53 @@ function onCommit(cb) {
 
 let _propertiesPanelSelectionSignature = "";
 
-function markTextElementStyleAsLocal(data, prop) {
+function markTextElementStyleAsLocal(data, prop, force = false) {
     if (!data || data.type !== "text") return;
-    if (!["color"].includes(prop)) return;
+    const localTextStyleProps = new Set([
+        "color",
+        "fontSize",
+        "fontFamily",
+        "fontWeight",
+        "fontStyle",
+        "textDecoration",
+        "textAlign",
+        "lineHeight",
+        "textShadow",
+        "textStrokeWidth",
+        "textStrokeColor",
+    ]);
+    if (!localTextStyleProps.has(prop)) return;
     if (data.themeManaged === false) return;
+    if (force) {
+        updateElementState(data.id, { themeManaged: false });
+        data.themeManaged = false;
+        return;
+    }
     const theme = typeof getPresentationTheme === "function" ? getPresentationTheme() : null;
-    const currentColor = String(data.styles?.color || "")
+    const currentValue = String(data.styles?.[prop] || "")
         .trim()
         .toLowerCase();
-    const normalizedThemeColors = new Set(
-        [
-            theme?.defaultTextColor,
-            theme?.defaultMutedColor,
-            theme?.accentStrong,
-            theme?.defaultShapeColor,
-            theme?.cssVars?.["--slide-accent"],
-            theme?.cssVars?.["--slide-accent-2"],
-        ]
-            .filter(Boolean)
-            .map(value => String(value).trim().toLowerCase()),
-    );
-    if (normalizedThemeColors.has(currentColor)) return;
+    if (prop === "color") {
+        const normalizedThemeColors = new Set(
+            [
+                theme?.defaultTextColor,
+                theme?.defaultMutedColor,
+                theme?.accentStrong,
+                theme?.defaultShapeColor,
+                theme?.cssVars?.["--slide-accent"],
+                theme?.cssVars?.["--slide-accent-2"],
+            ]
+                .filter(Boolean)
+                .map(value => String(value).trim().toLowerCase()),
+        );
+        if (normalizedThemeColors.has(currentValue)) return;
+    } else {
+        const defaults = getThemeTextStyleDefaults();
+        const defaultValue = String(defaults?.[prop] || "")
+            .trim()
+            .toLowerCase();
+        if (currentValue && defaultValue && currentValue === defaultValue) return;
+    }
     updateElementState(data.id, { themeManaged: false });
     data.themeManaged = false;
 }
@@ -452,7 +478,7 @@ function clearTextFormatting(data = getSelectedElementData()) {
 
     if (contentHost) {
         contentHost.innerHTML = renderTextContent({ ...data, content: nextContent });
-        ["fontFamily", "fontSize", "fontWeight", "fontStyle", "color"].forEach(prop => {
+        ["fontFamily", "fontSize", "fontWeight", "fontStyle", "color", "textDecoration"].forEach(prop => {
             _setElementDomStyleProperty(contentHost, prop, nextStyles[prop], "important");
             _setElementDomStyleProperty(dom, prop, nextStyles[prop], "important");
         });
@@ -477,6 +503,7 @@ function clearTextFormatting(data = getSelectedElementData()) {
     updateFloatingToolbars?.();
     buildPropertiesPanel();
     refreshPreviews?.();
+    schedulePresentationAutosave?.(150);
 }
 
 function applyTextFormatting(prop, value, options = {}) {
@@ -497,7 +524,7 @@ function applyTextFormatting(prop, value, options = {}) {
         }
 
         if (typeof hasNonCollapsedInlineSelection === "function" && !hasNonCollapsedInlineSelection()) {
-            if (["fontWeight", "fontStyle", "fontFamily", "fontSize", "color"].includes(prop)) {
+            if (["fontWeight", "fontStyle", "fontFamily", "fontSize", "color", "textDecoration"].includes(prop)) {
                 applyStyle(prop, value);
             }
             return;
@@ -523,7 +550,7 @@ function applyTextFormatting(prop, value, options = {}) {
             updateElementState(data.id, { content: nextContent, textDocument: nextTextDocument });
             data.content = nextContent;
             data.textDocument = nextTextDocument;
-            markTextElementStyleAsLocal(data, prop);
+            markTextElementStyleAsLocal(data, prop, true);
             const layout = syncTextBoxLayout(inlineContext.dom, data);
             if (layout?.autoHeight && Number.isFinite(layout.height)) {
                 updateElementState(data.id, { height: `${layout.height}px` });
@@ -531,17 +558,31 @@ function applyTextFormatting(prop, value, options = {}) {
             }
             captureInlineSelection();
             if (window.refreshPreviews) window.refreshPreviews();
+            schedulePresentationAutosave?.(150);
             return;
         }
     }
 
     // Fallback: Apply to the entire element only outside inline edit mode.
-    if (["fontWeight", "fontStyle", "fontFamily", "fontSize", "color"].includes(prop)) {
+    if (["fontWeight", "fontStyle", "fontFamily", "fontSize", "color", "textDecoration"].includes(prop)) {
         applyStyle(prop, value);
     }
 }
 
 // --- Selection & Property UI ---
+function getActiveSlideElementDom(id) {
+    if (!id) return null;
+    const safeId = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(String(id)) : String(id).replace(/"/g, '\\"');
+    const slide = document.querySelector(`.presentation-slide[data-slide-index="${currentSlideIndex}"]`);
+    return slide?.querySelector(`.canvas-element#${safeId}`) || null;
+}
+
+function clearSelectionVisualState() {
+    document
+        .querySelectorAll(".canvas-element.selected, .canvas-element.group-member-selected")
+        .forEach(el => el.classList.remove("selected", "group-member-selected"));
+}
+
 function selectElement(id, selectionMode = "replace") {
     const elData = state.slides[currentSlideIndex].elements.find(e => e.id === id);
     if (!elData) return;
@@ -563,7 +604,7 @@ function selectElement(id, selectionMode = "replace") {
         idsToSelect.forEach(iid => {
             if (allAlreadySelected) {
                 state.selectedIds = state.selectedIds.filter(x => x !== iid);
-                document.getElementById(iid)?.classList.remove("selected", "group-member-selected");
+                getActiveSlideElementDom(iid)?.classList.remove("selected", "group-member-selected");
             } else if (!state.selectedIds.includes(iid)) {
                 state.selectedIds.push(iid);
             }
@@ -573,7 +614,7 @@ function selectElement(id, selectionMode = "replace") {
         // clearSelection(), which would trigger an extra buildPropertiesPanel()
         // and updateGroupBound() with empty selectedIds before we've set the new ones.
         state.selectedIds.forEach(prevId => {
-            document.getElementById(prevId)?.classList.remove("selected", "group-member-selected");
+            getActiveSlideElementDom(prevId)?.classList.remove("selected", "group-member-selected");
             if (!idsToSelect.includes(prevId)) {
                 const prevData = state.slides[currentSlideIndex]?.elements?.find(e => e.id === prevId);
                 if (prevData?.type === "table") {
@@ -595,6 +636,9 @@ function selectElement(id, selectionMode = "replace") {
 }
 
 function clearSelection() {
+    if (document.activeElement && typeof document.activeElement.blur === "function" && document.activeElement !== document.body) {
+        document.activeElement.blur();
+    }
     state.selectedIds.forEach(id => {
         const data = state.slides[currentSlideIndex]?.elements?.find(e => e.id === id);
         if (data?.type === "table") {
@@ -607,12 +651,8 @@ function clearSelection() {
         }
     });
     clearTablePartSelections();
-    state.selectedIds.forEach(id => {
-        const domEl = document.getElementById(id);
-        if (domEl) {
-            domEl.classList.remove("selected", "group-member-selected");
-        }
-    });
+
+    clearSelectionVisualState();
     state.selectedIds = [];
     buildPropertiesPanel();
     updateGroupBound();
@@ -623,11 +663,10 @@ function updateGroupBound() {
     if (!bound) return;
     if (state.selectedIds.length < 1) {
         bound.classList.add("hidden");
-        document
-            .querySelectorAll(".canvas-element.group-member-selected")
-            .forEach(el => el.classList.remove("group-member-selected"));
+        clearSelectionVisualState();
         return;
     }
+    clearSelectionVisualState();
 
     const scale = getCanvasScale();
     let minX = Infinity,
@@ -638,20 +677,29 @@ function updateGroupBound() {
     // Use the wrapper rect as the positioning origin for the group-bound overlay.
     // The group-bound is a direct child of canvas-wrapper so its translate() is
     // relative to the wrapper's top-left corner.
-    const wrapperRect = document.getElementById("canvas-wrapper").getBoundingClientRect();
+    const wrapper = document.getElementById("canvas-wrapper");
+    if (!wrapper) {
+        bound.classList.add("hidden");
+        return;
+    }
+    const wrapperRect = wrapper.getBoundingClientRect();
+    const wrapperScrollX = wrapper.scrollLeft || 0;
+    const wrapperScrollY = wrapper.scrollTop || 0;
 
     // The Reveal.js slide section may be centered inside the wrapper.
     // We compute element screen positions relative to the wrapper to keep
     // the group-bound in the same coordinate space it is rendered in.
+    let paintedCount = 0;
     state.selectedIds.forEach(id => {
-        const el = document.getElementById(id);
+        const el = getActiveSlideElementDom(id);
         if (!el) return;
+        paintedCount += 1;
         const rect = el.getBoundingClientRect();
 
-        minX = Math.min(minX, rect.left - wrapperRect.left);
-        minY = Math.min(minY, rect.top - wrapperRect.top);
-        maxX = Math.max(maxX, rect.right - wrapperRect.left);
-        maxY = Math.max(maxY, rect.bottom - wrapperRect.top);
+        minX = Math.min(minX, rect.left - wrapperRect.left + wrapperScrollX);
+        minY = Math.min(minY, rect.top - wrapperRect.top + wrapperScrollY);
+        maxX = Math.max(maxX, rect.right - wrapperRect.left + wrapperScrollX);
+        maxY = Math.max(maxY, rect.bottom - wrapperRect.top + wrapperScrollY);
 
         if (state.selectedIds.length > 1) {
             el.classList.add("group-member-selected");
@@ -662,7 +710,12 @@ function updateGroupBound() {
         }
     });
 
-    if (state.selectedIds.length > 1) {
+    if (paintedCount < 1 || !Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+        bound.classList.add("hidden");
+        return;
+    }
+
+    if (state.selectedIds.length > 1 && paintedCount > 1) {
         bound.classList.remove("hidden");
         bound.style.width = maxX - minX + "px";
         bound.style.height = maxY - minY + "px";
@@ -672,8 +725,8 @@ function updateGroupBound() {
         // the group resize move handler can correctly back-compute logical coords.
         const slideEl = document.querySelector(".reveal .slides section.present");
         const slideRect = slideEl ? slideEl.getBoundingClientRect() : wrapperRect;
-        const slideOffsetX = (slideRect.left - wrapperRect.left) / scale;
-        const slideOffsetY = (slideRect.top - wrapperRect.top) / scale;
+        const slideOffsetX = (slideRect.left - wrapperRect.left + wrapperScrollX) / scale;
+        const slideOffsetY = (slideRect.top - wrapperRect.top + wrapperScrollY) / scale;
 
         // Logical coords = screen offset from wrapper, adjusted for slide offset, then unscaled
         bound.setAttribute("data-logical-x", minX / scale - slideOffsetX);
@@ -1515,29 +1568,44 @@ function shiftTextBulletLevels(data, delta) {
 }
 
 function updateFloatingToolbars() {
+    const data = getSelectedElementData();
+    const isPlaying = document.body.classList.contains("play-mode-active");
+    
+    let activeToolbarId = null;
+    if (data && !isPlaying && state.selectedIds.length === 1) {
+        if (data.type === "text" && !data.iconMode) {
+            const dom = document.getElementById(data.id);
+            const contentHost = dom?.querySelector(".text-element-content");
+            const activeEditor =
+                dom?.classList.contains("editing-text") ||
+                contentHost?.isContentEditable ||
+                (typeof getActiveInlineEditor === "function" && getActiveInlineEditor() === contentHost);
+            if (activeEditor) activeToolbarId = "floating-text-toolbar";
+        } else if (data.type === "shape") activeToolbarId = "floating-shape-toolbar";
+        else if (data.type === "image") activeToolbarId = "floating-image-toolbar";
+    }
+
     ["floating-text-toolbar", "floating-shape-toolbar", "floating-image-toolbar"].forEach(id => {
         const tb = document.getElementById(id);
-        if (tb) tb.classList.add("hidden");
+        if (tb && id !== activeToolbarId) {
+            tb.classList.add("hidden");
+            tb.dataset.wasVisible = "false";
+        }
     });
 
-    const data = getSelectedElementData();
-    if (!data || document.body.classList.contains("play-mode-active") || state.selectedIds.length !== 1) return;
+    if (!activeToolbarId) return;
+
+    const toolbar = document.getElementById(activeToolbarId);
+    if (!toolbar) return;
 
     const dom = document.getElementById(data.id);
     if (!dom) return;
 
-    let toolbarId = null;
-    if (data.type === "text" && !data.iconMode) toolbarId = "floating-text-toolbar";
-    else if (data.type === "shape") toolbarId = "floating-shape-toolbar";
-    else if (data.type === "image") toolbarId = "floating-image-toolbar";
-
-    if (!toolbarId) return;
-
-    const toolbar = document.getElementById(toolbarId);
-    if (!toolbar) return;
+    const wasVisible = toolbar.dataset.wasVisible === "true" && !toolbar.classList.contains("hidden");
+    toolbar.dataset.wasVisible = "true";
 
     const rect = dom.getBoundingClientRect();
-    positionFloatingToolbar(toolbar, rect, { placement: data.type === "text" ? "top" : "auto" });
+    positionFloatingToolbar(toolbar, rect, { placement: data.type === "text" ? "top" : "auto", wasVisible });
 
     if (data.type === "text") _bindFloatingTextToolbar(data, toolbar);
     else if (data.type === "shape") _bindFloatingShapeToolbar(data, toolbar);
@@ -1547,15 +1615,18 @@ function updateFloatingToolbars() {
 function positionFloatingToolbar(toolbar, targetRect, options = {}) {
     if (!toolbar || !targetRect) return;
 
-    const previousVisibility = toolbar.style.visibility;
+    const isNewlyShown = !options.wasVisible;
     toolbar.classList.remove("hidden");
-    // Re-trigger the pop-in entry animation each time the toolbar is shown
-    toolbar.classList.remove("animate-popIn");
-    void toolbar.offsetWidth; // force reflow to reset animation
-    toolbar.classList.add("animate-popIn");
-    toolbar.style.visibility = "hidden";
-    toolbar.style.left = "0px";
-    toolbar.style.top = "0px";
+    
+    if (isNewlyShown) {
+        toolbar.classList.remove("animate-popIn");
+        void toolbar.offsetWidth;
+        toolbar.classList.add("animate-popIn");
+        toolbar.style.visibility = "hidden";
+        toolbar.style.left = "0px";
+        toolbar.style.top = "0px";
+        toolbar.style.transform = "";
+    }
 
     const toolbarRect = toolbar.getBoundingClientRect();
     const toolbarWidth = toolbarRect.width || toolbar.offsetWidth || 320;
@@ -1608,7 +1679,7 @@ function positionFloatingToolbar(toolbar, targetRect, options = {}) {
         toolbar.style.left = `${left - dx}px`;
         toolbar.style.top = `${top - dy}px`;
     }
-    toolbar.style.visibility = previousVisibility || "";
+    toolbar.style.visibility = "";
 }
 
 let _imageHoverToolbarHideTimer = null;
@@ -1630,12 +1701,13 @@ function _ensureTextToolbarTargetSelected(toolbar, fallbackData = null) {
 
 function showTextHoverToolbar(id) {
     if (document.body.classList.contains("play-mode-active")) return;
+    if (state.selectedIds.length > 1) return;
 
     const data = state.slides[currentSlideIndex]?.elements?.find(el => el.id === id);
     const dom = document.getElementById(id);
     const toolbar = document.getElementById("floating-text-toolbar");
     if (!data || data.type !== "text" || data.iconMode || data.hidden || !dom || !toolbar) return;
-    if (dom.classList.contains("editing-text")) return;
+    if (!dom.classList.contains("editing-text")) return;
 
     clearTimeout(_textHoverToolbarHideTimer);
     ["floating-shape-toolbar", "floating-image-toolbar"].forEach(toolbarId => {
@@ -2245,10 +2317,55 @@ function buildPropertiesPanel() {
             const sharedAlign = textElements.every(e => (e.styles?.textAlign || "left") === firstAlign)
                 ? firstAlign
                 : "";
-            const textAlignGrp = createGroup(
-                textElements.length === elements.length ? "Text Alignment" : "Text in Group",
+            const firstFont = textElements[0]?.styles?.fontFamily || getThemeTextStyleDefaults().fontFamily;
+            const sharedFont = textElements.every(e => normalizeFontFamily(e.styles?.fontFamily) === normalizeFontFamily(firstFont))
+                ? firstFont
+                : "";
+            const firstSize = textElements[0]?.styles?.fontSize || getThemeTextStyleDefaults().fontSize;
+            const sharedSize = textElements.every(e => (e.styles?.fontSize || getThemeTextStyleDefaults().fontSize) === firstSize)
+                ? firstSize
+                : "";
+            const firstTextColor = textElements[0]?.styles?.color || getThemeTextStyleDefaults().color;
+            const sharedTextColor = textElements.every(
+                e =>
+                    _normalizeColorForInput(e.styles?.color, "#000000").toLowerCase() ===
+                    _normalizeColorForInput(firstTextColor, "#000000").toLowerCase(),
+            )
+                ? firstTextColor
+                : "#172033";
+            const allBold = textElements.every(e => ["700", "bold"].includes(String(e.styles?.fontWeight || "").toLowerCase()));
+            const allItalic = textElements.every(e => e.styles?.fontStyle === "italic");
+            const allUnderline = textElements.every(e => String(e.styles?.textDecoration || "").includes("underline"));
+            const textStyleGrp = createGroup(textElements.length === elements.length ? "Shared Text Style" : "Text in Group");
+            textStyleGrp.appendChild(
+                createField(
+                    "Font",
+                    `<select id="prop-shared-text-font" class="prop-select">
+                        <option value="" ${sharedFont ? "" : "selected"}>Mixed</option>
+                        ${buildFontOptions(sharedFont || firstFont)}
+                    </select>`,
+                ),
             );
-            textAlignGrp.appendChild(
+            textStyleGrp.appendChild(
+                createField(
+                    "Size / Color",
+                    `<div class="grid grid-cols-[1fr_44px] gap-2">
+                        <input type="text" id="prop-shared-text-size" class="prop-input-sm" value="${sharedSize ? parseInt(sharedSize) || "" : ""}" placeholder="Mixed">
+                        <input type="color" id="prop-shared-text-color" class="w-11 h-8 cursor-pointer rounded-md p-0" value="${_normalizeColorForInput(sharedTextColor, "#172033")}">
+                    </div>`,
+                ),
+            );
+            textStyleGrp.appendChild(
+                createField(
+                    "Style",
+                    `<div class="prop-btn-group" id="prop-shared-text-style">
+                        <button type="button" class="prop-btn ${allBold ? "active" : ""}" data-prop="fontWeight" data-active="${allBold}" title="Bold"><i class="fa-solid fa-bold"></i></button>
+                        <button type="button" class="prop-btn ${allItalic ? "active" : ""}" data-prop="fontStyle" data-active="${allItalic}" title="Italic"><i class="fa-solid fa-italic"></i></button>
+                        <button type="button" class="prop-btn ${allUnderline ? "active" : ""}" data-prop="textDecoration" data-active="${allUnderline}" title="Underline"><i class="fa-solid fa-underline"></i></button>
+                    </div>`,
+                ),
+            );
+            textStyleGrp.appendChild(
                 createField(
                     "Alignment",
                     `<div class="prop-btn-group" id="prop-shared-text-align">
@@ -2262,7 +2379,7 @@ function buildPropertiesPanel() {
                     </div>`,
                 ),
             );
-            panel.appendChild(textAlignGrp);
+            panel.appendChild(textStyleGrp);
         }
     }
 
@@ -3082,6 +3199,52 @@ function buildPropertiesPanel() {
 
         document.querySelectorAll("#prop-shared-text-align [data-align]").forEach(button => {
             button.onclick = () => applyTextAlignmentToSelection(button.dataset.align);
+        });
+
+        const sharedTextFont = document.getElementById("prop-shared-text-font");
+        if (sharedTextFont) {
+            sharedTextFont.onchange = e => {
+                if (!e.target.value) return;
+                applyStyleAndRefresh("fontFamily", e.target.value);
+            };
+        }
+
+        const sharedTextSize = document.getElementById("prop-shared-text-size");
+        if (sharedTextSize) {
+            const commitSharedTextSize = () => {
+                const raw = String(sharedTextSize.value || "").trim();
+                if (!raw) return;
+                const next = _normalizePx(raw, "32px");
+                applyStyleAndRefresh("fontSize", next);
+            };
+            sharedTextSize.onchange = commitSharedTextSize;
+            sharedTextSize.onblur = commitSharedTextSize;
+        }
+
+        const sharedTextColor = document.getElementById("prop-shared-text-color");
+        if (sharedTextColor) {
+            sharedTextColor.oninput = e => applyStyle("color", e.target.value);
+            sharedTextColor.onchange = () => buildPropertiesPanel();
+        }
+
+        document.querySelectorAll("#prop-shared-text-style [data-prop]").forEach(button => {
+            button.onclick = () => {
+                const prop = button.dataset.prop;
+                const active = button.dataset.active === "true";
+                const value =
+                    prop === "fontWeight"
+                        ? active
+                            ? "400"
+                            : "700"
+                        : prop === "fontStyle"
+                          ? active
+                              ? "normal"
+                              : "italic"
+                          : active
+                            ? "none"
+                            : "underline";
+                applyStyleAndRefresh(prop, value);
+            };
         });
 
         const slideNotes = document.getElementById("prop-slide-notes");
@@ -4716,7 +4879,10 @@ function applyStyle(prop, value) {
         const dom = document.getElementById(id);
         const contentHost = data.type === "text" ? dom?.querySelector(".text-element-content") : null;
 
-        if (data.type === "text" && ["color", "fontSize", "fontFamily", "fontWeight", "fontStyle"].includes(prop)) {
+        if (
+            data.type === "text" &&
+            ["color", "fontSize", "fontFamily", "fontWeight", "fontStyle", "textDecoration"].includes(prop)
+        ) {
             let nextContent = contentHost?.isContentEditable ? contentHost.innerHTML : data.content;
             let contentChanged = false;
             if (contentHost?.dataset.structuredEdit === "true" && _getStructuredEditorMode(contentHost) === "list") {
@@ -4760,6 +4926,7 @@ function applyStyle(prop, value) {
             "fontFamily",
             "fontWeight",
             "fontStyle",
+            "textDecoration",
             "textAlign",
             "lineHeight",
             "textShadow",
@@ -4772,7 +4939,7 @@ function applyStyle(prop, value) {
             if (contentHost) {
                 _setElementDomStyleProperty(contentHost, prop, value, priority);
                 if (
-                    ["color", "fontSize", "fontFamily", "fontWeight", "fontStyle"].includes(prop) &&
+                    ["color", "fontSize", "fontFamily", "fontWeight", "fontStyle", "textDecoration"].includes(prop) &&
                     contentHost.dataset.structuredEdit !== "true" &&
                     !contentHost.isContentEditable
                 ) {
@@ -4789,6 +4956,7 @@ function applyStyle(prop, value) {
 
     if (window.refreshPreviews) window.refreshPreviews();
     updateGroupBound();
+    schedulePresentationAutosave?.(150);
 }
 
 function applyStyleAndRefresh(prop, value) {

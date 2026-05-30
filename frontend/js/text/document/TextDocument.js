@@ -115,8 +115,9 @@
         const style = el.style || {};
         if (tag === "B" || tag === "STRONG" || style.fontWeight === "bold" || Number(style.fontWeight) >= 600) marks.push({ type: "bold" });
         if (tag === "I" || tag === "EM" || style.fontStyle === "italic") marks.push({ type: "italic" });
-        if (tag === "U" || String(style.textDecoration || "").includes("underline")) marks.push({ type: "underline" });
-        if (tag === "S" || tag === "STRIKE" || String(style.textDecoration || "").includes("line-through")) marks.push({ type: "strike" });
+        const textDecoration = `${style.textDecoration || ""} ${style.textDecorationLine || ""}`;
+        if (tag === "U" || textDecoration.includes("underline")) marks.push({ type: "underline" });
+        if (tag === "S" || tag === "STRIKE" || textDecoration.includes("line-through")) marks.push({ type: "strike" });
         if (tag === "SUB" || style.verticalAlign === "sub") marks.push({ type: "subscript" });
         if (tag === "SUP" || style.verticalAlign === "super") marks.push({ type: "superscript" });
         if (tag === "CODE") marks.push({ type: "code" });

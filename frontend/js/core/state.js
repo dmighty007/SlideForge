@@ -707,6 +707,7 @@ const SAFE_TEXT_STYLE_PROPS = new Set([
     "font-weight",
     "text-align",
     "text-decoration",
+    "text-decoration-line",
     "vertical-align",
     "list-style-type",
     "margin",
@@ -1252,12 +1253,17 @@ function normalizeStateIds() {
                               : undefined,
                           textDocument:
                               typeof createTextDocumentFromLegacyContent === "function"
-                                  ? createTextDocumentFromLegacyContent(safeEl.textDocument || safeEl.content, {
+                                  ? createTextDocumentFromLegacyContent(
+                                        safeEl.content !== undefined && safeEl.content !== null
+                                            ? safeEl.content
+                                            : safeEl.textDocument,
+                                        {
                                         bulletStyle:
                                             typeof safeEl.bulletStyle === "string" && safeEl.bulletStyle
                                                 ? safeEl.bulletStyle
                                                 : "default",
-                                    })
+                                        },
+                                    )
                                   : safeEl.textDocument,
                           themeManaged: safeEl.themeManaged ?? true,
                       }
@@ -1420,8 +1426,24 @@ function setSelectedIds(ids) {
 }
 
 function _serializeEditorSnapshot() {
+    // Exclude `textDocument` from snapshots — it is a derived/computed field
+    // built from `content` at render time via ensureElementTextDocument().
+    // Serialising it causes stale textDocument values to survive undo/redo and
+    // then corrupt other text elements when they are re-rendered from the snapshot.
+    const stateForSnapshot = {
+        ...state,
+        slides: (state.slides || []).map(slide => ({
+            ...slide,
+            elements: (slide.elements || []).map(el => {
+                if (el.type !== "text") return el;
+                // Omit textDocument; renderer will rebuild it from `content`.
+                const { textDocument: _td, ...rest } = el;
+                return rest;
+            }),
+        })),
+    };
     return JSON.stringify({
-        state,
+        state: stateForSnapshot,
         currentSlideIndex,
     });
 }
@@ -1431,11 +1453,23 @@ function _restoreEditorSnapshot(rawSnapshot) {
         const parsed = JSON.parse(rawSnapshot);
         if (parsed && typeof parsed === "object" && parsed.state && Array.isArray(parsed.state.slides)) {
             state = parsed.state;
+            // Defensively drop any stale textDocument so the renderer always
+            // regenerates it fresh from `content` on the next render pass.
+            (state.slides || []).forEach(slide => {
+                (slide.elements || []).forEach(el => {
+                    if (el.type === "text") delete el.textDocument;
+                });
+            });
             currentSlideIndex = Number.isInteger(parsed.currentSlideIndex) ? parsed.currentSlideIndex : currentSlideIndex;
             return true;
         }
         if (parsed && typeof parsed === "object" && Array.isArray(parsed.slides)) {
             state = parsed;
+            (state.slides || []).forEach(slide => {
+                (slide.elements || []).forEach(el => {
+                    if (el.type === "text") delete el.textDocument;
+                });
+            });
             return true;
         }
     } catch (err) {

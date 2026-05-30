@@ -2091,7 +2091,7 @@ function createViewerElement(elData, mediaOptions = {}) {
             return;
         }
         const cssProp = prop.replace(/([A-Z])/g, '-$1').toLowerCase();
-        const priority = ['color', 'fontSize', 'fontFamily', 'fontWeight', 'fontStyle', 'textAlign', 'lineHeight', 'textShadow'].includes(prop)
+        const priority = ['color', 'fontSize', 'fontFamily', 'fontWeight', 'fontStyle', 'textDecoration', 'textAlign', 'lineHeight', 'textShadow'].includes(prop)
             ? 'important'
             : '';
         el.style.setProperty(cssProp, value, priority);

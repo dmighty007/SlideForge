@@ -156,7 +156,7 @@ async function ensureEditor(page) {
     cleanupPage = page;
     const pageErrors = [];
 
-    page.on("pageerror", error => pageErrors.push(error.message));
+    page.on("pageerror", error => pageErrors.push(error.stack || error.message));
     page.on("console", msg => {
         if (msg.type() === "error") {
             const text = msg.text();
@@ -262,6 +262,477 @@ async function ensureEditor(page) {
         });
     });
 
+    await step("Text formatting survives presentation mode", async () => {
+        await ensureEditor(page);
+        const result = await page.evaluate(async () => {
+            const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+            currentSlideIndex = 0;
+            const slide = state.slides[0];
+            const text = slide.elements.find(el => el.type === "text");
+            const formatted =
+                '<span style="font-weight:700;font-style:italic;text-decoration:underline;color:#db2777;font-size:44px;">Formatted Text</span>';
+            text.content = formatted;
+            text.textDocument =
+                typeof createTextDocumentFromLegacyContent === "function"
+                    ? createTextDocumentFromLegacyContent(formatted, { bulletStyle: text.bulletStyle || "default" })
+                    : text.textDocument;
+            text.styles = {
+                ...(text.styles || {}),
+                color: "#172033",
+                fontSize: "32px",
+                fontFamily: '"Manrope", sans-serif',
+                fontWeight: "400",
+                fontStyle: "normal",
+            };
+            renderSlidesFromState();
+            await sleep(120);
+            togglePlayMode();
+            await sleep(700);
+            const host = document.querySelector(`#${CSS.escape(text.id)} .text-element-content`);
+            const span = host?.querySelector("span");
+            const style = span ? getComputedStyle(span) : null;
+            const value = {
+                playMode: document.body.classList.contains("play-mode-active"),
+                html: host?.innerHTML || "",
+                fontWeight: style?.fontWeight || "",
+                fontStyle: style?.fontStyle || "",
+                textDecoration: style?.textDecorationLine || "",
+                color: style?.color || "",
+                fontSize: style?.fontSize || "",
+            };
+            togglePlayMode();
+            await sleep(300);
+
+            text.content = formatted;
+            text.textDocument =
+                typeof createTextDocumentFromLegacyContent === "function"
+                    ? createTextDocumentFromLegacyContent("Stale document should not win", {
+                          bulletStyle: text.bulletStyle || "default",
+                      })
+                    : text.textDocument;
+            const persisted = getPersistableState();
+            state = JSON.parse(JSON.stringify(persisted));
+            currentSlideIndex = 0;
+            normalizeStateIds();
+            renderSlidesFromState();
+            await sleep(120);
+            const reloadedHost = document.querySelector(`#${CSS.escape(text.id)} .text-element-content`);
+            const reloadedSpan = reloadedHost?.querySelector("span");
+            const reloadedStyle = reloadedSpan ? getComputedStyle(reloadedSpan) : null;
+            value.reloadedHtml = reloadedHost?.innerHTML || "";
+            value.reloadedFontWeight = reloadedStyle?.fontWeight || "";
+            value.reloadedTextDecoration = reloadedStyle?.textDecorationLine || "";
+            value.reloadedColor = reloadedStyle?.color || "";
+            value.reloadedFontSize = reloadedStyle?.fontSize || "";
+            return value;
+        });
+        assert(result.playMode, "Presentation mode should activate for formatting check");
+        assert(result.fontWeight === "700" || Number(result.fontWeight) >= 700, `Bold should survive: ${JSON.stringify(result)}`);
+        assert(result.fontStyle === "italic", `Italic should survive: ${JSON.stringify(result)}`);
+        assert(result.textDecoration.includes("underline"), `Underline should survive: ${JSON.stringify(result)}`);
+        assert(result.color === "rgb(219, 39, 119)", `Color should survive: ${JSON.stringify(result)}`);
+        assert(result.fontSize === "44px", `Inline font size should survive: ${JSON.stringify(result)}`);
+        assert(
+            result.reloadedFontWeight === "700" || Number(result.reloadedFontWeight) >= 700,
+            `Saved/reloaded bold should use edited content: ${JSON.stringify(result)}`,
+        );
+        assert(
+            result.reloadedTextDecoration.includes("underline"),
+            `Saved/reloaded underline should survive: ${JSON.stringify(result)}`,
+        );
+        assert(result.reloadedColor === "rgb(219, 39, 119)", `Saved/reloaded color should survive: ${JSON.stringify(result)}`);
+        assert(result.reloadedFontSize === "44px", `Saved/reloaded font size should survive: ${JSON.stringify(result)}`);
+    });
+
+    await step("Multiple text boxes support shared formatting without hover toolbar", async () => {
+        await ensureEditor(page);
+        const result = await page.evaluate(async () => {
+            const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+            state.slides = [
+                {
+                    id: generateId("slide"),
+                    layoutId: "blank-titled",
+                    masterId: "content",
+                    notes: "",
+                    presentationTransition: "none",
+                    elements: [
+                        {
+                            id: generateId("el"),
+                            type: "text",
+                            x: 180,
+                            y: 180,
+                            width: 360,
+                            height: 90,
+                            content: "First box",
+                            styles: { color: "#172033", fontSize: "30px", fontFamily: '"Manrope", sans-serif', fontWeight: "400", textAlign: "left", zIndex: 2 },
+                        },
+                        {
+                            id: generateId("el"),
+                            type: "text",
+                            x: 180,
+                            y: 320,
+                            width: 360,
+                            height: 90,
+                            content: "Second box",
+                            styles: { color: "#172033", fontSize: "30px", fontFamily: '"Manrope", sans-serif', fontWeight: "400", textAlign: "left", zIndex: 3 },
+                        },
+                    ],
+                },
+            ];
+            currentSlideIndex = 0;
+            normalizeStateIds();
+            renderSlidesFromState();
+            await sleep(120);
+
+            const selectedTextIds = state.slides[0].elements.slice(0, 2).map(el => el.id);
+            selectElement(selectedTextIds[0], "replace");
+            selectElement(selectedTextIds[1], "add");
+            await sleep(120);
+            const toolbar = document.getElementById("floating-text-toolbar");
+            const multiToolbarHidden = toolbar.classList.contains("hidden");
+            const sharedPanelVisible = Boolean(document.getElementById("prop-shared-text-style"));
+
+            document.getElementById("prop-shared-text-size").value = "46";
+            document.getElementById("prop-shared-text-size").dispatchEvent(new Event("change", { bubbles: true }));
+            await sleep(80);
+            document.getElementById("prop-shared-text-color").value = "#db2777";
+            document.getElementById("prop-shared-text-color").dispatchEvent(new Event("input", { bubbles: true }));
+            document.getElementById("prop-shared-text-color").dispatchEvent(new Event("change", { bubbles: true }));
+            await sleep(80);
+            document.querySelector('#prop-shared-text-style [data-prop="fontWeight"]').click();
+            await sleep(80);
+            document.querySelector('#prop-shared-text-style [data-prop="textDecoration"]').click();
+            await sleep(80);
+            document.querySelector('#prop-shared-text-align [data-align="center"]').click();
+            await sleep(120);
+
+            const afterBatch = state.slides[0].elements
+                .filter(el => selectedTextIds.includes(el.id))
+                .map(el => ({
+                    fontSize: el.styles.fontSize,
+                    color: el.styles.color,
+                    fontWeight: el.styles.fontWeight,
+                    textDecoration: el.styles.textDecoration,
+                    textAlign: el.styles.textAlign,
+                    themeManaged: el.themeManaged,
+                }));
+            const firstDom = document.querySelector(
+                `#slides-container .presentation-slide[data-slide-index="0"] #${CSS.escape(selectedTextIds[0])}`,
+            );
+            firstDom.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+            await sleep(180);
+            const hoverToolbarHiddenAfterMulti = toolbar.classList.contains("hidden");
+            selectElement(selectedTextIds[0], "replace");
+            await sleep(120);
+            const singleSelectedToolbarHidden = toolbar.classList.contains("hidden");
+            firstDom.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+            await sleep(250);
+            return {
+                multiToolbarHidden,
+                sharedPanelVisible,
+                afterBatch,
+                hoverToolbarHiddenAfterMulti,
+                singleSelectedToolbarHidden,
+                editModeToolbarVisible: !toolbar.classList.contains("hidden"),
+                editing: document.getElementById(selectedTextIds[0])?.classList.contains("editing-text"),
+            };
+        });
+        assert(result.multiToolbarHidden, "Floating text toolbar should stay hidden for multi-text selection");
+        assert(result.sharedPanelVisible, "Shared text style controls should be visible for multi-text selection");
+        assert(result.hoverToolbarHiddenAfterMulti, "Hover toolbar should not appear while text boxes are multi-selected");
+        assert(result.singleSelectedToolbarHidden, "Single selection should not show text toolbar until edit mode");
+        assert(result.editModeToolbarVisible && result.editing, "Double click/edit mode should show the text toolbar");
+        assert(
+            result.afterBatch.every(
+                el =>
+                    el.fontSize === "46px" &&
+                    /^#?db2777$/i.test(el.color) &&
+                    ["700", "bold"].includes(String(el.fontWeight).toLowerCase()) &&
+                    String(el.textDecoration || "").includes("underline") &&
+                    el.textAlign === "center" &&
+                    el.themeManaged === false,
+            ),
+            `Shared text formatting should apply to both selected boxes: ${JSON.stringify(result)}`,
+        );
+    });
+
+    await step("Multi-selection bound does not block objects inside its empty area", async () => {
+        await ensureEditor(page);
+        const result = await page.evaluate(async () => {
+            const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+            state.slides = [
+                {
+                    id: generateId("slide"),
+                    layoutId: "blank-titled",
+                    masterId: "content",
+                    notes: "",
+                    presentationTransition: "none",
+                    elements: [
+                        {
+                            id: generateId("el"),
+                            type: "text",
+                            x: 120,
+                            y: 120,
+                            width: 320,
+                            height: 80,
+                            content: "Left",
+                            styles: { color: "#172033", fontSize: "30px", zIndex: 2 },
+                        },
+                        {
+                            id: generateId("el"),
+                            type: "text",
+                            x: 680,
+                            y: 470,
+                            width: 320,
+                            height: 80,
+                            content: "Right",
+                            styles: { color: "#172033", fontSize: "30px", zIndex: 3 },
+                        },
+                        {
+                            id: generateId("el"),
+                            type: "shape",
+                            shapeType: "rectangle",
+                            x: 455,
+                            y: 295,
+                            width: "120px",
+                            height: "90px",
+                            content: "",
+                            styles: { backgroundColor: "#db2777", borderRadius: "8px", zIndex: 20 },
+                        },
+                    ],
+                },
+            ];
+            currentSlideIndex = 0;
+            normalizeStateIds();
+            renderSlidesFromState();
+            await sleep(120);
+
+            const [left, right, shape] = state.slides[0].elements;
+            selectElement(left.id, "replace");
+            selectElement(right.id, "add");
+            updateGroupBound();
+            await sleep(120);
+
+            const shapeDom = document.querySelector(
+                `#slides-container .presentation-slide[data-slide-index="0"] #${CSS.escape(shape.id)}`,
+            );
+            const shapeRect = shapeDom.getBoundingClientRect();
+            const x = shapeRect.left + shapeRect.width / 2;
+            const y = shapeRect.top + shapeRect.height / 2;
+            const hitBeforeClick = document.elementFromPoint(x, y)?.closest?.(".canvas-element, #group-bound")?.id || "";
+            const bound = document.getElementById("group-bound");
+            const boundPointerEvents = getComputedStyle(bound).pointerEvents;
+            const handlePointerEvents = getComputedStyle(bound.querySelector(".resize-handle.br")).pointerEvents;
+
+            document.elementFromPoint(x, y)?.dispatchEvent(
+                new PointerEvent("pointerdown", {
+                    bubbles: true,
+                    clientX: x,
+                    clientY: y,
+                    pointerId: 1,
+                    pointerType: "mouse",
+                    button: 0,
+                }),
+            );
+            document.elementFromPoint(x, y)?.dispatchEvent(
+                new MouseEvent("mousedown", {
+                    bubbles: true,
+                    clientX: x,
+                    clientY: y,
+                    button: 0,
+                }),
+            );
+            document.elementFromPoint(x, y)?.dispatchEvent(
+                new PointerEvent("pointerup", {
+                    bubbles: true,
+                    clientX: x,
+                    clientY: y,
+                    pointerId: 1,
+                    pointerType: "mouse",
+                    button: 0,
+                }),
+            );
+            document.elementFromPoint(x, y)?.dispatchEvent(
+                new MouseEvent("mouseup", {
+                    bubbles: true,
+                    clientX: x,
+                    clientY: y,
+                    button: 0,
+                }),
+            );
+            shapeDom.click();
+            await sleep(160);
+            return {
+                selectedIds: [...state.selectedIds],
+                shapeId: shape.id,
+                hitBeforeClick,
+                boundPointerEvents,
+                handlePointerEvents,
+                groupBoundHidden: bound.classList.contains("hidden"),
+            };
+        });
+        assert(result.hitBeforeClick === result.shapeId, `Selection bound should not intercept hit testing: ${JSON.stringify(result)}`);
+        assert(result.boundPointerEvents === "none", "Group bound should be visual-only");
+        assert(result.handlePointerEvents === "auto", "Group resize handles should remain interactive");
+        assert(
+            result.selectedIds.length === 1 && result.selectedIds[0] === result.shapeId && result.groupBoundHidden,
+            `Clicking through group bound should select the object: ${JSON.stringify(result)}`,
+        );
+    });
+
+    await step("Selection highlights stay scoped to the active slide", async () => {
+        await ensureEditor(page);
+        const result = await page.evaluate(async () => {
+            const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+            state.slides = [
+                {
+                    id: generateId("slide"),
+                    layoutId: "blank-titled",
+                    masterId: "content",
+                    notes: "",
+                    presentationTransition: "none",
+                    elements: [
+                        {
+                            id: generateId("el"),
+                            type: "text",
+                            x: 120,
+                            y: 130,
+                            width: 260,
+                            height: 80,
+                            content: "Slide 1 text",
+                            styles: { color: "#172033", fontSize: "30px", zIndex: 2 },
+                        },
+                        {
+                            id: generateId("el"),
+                            type: "shape",
+                            shapeType: "rectangle",
+                            x: 450,
+                            y: 150,
+                            width: "120px",
+                            height: "90px",
+                            content: "",
+                            styles: { backgroundColor: "#2563eb", zIndex: 3 },
+                        },
+                    ],
+                },
+                {
+                    id: generateId("slide"),
+                    layoutId: "blank-titled",
+                    masterId: "content",
+                    notes: "",
+                    presentationTransition: "none",
+                    elements: [
+                        {
+                            id: generateId("el"),
+                            type: "text",
+                            x: 160,
+                            y: 360,
+                            width: 260,
+                            height: 80,
+                            content: "Slide 2 text",
+                            styles: { color: "#172033", fontSize: "30px", zIndex: 2 },
+                        },
+                        {
+                            id: generateId("el"),
+                            type: "shape",
+                            shapeType: "rectangle",
+                            x: 640,
+                            y: 420,
+                            width: "130px",
+                            height: "90px",
+                            content: "",
+                            styles: { backgroundColor: "#db2777", zIndex: 3 },
+                        },
+                    ],
+                },
+            ];
+            currentSlideIndex = 0;
+            normalizeStateIds();
+            renderSlidesFromState();
+            await sleep(120);
+
+            const slide0Text = state.slides[0].elements[0];
+            const slide0Shape = state.slides[0].elements[1];
+            selectElement(slide0Text.id, "replace");
+            await sleep(80);
+            const slide0Selected = Array.from(
+                document.querySelectorAll(".presentation-slide[data-slide-index='0'] .canvas-element.selected"),
+            ).map(el => el.id);
+            const offSlideSelectedAfterSlide0 = Array.from(
+                document.querySelectorAll(".presentation-slide:not([data-slide-index='0']) .canvas-element.selected, .presentation-slide:not([data-slide-index='0']) .canvas-element.group-member-selected"),
+            ).map(el => el.id);
+
+            selectElement(slide0Shape.id, "replace");
+            await sleep(80);
+            const selectedAfterReplace = Array.from(
+                document.querySelectorAll(".presentation-slide[data-slide-index='0'] .canvas-element.selected"),
+            ).map(el => el.id);
+            const staleGroupAfterReplace = Array.from(
+                document.querySelectorAll(".presentation-slide[data-slide-index='0'] .canvas-element.group-member-selected"),
+            ).map(el => el.id);
+
+            selectElement(slide0Text.id, "add");
+            await sleep(120);
+            const groupMembers = Array.from(
+                document.querySelectorAll(".presentation-slide[data-slide-index='0'] .canvas-element.group-member-selected"),
+            ).map(el => el.id);
+            const selectedInMulti = Array.from(
+                document.querySelectorAll(".presentation-slide[data-slide-index='0'] .canvas-element.selected"),
+            ).map(el => el.id);
+            const bound = document.getElementById("group-bound");
+            const boundRect = bound.getBoundingClientRect();
+            const memberRects = groupMembers.map(id =>
+                document
+                    .querySelector(`.presentation-slide[data-slide-index='0'] #${CSS.escape(id)}`)
+                    .getBoundingClientRect(),
+            );
+            const boundMatches =
+                Math.abs(boundRect.left - Math.min(...memberRects.map(rect => rect.left))) < 8 &&
+                Math.abs(boundRect.top - Math.min(...memberRects.map(rect => rect.top))) < 8 &&
+                Math.abs(boundRect.right - Math.max(...memberRects.map(rect => rect.right))) < 8 &&
+                Math.abs(boundRect.bottom - Math.max(...memberRects.map(rect => rect.bottom))) < 8;
+            const boundHiddenInMulti = bound.classList.contains("hidden");
+
+            currentSlideIndex = 1;
+            renderSlidesFromState();
+            await sleep(120);
+            const slide1Shape = state.slides[1].elements[1];
+            selectElement(slide1Shape.id, "replace");
+            await sleep(120);
+            const slide1Selected = Array.from(
+                document.querySelectorAll(".presentation-slide[data-slide-index='1'] .canvas-element.selected"),
+            ).map(el => el.id);
+            const staleSlide0Selection = Array.from(
+                document.querySelectorAll(".presentation-slide[data-slide-index='0'] .canvas-element.selected, .presentation-slide[data-slide-index='0'] .canvas-element.group-member-selected"),
+            ).map(el => el.id);
+
+            return {
+                slide0TextId: slide0Text.id,
+                slide0ShapeId: slide0Shape.id,
+                slide1ShapeId: slide1Shape.id,
+                slide0Selected,
+                offSlideSelectedAfterSlide0,
+                selectedAfterReplace,
+                staleGroupAfterReplace,
+                groupMembers,
+                selectedInMulti,
+                boundHiddenInMulti,
+                boundMatches,
+                slide1Selected,
+                staleSlide0Selection,
+            };
+        });
+        assert(result.slide0Selected.length === 1 && result.slide0Selected[0] === result.slide0TextId, `Initial selection should paint slide 0 text only: ${JSON.stringify(result)}`);
+        assert(result.offSlideSelectedAfterSlide0.length === 0, `Selection should not paint off-slide nodes: ${JSON.stringify(result)}`);
+        assert(result.selectedAfterReplace.length === 1 && result.selectedAfterReplace[0] === result.slide0ShapeId, `Replace selection should clear old highlight: ${JSON.stringify(result)}`);
+        assert(result.staleGroupAfterReplace.length === 0, `Replace selection should clear stale group highlights: ${JSON.stringify(result)}`);
+        assert(result.groupMembers.length === 2 && result.groupMembers.includes(result.slide0TextId) && result.groupMembers.includes(result.slide0ShapeId), `Multi-select should paint both selected members: ${JSON.stringify(result)}`);
+        assert(result.selectedInMulti.length === 0, `Multi-select should not leave single selected outlines: ${JSON.stringify(result)}`);
+        assert(!result.boundHiddenInMulti && result.boundMatches, `Group bound should match current selected members: ${JSON.stringify(result)}`);
+        assert(result.slide1Selected.length === 1 && result.slide1Selected[0] === result.slide1ShapeId, `Slide switch should paint only slide 1 selection: ${JSON.stringify(result)}`);
+        assert(result.staleSlide0Selection.length === 0, `Slide switch should clear stale slide 0 highlights: ${JSON.stringify(result)}`);
+    });
+
     await step("Picker and modal entry points open and close", async () => {
         await page.locator("button[title='LaTeX Equation']").click();
         assert(await page.locator("#equation-modal").isVisible(), "Equation modal should open");
@@ -316,13 +787,14 @@ async function ensureEditor(page) {
         await page.evaluate(() => {
             currentSlideIndex = 0;
             const first = state.slides[0].elements.find(el => el.type === "text");
-            if (first && typeof setSelectedIds === "function") {
-                setSelectedIds([first.id]);
-            } else {
-                selectedIds = first ? [first.id] : [];
-            }
             renderSlidesFromState();
-            window.updatePropertiesPanel?.();
+            if (first && typeof selectElement === "function") {
+                selectElement(first.id, "replace");
+            } else if (first && typeof setSelectedIds === "function") {
+                setSelectedIds([first.id]);
+                updateGroupBound?.();
+                window.updatePropertiesPanel?.();
+            }
         });
         const beforeCopy = (await appState(page)).elements.length;
         await page.locator("button[title='Copy Selected Element']").click();

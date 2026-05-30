@@ -98,7 +98,6 @@ function initKeyboard() {
                 const slideElements = slide.elements.map(el => el.id);
                 if (slideElements.length) {
                     setSelectedIds(slideElements);
-                    slideElements.forEach(id => document.getElementById(id)?.classList.add("selected"));
                     buildPropertiesPanel();
                     if (typeof updateGroupBound === "function") updateGroupBound();
                 }
@@ -106,7 +105,8 @@ function initKeyboard() {
         }
 
         // Delete / Backspace: Delete selected elements
-        if ((rawKey === "Delete" || rawKey === "Backspace") && state.selectedIds.length) {
+        // Guard: do not fire when focus is inside a text/table inline editor
+        if ((rawKey === "Delete" || rawKey === "Backspace") && state.selectedIds.length && !isEditingField) {
             e.preventDefault();
             deleteSelectedElements();
         }

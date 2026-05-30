@@ -181,6 +181,10 @@ function applyInlineTextStyle(action, value) {
         case "italic":
             document.execCommand?.("styleWithCSS", false, true);
             return document.execCommand?.("italic", false) ?? false;
+        case "underline":
+        case "textDecoration":
+            document.execCommand?.("styleWithCSS", false, true);
+            return document.execCommand?.("underline", false) ?? false;
         case "fontFamily":
             return wrapSelectionWithStyledSpan({ fontFamily: value });
         case "fontSize":
