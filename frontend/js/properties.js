@@ -1235,12 +1235,15 @@ function _buildSlideWorkspacePanel(panel) {
                 <option value="contain" ${background?.fit === "contain" ? "selected" : ""}>Fit: Contain</option>
                 <option value="fill" ${background?.fit === "fill" ? "selected" : ""}>Fit: Stretch</option>
             </select>
-            <div class="grid grid-cols-[1fr_1.2fr] gap-2">
-                <button id="prop-slide-bg-three" class="py-2 rounded-lg ${bgIsThree ? "bg-primary text-white" : "border border-slate-300 bg-white text-slate-700"} text-xs font-semibold" type="button">Theme 3D</button>
+            <div class="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
+                <button id="prop-slide-bg-three" class="w-full py-2 rounded-lg ${bgIsThree ? "bg-primary text-white" : "border border-slate-300 bg-white text-slate-700"} text-xs font-semibold" type="button">${bgIsThree ? "3D Background Active" : "Use Theme 3D Background"}</button>
                 <select id="prop-slide-bg-three-style" class="w-full text-xs">
-                    <option value="orbital" ${(background?.style || "orbital") === "orbital" ? "selected" : ""}>3D: Orbital</option>
-                    <option value="mesh" ${background?.style === "mesh" ? "selected" : ""}>3D: Mesh</option>
-                    <option value="particles" ${background?.style === "particles" ? "selected" : ""}>3D: Particles</option>
+                    <option value="orbital" ${(background?.style || "orbital") === "orbital" ? "selected" : ""}>Orbital field</option>
+                    <option value="mesh" ${background?.style === "mesh" ? "selected" : ""}>Connected mesh</option>
+                    <option value="particles" ${background?.style === "particles" ? "selected" : ""}>Soft particles</option>
+                    <option value="lattice" ${background?.style === "lattice" ? "selected" : ""}>Depth lattice</option>
+                    <option value="wave" ${background?.style === "wave" ? "selected" : ""}>Wave surface</option>
+                    <option value="vortex" ${background?.style === "vortex" ? "selected" : ""}>Vortex spiral</option>
                 </select>
             </div>
             <div class="grid grid-cols-2 gap-3">
@@ -1454,10 +1457,7 @@ function _buildSlideWorkspacePanel(panel) {
         }
         if (bgThreeStyleInput) {
             bgThreeStyleInput.onchange = e => {
-                const currentBackground = normalizeSlideBackground(state.slides[currentSlideIndex]?.background);
-                if (currentBackground?.type === "three") {
-                    setCurrentSlideBackgroundThree?.(e.target.value || "orbital");
-                }
+                setCurrentSlideBackgroundThree?.(e.target.value || "orbital");
             };
         }
         if (bgClearBtn) {

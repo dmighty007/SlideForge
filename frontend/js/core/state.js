@@ -393,7 +393,8 @@ function normalizeSlideBackground(background) {
     }
     if (typeof background !== "object") return null;
     if (background.type === "three" || background.type === "3d") {
-        const style = ["orbital", "mesh", "particles"].includes(background.style) ? background.style : "orbital";
+        const styles = ["orbital", "mesh", "particles", "lattice", "wave", "vortex"];
+        const style = styles.includes(background.style) ? background.style : "orbital";
         return {
             type: "three",
             content: "theme-motion",

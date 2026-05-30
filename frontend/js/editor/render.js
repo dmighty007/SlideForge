@@ -399,8 +399,8 @@ function _applyBulletFragmentAnimation(contentHost, elData) {
     });
 }
 
-function _themeMotionColors() {
-    const theme = typeof getPresentationTheme === "function" ? getPresentationTheme() : null;
+function _themeMotionColors(themeOverride = null) {
+    const theme = themeOverride || (typeof getPresentationTheme === "function" ? getPresentationTheme() : null);
     const vars = theme?.cssVars || {};
     return {
         bg: vars["--slide-bg"] || theme?.surfaceColor || "#ffffff",
@@ -412,11 +412,24 @@ function _themeMotionColors() {
     };
 }
 
+function _isThemeMotionActive(wrapper, forPreview = false) {
+    if (forPreview) return false;
+    const section = wrapper.closest("section");
+    if (!section) return !document.body.classList.contains("play-mode-active");
+    return section.hasAttribute("data-media-active") || section.classList.contains("present");
+}
+
 function _hexToRgb(value, fallback = { r: 37, g: 99, b: 235 }) {
     const str = String(value || "").trim();
     const hex = str.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)?.[1];
     if (hex) {
-        const full = hex.length === 3 ? hex.split("").map(ch => ch + ch).join("") : hex;
+        const full =
+            hex.length === 3
+                ? hex
+                      .split("")
+                      .map(ch => ch + ch)
+                      .join("")
+                : hex;
         return {
             r: Number.parseInt(full.slice(0, 2), 16),
             g: Number.parseInt(full.slice(2, 4), 16),
@@ -433,6 +446,21 @@ function _rgb(color, alpha = 1) {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+function _themeMotionBackground(style, colors) {
+    const accent = _rgb(colors.accent, 0.18);
+    const accent2 = _rgb(colors.accent2, 0.18);
+    const faint = _rgb(colors.muted, 0.1);
+    const overlays = {
+        orbital: `radial-gradient(circle at 68% 28%, ${accent} 0 2%, transparent 24%), radial-gradient(circle at 30% 72%, ${accent2} 0 2%, transparent 28%)`,
+        mesh: `linear-gradient(120deg, transparent 0 28%, ${faint} 28% 29%, transparent 29% 100%), linear-gradient(32deg, transparent 0 58%, ${accent2} 58% 59%, transparent 59% 100%)`,
+        particles: `radial-gradient(circle at 18% 20%, ${accent} 0 1%, transparent 18%), radial-gradient(circle at 78% 64%, ${accent2} 0 1%, transparent 22%)`,
+        lattice: `repeating-linear-gradient(90deg, ${faint} 0 1px, transparent 1px 76px), repeating-linear-gradient(0deg, ${faint} 0 1px, transparent 1px 76px)`,
+        wave: `linear-gradient(165deg, transparent 0 36%, ${accent2} 36% 37%, transparent 37% 100%), radial-gradient(ellipse at 50% 92%, ${accent} 0 6%, transparent 42%)`,
+        vortex: `conic-gradient(from 20deg at 50% 52%, transparent 0deg, ${accent} 54deg, transparent 118deg, ${accent2} 202deg, transparent 360deg)`,
+    };
+    return `${overlays[style] || overlays.orbital}, ${colors.bg}`;
+}
+
 function _colorToThreeInt(value, fallback = 0x2563eb) {
     const rgb = _hexToRgb(value, null);
     if (!rgb) return fallback;
@@ -447,16 +475,119 @@ function _makeSeededRandom(seed = 1) {
     };
 }
 
-function _renderCanvasThemeMotion(canvas, wrapper, normalized, { forPreview = false, slideIndex = 0 } = {}) {
+function _themeMotionCount(style, fallback = 96) {
+    return (
+        {
+            orbital: 126,
+            mesh: 96,
+            particles: 190,
+            lattice: 125,
+            wave: 144,
+            vortex: 136,
+        }[style] || fallback
+    );
+}
+
+function _themeMotionPoint(style, index, count, random) {
+    if (style === "lattice") {
+        const size = 5;
+        const x = (index % size) - 2;
+        const y = (Math.floor(index / size) % size) - 2;
+        const z = Math.floor(index / (size * size)) - 2;
+        return { x: x * 0.86, y: y * 0.62, z: z * 0.72 };
+    }
+    if (style === "wave") {
+        const cols = 12;
+        const x = (index % cols) / (cols - 1) - 0.5;
+        const y = Math.floor(index / cols) / (Math.ceil(count / cols) - 1) - 0.5;
+        return { x: x * 5.1, y: y * 3.2, z: Math.sin(x * Math.PI * 3) * 0.36 + Math.cos(y * Math.PI * 2) * 0.22 };
+    }
+    if (style === "vortex") {
+        const progress = index / Math.max(1, count - 1);
+        const angle = progress * Math.PI * 9.5;
+        const radius = 0.34 + progress * 2.6;
+        return { x: Math.cos(angle) * radius, y: (progress - 0.5) * 3.2, z: Math.sin(angle) * radius };
+    }
+    if (style === "particles") {
+        return { x: (random() - 0.5) * 5.2, y: (random() - 0.5) * 3.9, z: (random() - 0.5) * 4.2 };
+    }
+    const radius = style === "mesh" ? 0.8 + random() * 3.1 : 1.1 + random() * 2.7;
+    const angle = random() * Math.PI * 2;
+    return {
+        x: Math.cos(angle) * radius,
+        y: (random() - 0.5) * (style === "mesh" ? 3.8 : 3.2),
+        z: Math.sin(angle) * radius,
+    };
+}
+
+function _themeMotionCanvasPoint(style, point, index, total, width, height, t) {
+    if (style === "wave") {
+        const cols = 12;
+        const x = (index % cols) / (cols - 1);
+        const y = Math.floor(index / cols) / Math.max(1, Math.ceil(total / cols) - 1);
+        const lift = Math.sin(x * Math.PI * 4 + t * 2.2) * 0.04 + Math.cos(y * Math.PI * 3 + t * 1.4) * 0.03;
+        return { x: width * (0.12 + x * 0.76), y: height * (0.24 + y * 0.52 + lift), z: 0.7 + lift * 3 };
+    }
+    if (style === "vortex") {
+        const p = index / Math.max(1, total - 1);
+        const angle = p * Math.PI * 8 + t * 1.4;
+        const radius = 0.06 + p * 0.42;
+        return {
+            x: width * (0.5 + Math.cos(angle) * radius),
+            y: height * (0.5 + Math.sin(angle) * radius * 0.72),
+            z: 0.35 + p,
+        };
+    }
+    if (style === "lattice") {
+        const size = 5;
+        const x = index % size;
+        const y = Math.floor(index / size) % size;
+        const z = Math.floor(index / (size * size));
+        const pulse = Math.sin(t + z * 0.7) * 0.018;
+        return {
+            x: width * (0.2 + x * 0.15 + z * 0.035 + pulse),
+            y: height * (0.24 + y * 0.12 - z * 0.025 + pulse),
+            z: 0.35 + z / size,
+        };
+    }
+    const orbit = t + point.drift;
+    const depth = point.z + Math.sin(orbit) * 0.08;
+    const spread = (style === "particles" ? 0.9 : 0.82) + depth * 0.24;
+    return {
+        x: width * (0.5 + (point.x - 0.5) * spread + Math.sin(orbit * 0.72) * 0.018),
+        y: height * (0.5 + (point.y - 0.5) * spread + Math.cos(orbit * 0.66) * 0.018),
+        z: depth,
+    };
+}
+
+function _renderCanvasThemeMotion(
+    canvas,
+    wrapper,
+    normalized,
+    { forPreview = false, slideIndex = 0, theme = null } = {},
+) {
     const ctx = canvas.getContext("2d", { alpha: true });
     if (!ctx) return;
-    const colors = _themeMotionColors();
+    const colors = _themeMotionColors(theme);
     const reduceMotion =
         forPreview ||
         (typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
-    const seed = 97 + Number(slideIndex || 0) * 37 + (normalized.style === "mesh" ? 13 : normalized.style === "particles" ? 29 : 0);
+    const seed =
+        97 +
+        Number(slideIndex || 0) * 37 +
+        ["orbital", "mesh", "particles", "lattice", "wave", "vortex"].indexOf(normalized.style) * 19;
     const random = _makeSeededRandom(seed);
-    const points = Array.from({ length: normalized.style === "particles" ? 82 : 54 }, () => ({
+    const canvasCount =
+        normalized.style === "lattice"
+            ? 125
+            : normalized.style === "wave"
+              ? 144
+              : normalized.style === "vortex"
+                ? 104
+                : normalized.style === "particles"
+                  ? 92
+                  : 58;
+    const points = Array.from({ length: canvasCount }, () => ({
         x: random(),
         y: random(),
         z: 0.25 + random() * 0.95,
@@ -480,7 +611,8 @@ function _renderCanvasThemeMotion(canvas, wrapper, normalized, { forPreview = fa
 
     const draw = timestamp => {
         const { width, height } = resize();
-        const t = reduceMotion ? 0.35 : timestamp / 5200;
+        const active = _isThemeMotionActive(wrapper, forPreview);
+        const t = reduceMotion || !active ? 0.35 + Number(slideIndex || 0) * 0.08 : timestamp / 5200;
         const gradient = ctx.createLinearGradient(0, 0, width, height);
         gradient.addColorStop(0, colors.bgSolid);
         gradient.addColorStop(0.52, _rgb(colors.accent2, 0.12));
@@ -489,26 +621,20 @@ function _renderCanvasThemeMotion(canvas, wrapper, normalized, { forPreview = fa
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, width, height);
 
-        const projected = points.map(point => {
-            const orbit = t + point.drift;
-            const depth = point.z + Math.sin(orbit) * 0.08;
-            const spread = 0.82 + depth * 0.24;
-            return {
-                x: width * (0.5 + (point.x - 0.5) * spread + Math.sin(orbit * 0.72) * 0.018),
-                y: height * (0.5 + (point.y - 0.5) * spread + Math.cos(orbit * 0.66) * 0.018),
-                z: depth,
-            };
-        });
+        const projected = points.map((point, index) =>
+            _themeMotionCanvasPoint(normalized.style, point, index, points.length, width, height, t),
+        );
 
         if (normalized.style !== "particles") {
-            ctx.lineWidth = normalized.style === "mesh" ? 1.1 : 0.75;
+            ctx.lineWidth = ["mesh", "lattice", "wave"].includes(normalized.style) ? 1.1 : 0.75;
             projected.forEach((a, i) => {
                 for (let j = i + 1; j < projected.length; j += 1) {
                     const b = projected[j];
                     const dx = a.x - b.x;
                     const dy = a.y - b.y;
                     const distance = Math.sqrt(dx * dx + dy * dy);
-                    if (distance > 150) continue;
+                    const limit = normalized.style === "lattice" || normalized.style === "wave" ? 92 : 150;
+                    if (distance > limit) continue;
                     ctx.strokeStyle = _rgb(i % 2 ? colors.accent : colors.accent2, Math.max(0, 0.16 - distance / 1100));
                     ctx.beginPath();
                     ctx.moveTo(a.x, a.y);
@@ -526,33 +652,46 @@ function _renderCanvasThemeMotion(canvas, wrapper, normalized, { forPreview = fa
             ctx.fill();
         });
 
-        if (!reduceMotion && document.contains(wrapper)) requestAnimationFrame(draw);
+        if (!reduceMotion && document.contains(wrapper)) {
+            if (active) requestAnimationFrame(draw);
+            else window.setTimeout(() => requestAnimationFrame(draw), 320);
+        }
     };
     requestAnimationFrame(draw);
 }
 
-function _tryRenderThreeThemeMotion(canvas, wrapper, normalized, { forPreview = false, slideIndex = 0 } = {}) {
+function _tryRenderThreeThemeMotion(
+    canvas,
+    wrapper,
+    normalized,
+    { forPreview = false, slideIndex = 0, theme = null } = {},
+) {
     const THREE = window.THREE;
     if (!THREE?.WebGLRenderer) return false;
     let renderer;
     try {
-        renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: "low-power" });
+        renderer = new THREE.WebGLRenderer({
+            canvas,
+            alpha: true,
+            antialias: true,
+            powerPreference: "low-power",
+            preserveDrawingBuffer: true,
+        });
     } catch (_err) {
         return false;
     }
-    const colors = _themeMotionColors();
+    const colors = _themeMotionColors(theme);
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(58, 4 / 3, 0.1, 100);
     camera.position.z = 5.6;
-    const count = normalized.style === "particles" ? 180 : 118;
+    const count = _themeMotionCount(normalized.style, 118);
     const random = _makeSeededRandom(211 + Number(slideIndex || 0) * 41);
     const positions = new Float32Array(count * 3);
     for (let i = 0; i < count; i += 1) {
-        const radius = 1.1 + random() * 2.7;
-        const angle = random() * Math.PI * 2;
-        positions[i * 3] = Math.cos(angle) * radius;
-        positions[i * 3 + 1] = (random() - 0.5) * 3.2;
-        positions[i * 3 + 2] = Math.sin(angle) * radius;
+        const point = _themeMotionPoint(normalized.style, i, count, random);
+        positions[i * 3] = point.x;
+        positions[i * 3 + 1] = point.y;
+        positions[i * 3 + 2] = point.z;
     }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
@@ -560,13 +699,64 @@ function _tryRenderThreeThemeMotion(canvas, wrapper, normalized, { forPreview = 
         geometry,
         new THREE.PointsMaterial({
             color: _colorToThreeInt(colors.accent),
-            size: normalized.style === "particles" ? 0.045 : 0.035,
+            size:
+                normalized.style === "particles"
+                    ? 0.075
+                    : ["lattice", "wave", "vortex"].includes(normalized.style)
+                      ? 0.058
+                      : 0.048,
             transparent: true,
-            opacity: 0.46,
+            opacity: normalized.style === "particles" ? 0.58 : 0.52,
             depthWrite: false,
         }),
     );
     scene.add(points);
+    let lines = null;
+    if (normalized.style !== "particles") {
+        const linePositions = [];
+        const pushLine = (from, to) => {
+            linePositions.push(
+                positions[from * 3],
+                positions[from * 3 + 1],
+                positions[from * 3 + 2],
+                positions[to * 3],
+                positions[to * 3 + 1],
+                positions[to * 3 + 2],
+            );
+        };
+        if (normalized.style === "wave") {
+            const cols = 12;
+            for (let i = 0; i < count; i += 1) {
+                if ((i + 1) % cols !== 0 && i + 1 < count) pushLine(i, i + 1);
+                if (i + cols < count) pushLine(i, i + cols);
+            }
+        } else if (normalized.style === "lattice") {
+            const size = 5;
+            for (let i = 0; i < count; i += 1) {
+                const x = i % size;
+                const y = Math.floor(i / size) % size;
+                const z = Math.floor(i / (size * size));
+                if (x < size - 1) pushLine(i, i + 1);
+                if (y < size - 1) pushLine(i, i + size);
+                if (z < size - 1) pushLine(i, i + size * size);
+            }
+        } else if (normalized.style === "vortex") {
+            for (let i = 0; i < count - 1; i += 1) pushLine(i, i + 1);
+        } else {
+            for (let i = 0; i < count - 1; i += 2) pushLine(i, i + 1);
+        }
+        const lineGeometry = new THREE.BufferGeometry();
+        lineGeometry.setAttribute("position", new THREE.Float32BufferAttribute(linePositions, 3));
+        lines = new THREE.LineSegments(
+            lineGeometry,
+            new THREE.LineBasicMaterial({
+                color: _colorToThreeInt(colors.accent2),
+                transparent: true,
+                opacity: normalized.style === "orbital" ? 0.24 : 0.38,
+            }),
+        );
+        scene.add(lines);
+    }
     const light = new THREE.PointLight(_colorToThreeInt(colors.accent2), 0.7, 8);
     light.position.set(2.2, 1.5, 3);
     scene.add(light);
@@ -586,12 +776,28 @@ function _tryRenderThreeThemeMotion(canvas, wrapper, normalized, { forPreview = 
         (typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
     const renderFrame = timestamp => {
         resize();
-        const t = reduceMotion ? 0.4 : timestamp / 7000;
-        points.rotation.y = t * (normalized.style === "mesh" ? 0.8 : 0.55);
-        points.rotation.x = Math.sin(t) * 0.16;
+        const active = _isThemeMotionActive(wrapper, forPreview);
+        const t = reduceMotion || !active ? 0.4 + Number(slideIndex || 0) * 0.06 : timestamp / 7000;
+        points.rotation.y = t * (normalized.style === "vortex" ? 1.05 : normalized.style === "mesh" ? 0.8 : 0.55);
+        points.rotation.x = normalized.style === "wave" ? -0.55 + Math.sin(t) * 0.05 : Math.sin(t) * 0.16;
+        if (lines) {
+            lines.rotation.copy(points.rotation);
+        }
         renderer.render(scene, camera);
-        if (!reduceMotion && document.contains(wrapper)) requestAnimationFrame(renderFrame);
-        if (!document.contains(wrapper)) renderer.dispose();
+        if (!document.contains(wrapper)) {
+            geometry.dispose();
+            points.material.dispose();
+            if (lines) {
+                lines.geometry.dispose();
+                lines.material.dispose();
+            }
+            renderer.dispose();
+            return;
+        }
+        if (!reduceMotion) {
+            if (active) requestAnimationFrame(renderFrame);
+            else window.setTimeout(() => requestAnimationFrame(renderFrame), 320);
+        }
     };
     requestAnimationFrame(renderFrame);
     return true;
@@ -602,8 +808,8 @@ function createThemeThreeBackgroundNode(normalized, options = {}) {
     wrapper.className = "slide-background-media slide-background-three";
     wrapper.dataset.backgroundType = "three";
     wrapper.dataset.threeStyle = normalized.style || "orbital";
-    const colors = _themeMotionColors();
-    wrapper.style.background = colors.bg;
+    const colors = _themeMotionColors(options.theme || null);
+    wrapper.style.background = _themeMotionBackground(normalized.style || "orbital", colors);
     const canvas = document.createElement("canvas");
     canvas.className = "slide-background-three-canvas";
     canvas.setAttribute("aria-hidden", "true");
@@ -617,11 +823,14 @@ function createThemeThreeBackgroundNode(normalized, options = {}) {
     return wrapper;
 }
 
-function createSlideBackgroundNode(background, { forPreview = false, slideIndex = currentSlideIndex } = {}) {
+function createSlideBackgroundNode(
+    background,
+    { forPreview = false, slideIndex = currentSlideIndex, theme = null } = {},
+) {
     const normalized = normalizeSlideBackground(background);
     if (!normalized) return null;
     if (normalized.type === "three") {
-        const node = createThemeThreeBackgroundNode(normalized, { forPreview, slideIndex });
+        const node = createThemeThreeBackgroundNode(normalized, { forPreview, slideIndex, theme });
         node.style.opacity = String(normalized.opacity ?? 1);
         node.style.filter = `blur(${normalized.blur || 0}px) brightness(${normalized.brightness || 100}%) saturate(${normalized.saturate || 100}%)`;
         if (normalized.blur) {
@@ -1396,7 +1605,10 @@ function _whiteboardStrokeAttrs(el = {}) {
 }
 
 function _whiteboardFillAttrs(el = {}) {
-    const fill = el.fillStyle === "solid" && el.backgroundColor && el.backgroundColor !== "transparent" ? el.backgroundColor : "none";
+    const fill =
+        el.fillStyle === "solid" && el.backgroundColor && el.backgroundColor !== "transparent"
+            ? el.backgroundColor
+            : "none";
     const opacity = fill === "none" ? 1 : 0.58;
     return `fill="${_escapeWhiteboardAttr(fill)}"${fill === "none" ? "" : ` fill-opacity="${opacity}"`}`;
 }
@@ -1467,7 +1679,10 @@ function _createSlideWhiteboardLayer(slide, slideWidth, slideHeight) {
                 const fontSize = Number(el.fontSize) || 22;
                 const lines = String(el.text || "").split("\n");
                 return lines
-                    .map((line, index) => `<text x="${Number(el.x) || 0}" y="${(Number(el.y) || 0) + index * fontSize * 1.25}" fill="${_escapeWhiteboardAttr(el.strokeColor || "#1f2937")}" font-size="${fontSize}" font-family="Comic Sans MS, Segoe Print, cursive" opacity="${el.opacity ?? 1}">${_escapeWhiteboardAttr(line)}</text>`)
+                    .map(
+                        (line, index) =>
+                            `<text x="${Number(el.x) || 0}" y="${(Number(el.y) || 0) + index * fontSize * 1.25}" fill="${_escapeWhiteboardAttr(el.strokeColor || "#1f2937")}" font-size="${fontSize}" font-family="Comic Sans MS, Segoe Print, cursive" opacity="${el.opacity ?? 1}">${_escapeWhiteboardAttr(line)}</text>`,
+                    )
                     .join("");
             }
             if (el.type !== "draw_shape") return "";
@@ -1480,7 +1695,8 @@ function _createSlideWhiteboardLayer(slide, slideWidth, slideHeight) {
                 const radius = Math.min(Math.abs(w), Math.abs(h), 64) * 0.18;
                 return `<rect x="${Math.min(x, x + w)}" y="${Math.min(y, y + h)}" width="${Math.abs(w)}" height="${Math.abs(h)}" rx="${radius}" ${attrs}/>`;
             }
-            if (el.shapeType === "ellipse") return `<ellipse cx="${x + w / 2}" cy="${y + h / 2}" rx="${Math.abs(w / 2)}" ry="${Math.abs(h / 2)}" ${attrs}/>`;
+            if (el.shapeType === "ellipse")
+                return `<ellipse cx="${x + w / 2}" cy="${y + h / 2}" rx="${Math.abs(w / 2)}" ry="${Math.abs(h / 2)}" ${attrs}/>`;
             if (el.shapeType === "diamond") {
                 const points = `${x + w / 2},${y} ${x + w},${y + h / 2} ${x + w / 2},${y + h} ${x},${y + h / 2}`;
                 return `<polygon points="${points}" ${attrs}/>`;
@@ -1501,7 +1717,8 @@ function _createSlideWhiteboardLayer(slide, slideWidth, slideHeight) {
                 }).join(" ");
                 return `<polygon points="${points}" ${attrs}/>`;
             }
-            if (el.shapeType === "line") return `<line x1="${x}" y1="${y}" x2="${x + w}" y2="${y + h}" ${_whiteboardStrokeAttrs(el)}/>`;
+            if (el.shapeType === "line")
+                return `<line x1="${x}" y1="${y}" x2="${x + w}" y2="${y + h}" ${_whiteboardStrokeAttrs(el)}/>`;
             if (el.shapeType === "curve" || el.shapeType === "curve_arrow") {
                 const x2 = x + w;
                 const y2 = y + h;
@@ -1595,7 +1812,7 @@ function renderSlidesFromState(options = {}) {
         section.style.height = `${slideHeight}px`;
         section.style.color = theme.defaultTextColor;
         section.style.fontFamily = theme.bodyFont;
-        const bgNode = createSlideBackgroundNode(slide.background, { slideIndex });
+        const bgNode = createSlideBackgroundNode(slide.background, { slideIndex, theme });
         if (bgNode) section.appendChild(bgNode);
         if (typeof buildMasterSlideElements === "function") {
             buildMasterSlideElements(slide, slideIndex, theme).forEach(elData =>
@@ -1651,7 +1868,11 @@ function renderSlidePreviews(targetIndex = null, options = {}) {
             theme.cssVars["--slide-bg"];
         previewSlide.style.cssText = `width:${slideWidth}px;height:${slideHeight}px;position:relative;transform-origin:top left;background:${previewBg};color:${theme.defaultTextColor};font-family:${theme.bodyFont};`;
 
-        const previewBgNode = createSlideBackgroundNode(slide.background, { forPreview: true, slideIndex: index });
+        const previewBgNode = createSlideBackgroundNode(slide.background, {
+            forPreview: true,
+            slideIndex: index,
+            theme,
+        });
         if (previewBgNode) previewSlide.appendChild(previewBgNode);
         if (typeof buildMasterSlideElements === "function") {
             buildMasterSlideElements(slide, index, theme).forEach(elData =>
@@ -1886,9 +2107,8 @@ function _applyStylesToElement(el, styles) {
             return;
         }
         if (prop === "borderWidth") {
-            const normalized = typeof value === "number" || /^\d*\.?\d+$/.test(String(value))
-                ? `${value}px`
-                : String(value);
+            const normalized =
+                typeof value === "number" || /^\d*\.?\d+$/.test(String(value)) ? `${value}px` : String(value);
             el.style.setProperty("border-width", normalized);
             return;
         }
@@ -2384,7 +2604,7 @@ function _createStaticNode(elData, options = {}) {
         el.dataset.textFitMode = elData.textFitMode || (elData.autoHeight === false ? "fixed" : "autoHeight");
         const contentHost = document.createElement("div");
         contentHost.className = "text-element-content";
-        contentHost.innerHTML = renderTextContent(elData);
+        contentHost.innerHTML = DOMPurify.sanitize(renderTextContent(elData));
         el.appendChild(contentHost);
         if (editableMaster) {
             _bindEditableMasterText(el, contentHost, elData);
@@ -2418,8 +2638,9 @@ function _createStaticNode(elData, options = {}) {
         host.className = "mermaid-object-surface";
         const svgHost = document.createElement("div");
         svgHost.className = "mermaid-svg-host";
-        if (elData.svgContent) svgHost.innerHTML = elData.svgContent;
-        else svgHost.innerHTML = `<div class="mermaid-render-status"><i class="fa-solid fa-diagram-project"></i><span>Diagram</span></div>`;
+        if (elData.svgContent) svgHost.innerHTML = DOMPurify.sanitize(elData.svgContent);
+        else
+            svgHost.innerHTML = `<div class="mermaid-render-status"><i class="fa-solid fa-diagram-project"></i><span>Diagram</span></div>`;
         host.appendChild(svgHost);
         el.appendChild(host);
         const renderMermaidObject = (attempt = 0) => {
@@ -2481,17 +2702,20 @@ function _createStaticNode(elData, options = {}) {
         requestAnimationFrame(() => renderSketchObject(0));
     } else if (elData.type === "video") {
         const placeholder = document.createElement("div");
-        placeholder.style.cssText = "width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0f172a;color:#94a3b8;gap:6px;border-radius:inherit;";
+        placeholder.style.cssText =
+            "width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0f172a;color:#94a3b8;gap:6px;border-radius:inherit;";
         placeholder.innerHTML = `<i class="fa-solid fa-film" style="font-size:24px;"></i><span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Video</span>`;
         el.appendChild(placeholder);
     } else if (elData.type === "molecule") {
         const placeholder = document.createElement("div");
-        placeholder.style.cssText = "width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#020617;color:#94a3b8;gap:6px;border-radius:inherit;";
+        placeholder.style.cssText =
+            "width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#020617;color:#94a3b8;gap:6px;border-radius:inherit;";
         placeholder.innerHTML = `<i class="fa-solid fa-atom" style="font-size:24px;color:#38bdf8;"></i><span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">${elData.moleculeName || "Molecule"}</span>`;
         el.appendChild(placeholder);
     } else if (elData.type === "pdf") {
         const placeholder = document.createElement("div");
-        placeholder.style.cssText = "width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0f172a;color:#f87171;gap:6px;border-radius:inherit;";
+        placeholder.style.cssText =
+            "width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0f172a;color:#f87171;gap:6px;border-radius:inherit;";
         placeholder.innerHTML = `<i class="fa-regular fa-file-pdf" style="font-size:24px;"></i><span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#94a3b8;">PDF Document</span>`;
         el.appendChild(placeholder);
     } else if (elData.type === "equation" || elData.type === "latex") {
@@ -2500,7 +2724,7 @@ function _createStaticNode(elData, options = {}) {
         const color = elData.styles?.color || "#ffffff";
         const fontSize = elData.styles?.fontSize || "24px";
         container.style.cssText = `width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:4px;color:${color};font-size:${fontSize};line-height:1;`;
-        container.innerHTML = elData.content || elData.latexSrc || "";
+        container.innerHTML = DOMPurify.sanitize(elData.content || elData.latexSrc || "");
         el.appendChild(container);
     }
     return el;
@@ -2660,9 +2884,7 @@ window.refreshCanvasBackedElements = refreshCanvasBackedElements;
 
 function getIconClassFromElementData(elData) {
     const raw = String(elData?.iconClass || elData?.content || "");
-    const classMatch =
-        raw.match(/class\s*=\s*["']([^"']+)["']/i) ||
-        raw.match(/class\s*=\s*&quot;([^&]+)&quot;/i);
+    const classMatch = raw.match(/class\s*=\s*["']([^"']+)["']/i) || raw.match(/class\s*=\s*&quot;([^&]+)&quot;/i);
     const classSource = classMatch ? classMatch[1] : raw;
     const safeClasses = classSource
         .split(/\s+/)
@@ -2698,7 +2920,7 @@ function _applyTypeContent(el, elData, options = {}) {
         if (elData.iconMode) {
             renderIconContentHost(contentHost, elData);
         } else {
-            contentHost.innerHTML = renderTextContent(elData);
+            contentHost.innerHTML = DOMPurify.sanitize(renderTextContent(elData));
         }
         _applyBulletFragmentAnimation(contentHost, elData);
         el.appendChild(contentHost);
@@ -2774,7 +2996,9 @@ function _applyTypeContent(el, elData, options = {}) {
                         : parseEditableStructuredText(contentHost.textContent || "", elData.content);
                 const nextTextDocument =
                     typeof createTextDocumentFromLegacyContent === "function"
-                        ? createTextDocumentFromLegacyContent(nextContent, { bulletStyle: elData.bulletStyle || "default" })
+                        ? createTextDocumentFromLegacyContent(nextContent, {
+                              bulletStyle: elData.bulletStyle || "default",
+                          })
                         : elData.textDocument;
                 updateElementState(el.id, { content: nextContent, textDocument: nextTextDocument });
                 elData.content = nextContent;
@@ -2783,7 +3007,9 @@ function _applyTypeContent(el, elData, options = {}) {
                 const nextHtml = contentHost.innerHTML;
                 const nextTextDocument =
                     typeof createTextDocumentFromLegacyContent === "function"
-                        ? createTextDocumentFromLegacyContent(nextHtml, { bulletStyle: elData.bulletStyle || "default" })
+                        ? createTextDocumentFromLegacyContent(nextHtml, {
+                              bulletStyle: elData.bulletStyle || "default",
+                          })
                         : elData.textDocument;
                 updateElementState(el.id, { content: nextHtml, textDocument: nextTextDocument });
                 elData.content = nextHtml;
@@ -2818,7 +3044,9 @@ function _applyTypeContent(el, elData, options = {}) {
                 updateElementState(el.id, { content: nextContent });
                 elData.content = nextContent;
                 if (typeof createTextDocumentFromLegacyContent === "function") {
-                    elData.textDocument = createTextDocumentFromLegacyContent(nextContent, { bulletStyle: elData.bulletStyle || "default" });
+                    elData.textDocument = createTextDocumentFromLegacyContent(nextContent, {
+                        bulletStyle: elData.bulletStyle || "default",
+                    });
                     updateElementState(el.id, { textDocument: elData.textDocument });
                 }
                 delete contentHost.dataset.structuredEdit;
@@ -2837,7 +3065,9 @@ function _applyTypeContent(el, elData, options = {}) {
                 const nextHtml = contentHost.innerHTML;
                 const nextTextDocument =
                     typeof createTextDocumentFromLegacyContent === "function"
-                        ? createTextDocumentFromLegacyContent(nextHtml, { bulletStyle: elData.bulletStyle || "default" })
+                        ? createTextDocumentFromLegacyContent(nextHtml, {
+                              bulletStyle: elData.bulletStyle || "default",
+                          })
                         : elData.textDocument;
                 updateElementState(el.id, { content: nextHtml, textDocument: nextTextDocument });
                 elData.content = nextHtml;
@@ -3147,7 +3377,7 @@ function _applyTypeContent(el, elData, options = {}) {
         const fontSize = elData.styles?.fontSize || "24px";
 
         container.style.cssText = `width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:4px;color:${color};font-size:${fontSize};line-height:1;`;
-        container.innerHTML = elData.content || elData.latexSrc || "";
+        container.innerHTML = DOMPurify.sanitize(elData.content || elData.latexSrc || "");
         el.appendChild(container);
 
         // Double-click to re-edit equation
@@ -3167,7 +3397,8 @@ function _applyTypeContent(el, elData, options = {}) {
             surface.className = "mermaid-object-surface";
             const svgHost = document.createElement("div");
             svgHost.className = "mermaid-svg-host";
-            svgHost.innerHTML = elData.svgContent || `<div class="mermaid-render-status"><i class="fa-solid fa-diagram-project"></i><span>Diagram</span></div>`;
+            svgHost.innerHTML = DOMPurify.sanitize(elData.svgContent) ||
+                `<div class="mermaid-render-status"><i class="fa-solid fa-diagram-project"></i><span>Diagram</span></div>`;
             surface.appendChild(svgHost);
             el.appendChild(surface);
             requestAnimationFrame(() => window.renderMermaidElement?.(el, elData));

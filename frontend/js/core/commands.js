@@ -197,6 +197,15 @@ function addSlide(targetIndex = null) {
 function deleteCurrentSlide(targetIndex = null) {
     const activeIndex = _normalizeSlideIndex(targetIndex) ?? ensureActiveSlideSync();
     if (state.slides.length <= 1) return;
+    
+    // CRITICAL FIX: Cleanup 3D backgrounds before deleting slide
+    if (typeof cleanupSlideBackground3D === 'function') {
+        const slideElement = document.querySelector(
+            `.presentation-slide[data-slide-index="${activeIndex}"]`
+        );
+        if (slideElement) cleanupSlideBackground3D(slideElement);
+    }
+    
     saveStateToUndo();
     state.slides.splice(activeIndex, 1);
     const nextIndex = Math.max(0, activeIndex - 1);
@@ -227,6 +236,15 @@ function duplicateCurrentSlide(targetIndex = null) {
     });
 
     state.slides.splice(activeIndex + 1, 0, slideCopy);
+    
+    // CRITICAL FIX: Cleanup old slide's 3D background if needed
+    if (typeof cleanupSlideBackground3D === 'function') {
+        const sourceSlideElement = document.querySelector(
+            `.presentation-slide[data-slide-index="${activeIndex}"]`
+        );
+        if (sourceSlideElement) cleanupSlideBackground3D(sourceSlideElement);
+    }
+    
     setCurrentSlideIndex(activeIndex + 1);
     clearSelection();
     renderSlidesFromState();
@@ -4524,35 +4542,16 @@ const syncKey = "${_PRESENTER_SYNC_STORAGE_KEY}";
 const commandKey = "${_PRESENTER_COMMAND_STORAGE_KEY}";
 function sanitizeHtmlForPresenter(html) {
     if (typeof html !== 'string') return '';
+    // Use DOMPurify for robust sanitization
+    if (typeof DOMPurify !== 'undefined') {
+        return DOMPurify.sanitize(html, { 
+            ALLOWED_TAGS: ['DIV', 'SPAN', 'P', 'BR', 'STRONG', 'B', 'EM', 'I', 'U', 'OL', 'UL', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6']
+        });
+    }
+    // Fallback: Original implementation
     const temp = document.createElement('div');
-    temp.innerHTML = html;
-    const allowedTags = new Set(['DIV', 'SPAN', 'P', 'BR', 'STRONG', 'B', 'EM', 'I', 'U', 'OL', 'UL', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6']);
-    function sanitizeNode(node) {
-        if (node.nodeType === Node.TEXT_NODE) return node;
-        if (node.nodeType !== Node.ELEMENT_NODE) return null;
-        if (!allowedTags.has(node.tagName)) {
-            const fragment = document.createDocumentFragment();
-            for (let child of node.childNodes) {
-                const sanitized = sanitizeNode(child);
-                if (sanitized) fragment.appendChild(sanitized.cloneNode(true));
-            }
-            return fragment;
-        }
-        const newNode = document.createElement(node.tagName);
-        for (let child of node.childNodes) {
-            const sanitized = sanitizeNode(child);
-            if (sanitized) newNode.appendChild(sanitized.cloneNode(true));
-        }
-        return newNode;
-    }
-    const fragment = document.createDocumentFragment();
-    for (let child of temp.childNodes) {
-        const sanitized = sanitizeNode(child);
-        if (sanitized) fragment.appendChild(sanitized);
-    }
-    const result = document.createElement('div');
-    result.appendChild(fragment);
-    return result.innerHTML;
+    temp.textContent = html; // Use textContent to avoid parsing
+    return temp.innerHTML;
 }
 
 const currentEl = document.getElementById("presenter-current");
