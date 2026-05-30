@@ -399,9 +399,236 @@ function _applyBulletFragmentAnimation(contentHost, elData) {
     });
 }
 
+function _themeMotionColors() {
+    const theme = typeof getPresentationTheme === "function" ? getPresentationTheme() : null;
+    const vars = theme?.cssVars || {};
+    return {
+        bg: vars["--slide-bg"] || theme?.surfaceColor || "#ffffff",
+        bgSolid: theme?.surfaceColor || "#ffffff",
+        fg: vars["--slide-fg"] || theme?.defaultTextColor || "#172033",
+        muted: vars["--slide-muted"] || theme?.defaultMutedColor || "#64748b",
+        accent: vars["--slide-accent"] || theme?.accentStrong || "#2563eb",
+        accent2: vars["--slide-accent-2"] || theme?.defaultShapeColor || "#0f766e",
+    };
+}
+
+function _hexToRgb(value, fallback = { r: 37, g: 99, b: 235 }) {
+    const str = String(value || "").trim();
+    const hex = str.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)?.[1];
+    if (hex) {
+        const full = hex.length === 3 ? hex.split("").map(ch => ch + ch).join("") : hex;
+        return {
+            r: Number.parseInt(full.slice(0, 2), 16),
+            g: Number.parseInt(full.slice(2, 4), 16),
+            b: Number.parseInt(full.slice(4, 6), 16),
+        };
+    }
+    const rgb = str.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+    if (rgb) return { r: Number(rgb[1]), g: Number(rgb[2]), b: Number(rgb[3]) };
+    return fallback;
+}
+
+function _rgb(color, alpha = 1) {
+    const { r, g, b } = _hexToRgb(color);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function _colorToThreeInt(value, fallback = 0x2563eb) {
+    const rgb = _hexToRgb(value, null);
+    if (!rgb) return fallback;
+    return (rgb.r << 16) + (rgb.g << 8) + rgb.b;
+}
+
+function _makeSeededRandom(seed = 1) {
+    let value = Math.max(1, Math.floor(seed) % 2147483647);
+    return () => {
+        value = (value * 16807) % 2147483647;
+        return (value - 1) / 2147483646;
+    };
+}
+
+function _renderCanvasThemeMotion(canvas, wrapper, normalized, { forPreview = false, slideIndex = 0 } = {}) {
+    const ctx = canvas.getContext("2d", { alpha: true });
+    if (!ctx) return;
+    const colors = _themeMotionColors();
+    const reduceMotion =
+        forPreview ||
+        (typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    const seed = 97 + Number(slideIndex || 0) * 37 + (normalized.style === "mesh" ? 13 : normalized.style === "particles" ? 29 : 0);
+    const random = _makeSeededRandom(seed);
+    const points = Array.from({ length: normalized.style === "particles" ? 82 : 54 }, () => ({
+        x: random(),
+        y: random(),
+        z: 0.25 + random() * 0.95,
+        drift: random() * Math.PI * 2,
+    }));
+
+    const resize = () => {
+        const rect = wrapper.getBoundingClientRect();
+        const width = Math.max(1, Math.round(rect.width || wrapper.offsetWidth || 1024));
+        const height = Math.max(1, Math.round(rect.height || wrapper.offsetHeight || 768));
+        const ratio = Math.min(2, window.devicePixelRatio || 1);
+        if (canvas.width !== Math.round(width * ratio) || canvas.height !== Math.round(height * ratio)) {
+            canvas.width = Math.round(width * ratio);
+            canvas.height = Math.round(height * ratio);
+            canvas.style.width = `${width}px`;
+            canvas.style.height = `${height}px`;
+            ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        }
+        return { width, height };
+    };
+
+    const draw = timestamp => {
+        const { width, height } = resize();
+        const t = reduceMotion ? 0.35 : timestamp / 5200;
+        const gradient = ctx.createLinearGradient(0, 0, width, height);
+        gradient.addColorStop(0, colors.bgSolid);
+        gradient.addColorStop(0.52, _rgb(colors.accent2, 0.12));
+        gradient.addColorStop(1, _rgb(colors.accent, 0.16));
+        ctx.clearRect(0, 0, width, height);
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, width, height);
+
+        const projected = points.map(point => {
+            const orbit = t + point.drift;
+            const depth = point.z + Math.sin(orbit) * 0.08;
+            const spread = 0.82 + depth * 0.24;
+            return {
+                x: width * (0.5 + (point.x - 0.5) * spread + Math.sin(orbit * 0.72) * 0.018),
+                y: height * (0.5 + (point.y - 0.5) * spread + Math.cos(orbit * 0.66) * 0.018),
+                z: depth,
+            };
+        });
+
+        if (normalized.style !== "particles") {
+            ctx.lineWidth = normalized.style === "mesh" ? 1.1 : 0.75;
+            projected.forEach((a, i) => {
+                for (let j = i + 1; j < projected.length; j += 1) {
+                    const b = projected[j];
+                    const dx = a.x - b.x;
+                    const dy = a.y - b.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    if (distance > 150) continue;
+                    ctx.strokeStyle = _rgb(i % 2 ? colors.accent : colors.accent2, Math.max(0, 0.16 - distance / 1100));
+                    ctx.beginPath();
+                    ctx.moveTo(a.x, a.y);
+                    ctx.lineTo(b.x, b.y);
+                    ctx.stroke();
+                }
+            });
+        }
+
+        projected.forEach((point, index) => {
+            const radius = normalized.style === "particles" ? 1.6 + point.z * 2.8 : 1.2 + point.z * 2.2;
+            ctx.fillStyle = _rgb(index % 3 === 0 ? colors.accent2 : colors.accent, 0.22 + point.z * 0.18);
+            ctx.beginPath();
+            ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+            ctx.fill();
+        });
+
+        if (!reduceMotion && document.contains(wrapper)) requestAnimationFrame(draw);
+    };
+    requestAnimationFrame(draw);
+}
+
+function _tryRenderThreeThemeMotion(canvas, wrapper, normalized, { forPreview = false, slideIndex = 0 } = {}) {
+    const THREE = window.THREE;
+    if (!THREE?.WebGLRenderer) return false;
+    let renderer;
+    try {
+        renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: "low-power" });
+    } catch (_err) {
+        return false;
+    }
+    const colors = _themeMotionColors();
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(58, 4 / 3, 0.1, 100);
+    camera.position.z = 5.6;
+    const count = normalized.style === "particles" ? 180 : 118;
+    const random = _makeSeededRandom(211 + Number(slideIndex || 0) * 41);
+    const positions = new Float32Array(count * 3);
+    for (let i = 0; i < count; i += 1) {
+        const radius = 1.1 + random() * 2.7;
+        const angle = random() * Math.PI * 2;
+        positions[i * 3] = Math.cos(angle) * radius;
+        positions[i * 3 + 1] = (random() - 0.5) * 3.2;
+        positions[i * 3 + 2] = Math.sin(angle) * radius;
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    const points = new THREE.Points(
+        geometry,
+        new THREE.PointsMaterial({
+            color: _colorToThreeInt(colors.accent),
+            size: normalized.style === "particles" ? 0.045 : 0.035,
+            transparent: true,
+            opacity: 0.46,
+            depthWrite: false,
+        }),
+    );
+    scene.add(points);
+    const light = new THREE.PointLight(_colorToThreeInt(colors.accent2), 0.7, 8);
+    light.position.set(2.2, 1.5, 3);
+    scene.add(light);
+    renderer.setClearColor(0x000000, 0);
+
+    const resize = () => {
+        const rect = wrapper.getBoundingClientRect();
+        const width = Math.max(1, Math.round(rect.width || wrapper.offsetWidth || 1024));
+        const height = Math.max(1, Math.round(rect.height || wrapper.offsetHeight || 768));
+        renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+        renderer.setSize(width, height, false);
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+    };
+    const reduceMotion =
+        forPreview ||
+        (typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    const renderFrame = timestamp => {
+        resize();
+        const t = reduceMotion ? 0.4 : timestamp / 7000;
+        points.rotation.y = t * (normalized.style === "mesh" ? 0.8 : 0.55);
+        points.rotation.x = Math.sin(t) * 0.16;
+        renderer.render(scene, camera);
+        if (!reduceMotion && document.contains(wrapper)) requestAnimationFrame(renderFrame);
+        if (!document.contains(wrapper)) renderer.dispose();
+    };
+    requestAnimationFrame(renderFrame);
+    return true;
+}
+
+function createThemeThreeBackgroundNode(normalized, options = {}) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "slide-background-media slide-background-three";
+    wrapper.dataset.backgroundType = "three";
+    wrapper.dataset.threeStyle = normalized.style || "orbital";
+    const colors = _themeMotionColors();
+    wrapper.style.background = colors.bg;
+    const canvas = document.createElement("canvas");
+    canvas.className = "slide-background-three-canvas";
+    canvas.setAttribute("aria-hidden", "true");
+    wrapper.appendChild(canvas);
+    if (!_tryRenderThreeThemeMotion(canvas, wrapper, normalized, options)) {
+        wrapper.dataset.renderer = "canvas";
+        _renderCanvasThemeMotion(canvas, wrapper, normalized, options);
+    } else {
+        wrapper.dataset.renderer = "three";
+    }
+    return wrapper;
+}
+
 function createSlideBackgroundNode(background, { forPreview = false, slideIndex = currentSlideIndex } = {}) {
     const normalized = normalizeSlideBackground(background);
     if (!normalized) return null;
+    if (normalized.type === "three") {
+        const node = createThemeThreeBackgroundNode(normalized, { forPreview, slideIndex });
+        node.style.opacity = String(normalized.opacity ?? 1);
+        node.style.filter = `blur(${normalized.blur || 0}px) brightness(${normalized.brightness || 100}%) saturate(${normalized.saturate || 100}%)`;
+        if (normalized.blur) {
+            node.style.transform = `scale(${1 + Math.min(40, normalized.blur) / 120})`;
+        }
+        return node;
+    }
     const wrapper = document.createElement("div");
     wrapper.className = "slide-background-media";
     wrapper.style.opacity = String(normalized.opacity ?? 1);
@@ -1346,10 +1573,10 @@ function syncAllSlideFooterNumbers() {
 function renderSlidesFromState(options = {}) {
     const preserveState = Boolean(options.preserveState);
     const container = document.getElementById("slides-container");
-    if (typeof syncPresentationThemeFromState === "function") {
-        syncPresentationThemeFromState({ persist: false });
-    }
-    const theme = getPresentationTheme();
+    const themeId = document.body.classList.contains("play-mode-active")
+        ? document.body.dataset.presentationTheme || state.presentationTheme
+        : state.presentationTheme;
+    const theme = getPresentationTheme(themeId);
     const slideConfig = getPresentationPageSetupConfig();
     const slideWidth = Number(slideConfig.width) || 1024;
     const slideHeight = Number(slideConfig.height) || 768;

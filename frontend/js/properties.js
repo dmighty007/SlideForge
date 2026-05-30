@@ -1226,14 +1226,23 @@ function _buildSlideWorkspacePanel(panel) {
     panel.appendChild(masterGrp);
 
     const bgGrp = createGroup("Slide Background");
+    const bgIsThree = background?.type === "three";
     bgGrp.innerHTML += `
         <div class="space-y-2">
-            <input id="prop-slide-bg-url" class="w-full text-xs" type="text" value="${background?.content || ""}" placeholder="Paste image/GIF/MP4 URL">
-            <select id="prop-slide-bg-fit" class="w-full text-xs">
+            <input id="prop-slide-bg-url" class="w-full text-xs" type="text" value="${bgIsThree ? "" : background?.content || ""}" placeholder="Paste image/GIF/MP4 URL">
+            <select id="prop-slide-bg-fit" class="w-full text-xs" ${bgIsThree ? "disabled" : ""}>
                 <option value="cover" ${(background?.fit || "cover") === "cover" ? "selected" : ""}>Fit: Cover</option>
                 <option value="contain" ${background?.fit === "contain" ? "selected" : ""}>Fit: Contain</option>
                 <option value="fill" ${background?.fit === "fill" ? "selected" : ""}>Fit: Stretch</option>
             </select>
+            <div class="grid grid-cols-[1fr_1.2fr] gap-2">
+                <button id="prop-slide-bg-three" class="py-2 rounded-lg ${bgIsThree ? "bg-primary text-white" : "border border-slate-300 bg-white text-slate-700"} text-xs font-semibold" type="button">Theme 3D</button>
+                <select id="prop-slide-bg-three-style" class="w-full text-xs">
+                    <option value="orbital" ${(background?.style || "orbital") === "orbital" ? "selected" : ""}>3D: Orbital</option>
+                    <option value="mesh" ${background?.style === "mesh" ? "selected" : ""}>3D: Mesh</option>
+                    <option value="particles" ${background?.style === "particles" ? "selected" : ""}>3D: Particles</option>
+                </select>
+            </div>
             <div class="grid grid-cols-2 gap-3">
                 <div class="flex flex-col gap-1">
                     <div class="flex items-center justify-between">
@@ -1269,7 +1278,7 @@ function _buildSlideWorkspacePanel(panel) {
                 <button id="prop-slide-bg-upload" class="py-2 rounded-lg border border-slate-300 bg-white text-slate-700 text-xs font-semibold">Upload</button>
                 <button id="prop-slide-bg-clear" class="py-2 rounded-lg border border-slate-300 bg-white text-slate-700 text-xs font-semibold">Clear</button>
             </div>
-            <div class="text-xs text-slate-600">Supports PNG, GIF, and MP4/WebM backgrounds. Media is rendered behind slide content.</div>
+            <div class="text-xs text-slate-600">Supports PNG, GIF, MP4/WebM, and theme-adaptive 3D motion backgrounds.</div>
         </div>
     `;
     panel.appendChild(bgGrp);
@@ -1298,6 +1307,8 @@ function _buildSlideWorkspacePanel(panel) {
         const bgApplyBtn = document.getElementById("prop-slide-bg-apply");
         const bgUploadBtn = document.getElementById("prop-slide-bg-upload");
         const bgClearBtn = document.getElementById("prop-slide-bg-clear");
+        const bgThreeBtn = document.getElementById("prop-slide-bg-three");
+        const bgThreeStyleInput = document.getElementById("prop-slide-bg-three-style");
         const bgAdjustmentInputs = [
             [
                 "prop-slide-bg-opacity",
@@ -1434,6 +1445,19 @@ function _buildSlideWorkspacePanel(panel) {
         if (bgUploadBtn) {
             bgUploadBtn.onclick = () => {
                 pickCurrentSlideBackgroundFile?.();
+            };
+        }
+        if (bgThreeBtn) {
+            bgThreeBtn.onclick = () => {
+                setCurrentSlideBackgroundThree?.(bgThreeStyleInput?.value || "orbital");
+            };
+        }
+        if (bgThreeStyleInput) {
+            bgThreeStyleInput.onchange = e => {
+                const currentBackground = normalizeSlideBackground(state.slides[currentSlideIndex]?.background);
+                if (currentBackground?.type === "three") {
+                    setCurrentSlideBackgroundThree?.(e.target.value || "orbital");
+                }
             };
         }
         if (bgClearBtn) {

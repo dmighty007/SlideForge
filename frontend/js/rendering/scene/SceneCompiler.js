@@ -47,6 +47,9 @@ function compileBackground(slide = {}, theme = null) {
     if (background.type === "video" && background.content) {
         return { kind: "video", src: background.content, exportPolicy: "placeholder" };
     }
+    if (background.type === "three") {
+        return { kind: "solid", color: theme?.cssVars?.["--slide-bg"] || theme?.surfaceColor || "#ffffff" };
+    }
     return {
         kind: "solid",
         color: background.color || background.value || theme?.surfaceColor || "#ffffff",

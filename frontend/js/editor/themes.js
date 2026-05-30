@@ -953,6 +953,7 @@ function applyPresentationTheme(themeId, { persist = true } = {}) {
     const safeThemeId = normalizePresentationThemeId(themeId);
     const theme = PRESENTATION_THEMES[safeThemeId];
     const root = document.documentElement;
+    const isPresenting = document.body.classList.contains("play-mode-active");
 
     if (persist) {
         state.presentationTheme = safeThemeId;
@@ -962,7 +963,7 @@ function applyPresentationTheme(themeId, { persist = true } = {}) {
     Object.entries(theme.cssVars).forEach(([key, value]) => root.style.setProperty(key, value));
 
     const revealTheme = document.getElementById("reveal-theme");
-    if (revealTheme) {
+    if (revealTheme && !isPresenting) {
         revealTheme.href = `https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/theme/${theme.revealTheme}.min.css`;
     }
     if (typeof renderPresetSlidePalette === "function") {

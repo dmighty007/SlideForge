@@ -374,6 +374,12 @@ function isElementAnimationConfigured(el = {}) {
 
 function normalizeSlideBackground(background) {
     if (!background) return null;
+    const clampBackgroundAdjustments = source => ({
+        opacity: Math.max(0, Math.min(1, Number(source.opacity ?? 1))),
+        blur: Math.max(0, Math.min(40, Number(source.blur) || 0)),
+        brightness: Math.max(10, Math.min(200, Number(source.brightness ?? 100))),
+        saturate: Math.max(0, Math.min(250, Number(source.saturate ?? 100))),
+    });
     if (typeof background === "string") {
         const trimmed = background.trim();
         if (!trimmed) return null;
@@ -382,30 +388,31 @@ function normalizeSlideBackground(background) {
             content: trimmed,
             mimeType: "",
             fit: "cover",
-            opacity: 1,
-            blur: 0,
-            brightness: 100,
-            saturate: 100,
+            ...clampBackgroundAdjustments({}),
         };
     }
     if (typeof background !== "object") return null;
+    if (background.type === "three" || background.type === "3d") {
+        const style = ["orbital", "mesh", "particles"].includes(background.style) ? background.style : "orbital";
+        return {
+            type: "three",
+            content: "theme-motion",
+            mimeType: "",
+            fit: "cover",
+            style,
+            ...clampBackgroundAdjustments(background),
+        };
+    }
     const content = String(background.content || "").trim();
     if (!content || !_isSafeAssetUrl(content, { allowData: true })) return null;
     const type = background.type === "video" ? "video" : "image";
     const fit = ["cover", "contain", "fill"].includes(background.fit) ? background.fit : "cover";
-    const opacity = Math.max(0, Math.min(1, Number(background.opacity ?? 1)));
-    const blur = Math.max(0, Math.min(40, Number(background.blur) || 0));
-    const brightness = Math.max(10, Math.min(200, Number(background.brightness ?? 100)));
-    const saturate = Math.max(0, Math.min(250, Number(background.saturate ?? 100)));
     return {
         type,
         content,
         mimeType: typeof background.mimeType === "string" ? background.mimeType : "",
         fit,
-        opacity,
-        blur,
-        brightness,
-        saturate,
+        ...clampBackgroundAdjustments(background),
     };
 }
 

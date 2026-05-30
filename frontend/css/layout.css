@@ -2610,7 +2610,8 @@ body.workspace-review #properties-content::before {
 }
 
 .slide-background-media > .slide-background-image,
-.slide-background-media > .slide-background-video {
+.slide-background-media > .slide-background-video,
+.slide-background-media > .slide-background-three-canvas {
     position: absolute;
     inset: 0;
     width: 100% !important;
@@ -2621,6 +2622,14 @@ body.workspace-review #properties-content::before {
     max-height: none !important;
     margin: 0 !important;
     display: block;
+}
+
+.slide-background-three {
+    background: var(--slide-bg);
+}
+
+.slide-background-three-canvas {
+    object-fit: cover;
 }
 
 /* ═══════════════════════════════════════════════════════

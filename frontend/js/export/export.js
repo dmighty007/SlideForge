@@ -736,7 +736,8 @@ body {
 }
 
 .slide-background-media > .slide-background-image,
-.slide-background-media > .slide-background-video {
+.slide-background-media > .slide-background-video,
+.slide-background-media > .slide-background-three-canvas {
     position: absolute;
     inset: 0;
     width: 100% !important;
@@ -747,6 +748,13 @@ body {
     max-height: none !important;
     margin: 0 !important;
     display: block;
+}
+
+.slide-background-three {
+    background:
+        radial-gradient(circle at 72% 22%, color-mix(in srgb, var(--slide-accent, #2563eb) 18%, transparent), transparent 32%),
+        radial-gradient(circle at 22% 78%, color-mix(in srgb, var(--slide-accent-2, #0f766e) 18%, transparent), transparent 34%),
+        var(--slide-bg);
 }
 
 .standalone-presentation-ui {
@@ -2321,9 +2329,9 @@ function createViewerElement(elData, mediaOptions = {}) {
 }
 
 function createViewerSlideBackgroundNode(background, mediaOptions = {}) {
-    if (!background || !background.content) return null;
+    if (!background || (!background.content && background.type !== 'three')) return null;
     const wrapper = document.createElement('div');
-    wrapper.className = 'slide-background-media';
+    wrapper.className = background.type === 'three' ? 'slide-background-media slide-background-three' : 'slide-background-media';
     const opacity = Math.max(0, Math.min(1, Number(background.opacity ?? 1)));
     const blur = Math.max(0, Math.min(40, Number(background.blur) || 0));
     const brightness = Math.max(10, Math.min(200, Number(background.brightness ?? 100)));
@@ -2331,7 +2339,41 @@ function createViewerSlideBackgroundNode(background, mediaOptions = {}) {
     wrapper.style.opacity = String(opacity);
     wrapper.style.filter = 'blur(' + blur + 'px) brightness(' + brightness + '%) saturate(' + saturate + '%)';
     if (blur) wrapper.style.transform = 'scale(' + (1 + blur / 120) + ')';
-    if (background.type === 'video') {
+    if (background.type === 'three') {
+        wrapper.dataset.backgroundType = 'three';
+        wrapper.dataset.threeStyle = background.style || 'orbital';
+        const canvas = document.createElement('canvas');
+        canvas.className = 'slide-background-three-canvas';
+        canvas.setAttribute('aria-hidden', 'true');
+        wrapper.appendChild(canvas);
+        requestAnimationFrame(() => {
+            const ctx = canvas.getContext('2d');
+            const rect = wrapper.getBoundingClientRect();
+            const width = Math.max(1, Math.round(rect.width || 1024));
+            const height = Math.max(1, Math.round(rect.height || 768));
+            const ratio = Math.min(2, window.devicePixelRatio || 1);
+            canvas.width = Math.round(width * ratio);
+            canvas.height = Math.round(height * ratio);
+            canvas.style.width = width + 'px';
+            canvas.style.height = height + 'px';
+            if (!ctx) return;
+            ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+            const gradient = ctx.createLinearGradient(0, 0, width, height);
+            gradient.addColorStop(0, getComputedStyle(document.documentElement).getPropertyValue('--slide-bg').trim() || '#ffffff');
+            gradient.addColorStop(1, getComputedStyle(document.documentElement).getPropertyValue('--slide-accent').trim() || '#2563eb');
+            ctx.globalAlpha = 0.16;
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+            ctx.globalAlpha = 0.42;
+            for (let i = 0; i < 56; i += 1) {
+                const x = ((i * 73) % 997) / 997 * width;
+                const y = ((i * 151) % 761) / 761 * height;
+                ctx.beginPath();
+                ctx.arc(x, y, 1.5 + (i % 5), 0, Math.PI * 2);
+                ctx.fill();
+            }
+        });
+    } else if (background.type === 'video') {
         const video = document.createElement('video');
         video.className = 'slide-background-video';
         video.src = background.content;
