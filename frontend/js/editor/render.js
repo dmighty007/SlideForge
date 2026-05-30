@@ -2228,6 +2228,53 @@ function _createStaticNode(elData, options = {}) {
             }
         };
         requestAnimationFrame(renderWhiteboardObject);
+    } else if (elData.type === "sketch") {
+        const canvas = document.createElement("canvas");
+        canvas.className = "sketch-canvas";
+        canvas.style.width = "100%";
+        canvas.style.height = "100%";
+        canvas.style.display = "block";
+        canvas.style.pointerEvents = "none";
+        el.appendChild(canvas);
+        const renderSketchObject = (attempt = 0) => {
+            const rect = canvas.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+                const dpr = window.devicePixelRatio || 1;
+                canvas.width = rect.width * dpr;
+                canvas.height = rect.height * dpr;
+                const ctx = canvas.getContext("2d");
+                if (ctx && typeof renderSketchStrokes === "function") {
+                    ctx.scale(dpr, dpr);
+                    renderSketchStrokes(ctx, elData.strokes || [], rect.width, rect.height);
+                }
+            } else if (attempt < 8) {
+                requestAnimationFrame(() => renderSketchObject(attempt + 1));
+            }
+        };
+        requestAnimationFrame(() => renderSketchObject(0));
+    } else if (elData.type === "video") {
+        const placeholder = document.createElement("div");
+        placeholder.style.cssText = "width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0f172a;color:#94a3b8;gap:6px;border-radius:inherit;";
+        placeholder.innerHTML = `<i class="fa-solid fa-film" style="font-size:24px;"></i><span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Video</span>`;
+        el.appendChild(placeholder);
+    } else if (elData.type === "molecule") {
+        const placeholder = document.createElement("div");
+        placeholder.style.cssText = "width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#020617;color:#94a3b8;gap:6px;border-radius:inherit;";
+        placeholder.innerHTML = `<i class="fa-solid fa-atom" style="font-size:24px;color:#38bdf8;"></i><span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">${elData.moleculeName || "Molecule"}</span>`;
+        el.appendChild(placeholder);
+    } else if (elData.type === "pdf") {
+        const placeholder = document.createElement("div");
+        placeholder.style.cssText = "width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0f172a;color:#f87171;gap:6px;border-radius:inherit;";
+        placeholder.innerHTML = `<i class="fa-regular fa-file-pdf" style="font-size:24px;"></i><span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#94a3b8;">PDF Document</span>`;
+        el.appendChild(placeholder);
+    } else if (elData.type === "equation" || elData.type === "latex") {
+        const container = document.createElement("div");
+        container.className = "equation-container";
+        const color = elData.styles?.color || "#ffffff";
+        const fontSize = elData.styles?.fontSize || "24px";
+        container.style.cssText = `width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:4px;color:${color};font-size:${fontSize};line-height:1;`;
+        container.innerHTML = elData.content || elData.latexSrc || "";
+        el.appendChild(container);
     }
     return el;
 }

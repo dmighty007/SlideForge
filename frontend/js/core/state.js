@@ -1,4 +1,3 @@
-
 // --- Core State Layer ---
 let _idCounter = 0;
 
@@ -13,6 +12,7 @@ function generateId(prefix) {
 function buildDefaultPresentationState() {
     return {
         presentationTheme: "editorial",
+        presentationTransition: "none",
         pageSetup: DEFAULT_PRESENTATION_PAGE_SETUP,
         masterSlides: createDefaultMasterSlidesState(),
         colorPalette: ["#172033", "#2563EB", "#7C3AED", "#DB2777", "#DC2626", "#D97706", "#059669", "#FFFFFF"],
@@ -288,7 +288,9 @@ function createDefaultAnimation(effect = "fade-in", overrides = {}) {
         distancePx: Number.isFinite(Number(overrides.distancePx)) ? Number(overrides.distancePx) : 48,
         scaleFrom: Number.isFinite(Number(overrides.scaleFrom)) ? Number(overrides.scaleFrom) : 0.88,
         emphasisStyle:
-            overrides.emphasisStyle === "glow" || overrides.emphasisStyle === "shake" || overrides.emphasisStyle === "pulse"
+            overrides.emphasisStyle === "glow" ||
+            overrides.emphasisStyle === "shake" ||
+            overrides.emphasisStyle === "pulse"
                 ? overrides.emphasisStyle
                 : PRESENTATION_EMPHASIS_EFFECTS.has(safeEffect)
                   ? safeEffect
@@ -298,11 +300,21 @@ function createDefaultAnimation(effect = "fade-in", overrides = {}) {
 
 function normalizeElementAnimation(el = {}) {
     const legacyValue = typeof el.animation === "string" ? el.animation.trim() : "";
-    const raw = legacyValue ? { effect: legacyValue } : el.animation && typeof el.animation === "object" ? el.animation : null;
+    const raw = legacyValue
+        ? { effect: legacyValue }
+        : el.animation && typeof el.animation === "object"
+          ? el.animation
+          : null;
     if (!raw) return null;
     // Preserve advanced animation configs (timelines-based or advanced type)
     if (Array.isArray(raw.timelines)) return raw;
-    if (raw.type && typeof ANIMATION_TRANSITION_TYPES !== "undefined" && Array.isArray(ANIMATION_TRANSITION_TYPES) && ANIMATION_TRANSITION_TYPES.includes(raw.type)) return raw;
+    if (
+        raw.type &&
+        typeof ANIMATION_TRANSITION_TYPES !== "undefined" &&
+        Array.isArray(ANIMATION_TRANSITION_TYPES) &&
+        ANIMATION_TRANSITION_TYPES.includes(raw.type)
+    )
+        return raw;
     if (!raw.effect || !isStructuredAnimationEffect(raw.effect)) {
         return null;
     }
@@ -406,10 +418,7 @@ function setProjectSaveHint(message, tone = "muted") {
     if (!hint) return;
     hint.textContent = message;
     hint.style.color =
-        tone === "success" ? "#047857" :
-        tone === "warn" ? "#b45309" :
-        tone === "danger" ? "#b91c1c" :
-        "#94a3b8";
+        tone === "success" ? "#047857" : tone === "warn" ? "#b45309" : tone === "danger" ? "#b91c1c" : "#94a3b8";
 }
 
 function markBackendUnavailable(reason = "Backend API unavailable") {
@@ -466,7 +475,8 @@ function switchEntryAuthMode(mode = "login") {
                 : "Use your account to save projects.";
     }
     if (submit) submit.textContent = currentEntryAuthMode === "register" ? "Create account" : "Sign in";
-    if (toggle) toggle.textContent = currentEntryAuthMode === "register" ? "Use an existing account" : "Create a new account";
+    if (toggle)
+        toggle.textContent = currentEntryAuthMode === "register" ? "Use an existing account" : "Create a new account";
     if (password) password.autocomplete = currentEntryAuthMode === "register" ? "new-password" : "current-password";
     if (error) error.textContent = "";
 }
@@ -577,14 +587,24 @@ function updateAuthUi() {
         authPrimary.innerHTML = currentAuthUser
             ? `<i class="fa-solid fa-folder-open"></i><span>Saved projects</span>`
             : `<i class="fa-solid fa-right-to-bracket"></i><span>Sign In</span>`;
-        authPrimary.onclick = currentAuthUser ? () => { closeUserMenu(); openProjectsModal(); } : () => openAuthModal("login");
+        authPrimary.onclick = currentAuthUser
+            ? () => {
+                  closeUserMenu();
+                  openProjectsModal();
+              }
+            : () => openAuthModal("login");
     }
 
     if (authSecondary) {
         authSecondary.innerHTML = currentAuthUser
             ? `<i class="fa-solid fa-arrow-right-from-bracket"></i><span>Logout</span>`
             : `<i class="fa-solid fa-user-plus"></i><span>Register</span>`;
-        authSecondary.onclick = currentAuthUser ? () => { closeUserMenu(); logoutCurrentUser(); } : () => openAuthModal("register");
+        authSecondary.onclick = currentAuthUser
+            ? () => {
+                  closeUserMenu();
+                  logoutCurrentUser();
+              }
+            : () => openAuthModal("register");
     }
 
     if (autosaveBadge) {
@@ -600,8 +620,42 @@ function setAuthState(user) {
     updateProjectTitleUi();
 }
 
-const SAFE_ELEMENT_TYPES = new Set(["text", "image", "shape", "table", "connector", "video", "html", "pdf", "molecule", "chart", "equation", "latex", "sketch", "whiteboard", "mermaid"]);
-const SAFE_TEXT_TAGS = new Set(["B", "BR", "DIV", "EM", "I", "LI", "MARK", "OL", "P", "S", "SMALL", "SPAN", "STRONG", "SUB", "SUP", "U", "UL"]);
+const SAFE_ELEMENT_TYPES = new Set([
+    "text",
+    "image",
+    "shape",
+    "table",
+    "connector",
+    "video",
+    "html",
+    "pdf",
+    "molecule",
+    "chart",
+    "equation",
+    "latex",
+    "sketch",
+    "whiteboard",
+    "mermaid",
+]);
+const SAFE_TEXT_TAGS = new Set([
+    "B",
+    "BR",
+    "DIV",
+    "EM",
+    "I",
+    "LI",
+    "MARK",
+    "OL",
+    "P",
+    "S",
+    "SMALL",
+    "SPAN",
+    "STRONG",
+    "SUB",
+    "SUP",
+    "U",
+    "UL",
+]);
 const SAFE_TEXT_STYLE_PROPS = new Set([
     "color",
     "background-color",
@@ -673,7 +727,13 @@ function _truncateStateString(value, maxLength) {
 function _isSafeAssetUrl(value, { allowData = false } = {}) {
     const url = String(value || "").trim();
     if (!url) return false;
-    if (url.startsWith("/media/") || url.startsWith("/static/") || url.startsWith("assets/") || url.startsWith("/assets/") || url.startsWith("blob:")) {
+    if (
+        url.startsWith("/media/") ||
+        url.startsWith("/static/") ||
+        url.startsWith("assets/") ||
+        url.startsWith("/assets/") ||
+        url.startsWith("blob:")
+    ) {
         return true;
     }
     if (allowData && /^data:(image|video|application\/pdf)\//i.test(url)) {
@@ -707,9 +767,9 @@ function sanitizeTextHtml(html) {
             if (name === "style") return;
             if (name === "class") {
                 // Whitelist FontAwesome and internal ppt-* classes
-                const safeClasses = attr.value.split(/\s+/).filter(cls =>
-                    /^fa-/.test(cls) || /^fa[srltdbk]?$/.test(cls) || /^ppt-/.test(cls)
-                );
+                const safeClasses = attr.value
+                    .split(/\s+/)
+                    .filter(cls => /^fa-/.test(cls) || /^fa[srltdbk]?$/.test(cls) || /^ppt-/.test(cls));
                 if (safeClasses.length) {
                     node.setAttribute("class", safeClasses.join(" "));
                     return;
@@ -737,12 +797,9 @@ function sanitizeTextHtml(html) {
 
 function sanitizeIconClassValue(value) {
     const raw = String(value || "");
-    const source = raw.includes("<")
-        ? raw
-        : raw.replace(/[^\w\s-]/g, " ");
+    const source = raw.includes("<") ? raw : raw.replace(/[^\w\s-]/g, " ");
     const classMatch =
-        source.match(/class\s*=\s*["']([^"']+)["']/i) ||
-        source.match(/class\s*=\s*&quot;([^&]+)&quot;/i);
+        source.match(/class\s*=\s*["']([^"']+)["']/i) || source.match(/class\s*=\s*&quot;([^&]+)&quot;/i);
     const classSource = classMatch ? classMatch[1] : source;
     const safeClasses = classSource
         .split(/\s+/)
@@ -810,7 +867,16 @@ function normalizeMermaidTheme(theme) {
 }
 
 function normalizeMermaidType(type) {
-    return ["flowchart", "sequenceDiagram", "stateDiagram-v2", "classDiagram", "erDiagram", "gantt", "journey", "mindmap"].includes(type)
+    return [
+        "flowchart",
+        "sequenceDiagram",
+        "stateDiagram-v2",
+        "classDiagram",
+        "erDiagram",
+        "gantt",
+        "journey",
+        "mindmap",
+    ].includes(type)
         ? type
         : "flowchart";
 }
@@ -836,9 +902,25 @@ function normalizeMermaidGraphModel(graph = null) {
     if (!graph || typeof graph !== "object") return null;
     const safeNodes = Array.isArray(graph.nodes)
         ? graph.nodes.slice(0, 600).map((node, index) => ({
-              id: _truncateStateString(node?.id || `Node${index + 1}`, 80).replace(/[^\w-]/g, "_") || `Node${index + 1}`,
+              id:
+                  _truncateStateString(node?.id || `Node${index + 1}`, 80).replace(/[^\w-]/g, "_") ||
+                  `Node${index + 1}`,
               label: _truncateStateString(node?.label || node?.id || `Node ${index + 1}`, 180),
-              shape: ["process", "decision", "database", "cloud", "actor", "queue", "hexagon", "parallelogram", "terminal", "document", "scientific"].includes(node?.shape) ? node.shape : "process",
+              shape: [
+                  "process",
+                  "decision",
+                  "database",
+                  "cloud",
+                  "actor",
+                  "queue",
+                  "hexagon",
+                  "parallelogram",
+                  "terminal",
+                  "document",
+                  "scientific",
+              ].includes(node?.shape)
+                  ? node.shape
+                  : "process",
               x: Number.isFinite(Number(node?.x)) ? Math.round(Number(node.x)) : 48,
               y: Number.isFinite(Number(node?.y)) ? Math.round(Number(node.y)) : 48,
               width: Number.isFinite(Number(node?.width)) ? Math.max(48, Math.min(320, Number(node.width))) : 138,
@@ -849,9 +931,12 @@ function normalizeMermaidGraphModel(graph = null) {
         : [];
     const nodeIds = new Set(safeNodes.map(node => node.id));
     const safeEdges = Array.isArray(graph.edges)
-        ? graph.edges.slice(0, 2500)
+        ? graph.edges
+              .slice(0, 2500)
               .map((edge, index) => ({
-                  id: _truncateStateString(edge?.id || `edge_${index + 1}`, 120).replace(/[^\w-]/g, "_") || `edge_${index + 1}`,
+                  id:
+                      _truncateStateString(edge?.id || `edge_${index + 1}`, 120).replace(/[^\w-]/g, "_") ||
+                      `edge_${index + 1}`,
                   from: _truncateStateString(edge?.from || "", 80).replace(/[^\w-]/g, "_"),
                   to: _truncateStateString(edge?.to || "", 80).replace(/[^\w-]/g, "_"),
                   label: _truncateStateString(edge?.label || "", 180),
@@ -883,20 +968,27 @@ function normalizeMermaidGraphModel(graph = null) {
         viewport: {
             x: Number.isFinite(Number(graph.viewport?.x)) ? Number(graph.viewport.x) : 0,
             y: Number.isFinite(Number(graph.viewport?.y)) ? Number(graph.viewport.y) : 0,
-            zoom: Number.isFinite(Number(graph.viewport?.zoom)) ? Math.max(0.1, Math.min(8, Number(graph.viewport.zoom))) : 1,
+            zoom: Number.isFinite(Number(graph.viewport?.zoom))
+                ? Math.max(0.1, Math.min(8, Number(graph.viewport.zoom)))
+                : 1,
         },
         style: normalizeMermaidStyle(graph.style || {}),
         nodePositions: Object.fromEntries(safeNodes.map(node => [node.id, { x: node.x, y: node.y }])),
         lockedLayout: Boolean(graph.lockedLayout),
         autoLayout: graph.autoLayout !== false,
         routingStyle: graph.routingStyle === "curved" ? "curved" : "orthogonal",
-        connectionStyle: ["arrow", "circle", "cross", "none"].includes(graph.connectionStyle) ? graph.connectionStyle : "arrow",
+        connectionStyle: ["arrow", "circle", "cross", "none"].includes(graph.connectionStyle)
+            ? graph.connectionStyle
+            : "arrow",
     };
 }
 
 function normalizeStateIds() {
     if (!state.presentationTheme || typeof state.presentationTheme !== "string") {
         state.presentationTheme = "editorial";
+    }
+    if (!state.presentationTransition || typeof state.presentationTransition !== "string") {
+        state.presentationTransition = "none";
     }
     ensurePresentationPageSetup(state);
     state.masterSlides = normalizeMasterSlidesState(state.masterSlides);
@@ -909,7 +1001,9 @@ function normalizeStateIds() {
         const nextSlideId = safeSlide.id && !usedSlideIds.has(safeSlide.id) ? safeSlide.id : generateId("slide");
         usedSlideIds.add(nextSlideId);
 
-        const nextElements = Array.isArray(safeSlide.elements) ? safeSlide.elements.slice(0, MAX_ELEMENTS_PER_SLIDE) : [];
+        const nextElements = Array.isArray(safeSlide.elements)
+            ? safeSlide.elements.slice(0, MAX_ELEMENTS_PER_SLIDE)
+            : [];
         const normalizedElements = nextElements.map(el => {
             const safeEl = el || {};
             const nextElId = safeEl.id && !usedElementIds.has(safeEl.id) ? safeEl.id : generateId("el");
@@ -935,7 +1029,7 @@ function normalizeStateIds() {
                             backgroundColor: "transparent",
                             textAlign: "left",
                         }
-                    : {}),
+                      : {}),
                 ...(fallbackType === "shape" ? { backgroundColor: "#6366f1" } : {}),
                 ...(fallbackType === "connector"
                     ? {
@@ -950,8 +1044,9 @@ function normalizeStateIds() {
             const normalizedAnimation = normalizeElementAnimation(safeEl);
             // Preserve the original animation object if normalizeElementAnimation couldn't
             // process it but the raw data exists (e.g. advanced animation-engine configs)
-            const preservedAnimation = normalizedAnimation
-                ?? (safeEl.animation && typeof safeEl.animation === "object" ? safeEl.animation : null);
+            const preservedAnimation =
+                normalizedAnimation ??
+                (safeEl.animation && typeof safeEl.animation === "object" ? safeEl.animation : null);
             const normalizedIconClass =
                 fallbackType === "text" && safeEl.iconMode
                     ? sanitizeIconClassValue(safeEl.iconClass || safeEl.content)
@@ -984,13 +1079,21 @@ function normalizeStateIds() {
                     : {}),
                 ...(fallbackType === "molecule"
                     ? {
-                          moleculeName: typeof safeEl.moleculeName === "string" ? _truncateStateString(safeEl.moleculeName, 240) : "Molecule",
-                          moleculeFormat: typeof normalizeMoleculeFormat === "function" ? normalizeMoleculeFormat(safeEl.moleculeFormat || "pdb") : "pdb",
+                          moleculeName:
+                              typeof safeEl.moleculeName === "string"
+                                  ? _truncateStateString(safeEl.moleculeName, 240)
+                                  : "Molecule",
+                          moleculeFormat:
+                              typeof normalizeMoleculeFormat === "function"
+                                  ? normalizeMoleculeFormat(safeEl.moleculeFormat || "pdb")
+                                  : "pdb",
                           moleculeIsTrajectory: Boolean(
                               safeEl.moleculeIsTrajectory ||
-                                  (typeof isMoleculeTrajectoryData === "function" &&
-                                      !(typeof isMoleculeContentUrl === "function" && isMoleculeContentUrl(safeEl.content)) &&
-                                      isMoleculeTrajectoryData(safeEl.content)),
+                              (typeof isMoleculeTrajectoryData === "function" &&
+                                  !(
+                                      typeof isMoleculeContentUrl === "function" && isMoleculeContentUrl(safeEl.content)
+                                  ) &&
+                                  isMoleculeTrajectoryData(safeEl.content)),
                           ),
                           moleculeSourceType:
                               typeof isMoleculeContentUrl === "function" && isMoleculeContentUrl(safeEl.content)
@@ -998,18 +1101,24 @@ function normalizeStateIds() {
                                   : "inline",
                           moleculeInteractive: safeEl.moleculeInteractive ?? true,
                           moleculeAutoRotate: Boolean(safeEl.moleculeAutoRotate),
-                          moleculeProjection: safeEl.moleculeProjection === "orthographic" ? "orthographic" : "perspective",
-                          moleculeDefaultStyle:
-                              ["cartoon", "stick", "sphere", "line", "surface"].includes(safeEl.moleculeDefaultStyle)
-                                  ? safeEl.moleculeDefaultStyle
-                                  : "cartoon",
-                          moleculeDefaultColor:
-                              ["default", "chain", "amino", "ssJmol", "spectrum", "custom"].includes(safeEl.moleculeDefaultColor)
-                                  ? safeEl.moleculeDefaultColor
-                                  : "spectrum",
+                          moleculeProjection:
+                              safeEl.moleculeProjection === "orthographic" ? "orthographic" : "perspective",
+                          moleculeDefaultStyle: ["cartoon", "stick", "sphere", "line", "surface"].includes(
+                              safeEl.moleculeDefaultStyle,
+                          )
+                              ? safeEl.moleculeDefaultStyle
+                              : "cartoon",
+                          moleculeDefaultColor: ["default", "chain", "amino", "ssJmol", "spectrum", "custom"].includes(
+                              safeEl.moleculeDefaultColor,
+                          )
+                              ? safeEl.moleculeDefaultColor
+                              : "spectrum",
                           moleculeRepresentationLayers:
-                              typeof normalizeMoleculeRepresentationLayer === "function" && Array.isArray(safeEl.moleculeRepresentationLayers)
-                                  ? safeEl.moleculeRepresentationLayers.map(normalizeMoleculeRepresentationLayer).slice(0, 12)
+                              typeof normalizeMoleculeRepresentationLayer === "function" &&
+                              Array.isArray(safeEl.moleculeRepresentationLayers)
+                                  ? safeEl.moleculeRepresentationLayers
+                                        .map(normalizeMoleculeRepresentationLayer)
+                                        .slice(0, 12)
                                   : [],
                           moleculeViewState:
                               typeof normalizeMoleculeViewState === "function"
@@ -1039,9 +1148,7 @@ function normalizeStateIds() {
                 ...(fallbackType === "mermaid"
                     ? {
                           mermaidSource: _truncateStateString(
-                              safeEl.mermaidSource ||
-                                  safeEl.content ||
-                                  "flowchart TD\n    A[Start] --> B[End]",
+                              safeEl.mermaidSource || safeEl.content || "flowchart TD\n    A[Start] --> B[End]",
                               MAX_MERMAID_SOURCE_LENGTH,
                           ),
                           mermaidType: normalizeMermaidType(safeEl.mermaidType),
@@ -1067,7 +1174,9 @@ function normalizeStateIds() {
                           lockedLayout: Boolean(safeEl.lockedLayout),
                           autoLayout: safeEl.autoLayout !== false,
                           routingStyle: safeEl.routingStyle === "curved" ? "curved" : "orthogonal",
-                          connectionStyle: ["arrow", "circle", "cross", "none"].includes(safeEl.connectionStyle) ? safeEl.connectionStyle : "arrow",
+                          connectionStyle: ["arrow", "circle", "cross", "none"].includes(safeEl.connectionStyle)
+                              ? safeEl.connectionStyle
+                              : "arrow",
                           rotation: Number.isFinite(Number(safeEl.rotation)) ? Number(safeEl.rotation) : 0,
                           locked: Boolean(safeEl.locked),
                           opacity: Number.isFinite(Number(safeEl.opacity))
@@ -1109,32 +1218,37 @@ function normalizeStateIds() {
                       ? {
                             tableData: normalizeTableData(safeEl.tableData),
                         }
-                    : fallbackType === "shape"
-                      ? {
-                            arrowHeadSize:
-                                typeof safeEl.shapeType === "string" && safeEl.shapeType.startsWith("arrow-")
-                                    ? Math.max(12, Math.min(80, Number(safeEl.arrowHeadSize) || 38))
-                                    : safeEl.arrowHeadSize,
-                            arrowShaftSize:
-                                typeof safeEl.shapeType === "string" && safeEl.shapeType.startsWith("arrow-")
-                                    ? Math.max(12, Math.min(90, Number(safeEl.arrowShaftSize) || 36))
-                                    : safeEl.arrowShaftSize,
-                            themeManaged: safeEl.themeManaged ?? true,
-                        }
-                      : fallbackType === "connector"
+                      : fallbackType === "shape"
                         ? {
-                              connectorType:
-                                  safeEl.connectorType === "curve" || safeEl.connectorType === "poly"
-                                      ? safeEl.connectorType
-                                      : "line",
-                              connectorStart: typeof safeEl.connectorStart === "string" ? safeEl.connectorStart : "none",
-                              connectorEnd: typeof safeEl.connectorEnd === "string" ? safeEl.connectorEnd : "arrow",
-                              connectorHeadWidth: Number.isFinite(Number(safeEl.connectorHeadWidth)) ? Math.max(4, Math.min(40, Number(safeEl.connectorHeadWidth))) : 14,
-                              connectorHeadLength: Number.isFinite(Number(safeEl.connectorHeadLength)) ? Math.max(4, Math.min(40, Number(safeEl.connectorHeadLength))) : 14,
-                              points: Array.isArray(safeEl.points) ? safeEl.points : null,
+                              arrowHeadSize:
+                                  typeof safeEl.shapeType === "string" && safeEl.shapeType.startsWith("arrow-")
+                                      ? Math.max(12, Math.min(80, Number(safeEl.arrowHeadSize) || 38))
+                                      : safeEl.arrowHeadSize,
+                              arrowShaftSize:
+                                  typeof safeEl.shapeType === "string" && safeEl.shapeType.startsWith("arrow-")
+                                      ? Math.max(12, Math.min(90, Number(safeEl.arrowShaftSize) || 36))
+                                      : safeEl.arrowShaftSize,
                               themeManaged: safeEl.themeManaged ?? true,
                           }
-                      : {}),
+                        : fallbackType === "connector"
+                          ? {
+                                connectorType:
+                                    safeEl.connectorType === "curve" || safeEl.connectorType === "poly"
+                                        ? safeEl.connectorType
+                                        : "line",
+                                connectorStart:
+                                    typeof safeEl.connectorStart === "string" ? safeEl.connectorStart : "none",
+                                connectorEnd: typeof safeEl.connectorEnd === "string" ? safeEl.connectorEnd : "arrow",
+                                connectorHeadWidth: Number.isFinite(Number(safeEl.connectorHeadWidth))
+                                    ? Math.max(4, Math.min(40, Number(safeEl.connectorHeadWidth)))
+                                    : 14,
+                                connectorHeadLength: Number.isFinite(Number(safeEl.connectorHeadLength))
+                                    ? Math.max(4, Math.min(40, Number(safeEl.connectorHeadLength)))
+                                    : 14,
+                                points: Array.isArray(safeEl.points) ? safeEl.points : null,
+                                themeManaged: safeEl.themeManaged ?? true,
+                            }
+                          : {}),
                 x: Number.isFinite(Number(safeEl.x)) ? Number(safeEl.x) : 100,
                 y: Number.isFinite(Number(safeEl.y)) ? Number(safeEl.y) : 100,
                 width:
@@ -1143,54 +1257,54 @@ function normalizeStateIds() {
                         ? "150px"
                         : fallbackType === "connector"
                           ? "280px"
-                        : fallbackType === "mermaid"
-                          ? "560px"
-                        : fallbackType === "table"
-                          ? "520px"
-                        : fallbackType === "image"
-                          ? "300px"
-                          : fallbackType === "pdf"
-                            ? "520px"
-                          : fallbackType === "html"
-                            ? "520px"
-                            : fallbackType === "molecule"
-                              ? "620px"
-                            : "auto"),
+                          : fallbackType === "mermaid"
+                            ? "560px"
+                            : fallbackType === "table"
+                              ? "520px"
+                              : fallbackType === "image"
+                                ? "300px"
+                                : fallbackType === "pdf"
+                                  ? "520px"
+                                  : fallbackType === "html"
+                                    ? "520px"
+                                    : fallbackType === "molecule"
+                                      ? "620px"
+                                      : "auto"),
                 height:
                     safeEl.height ||
                     (fallbackType === "shape"
                         ? "150px"
                         : fallbackType === "connector"
                           ? "140px"
-                        : fallbackType === "mermaid"
-                          ? "360px"
-                        : fallbackType === "table"
-                          ? "240px"
-                        : fallbackType === "image"
-                          ? "200px"
-                          : fallbackType === "pdf"
+                          : fallbackType === "mermaid"
                             ? "360px"
-                          : fallbackType === "html"
-                            ? "320px"
-                            : fallbackType === "molecule"
-                              ? "420px"
-                            : "auto"),
+                            : fallbackType === "table"
+                              ? "240px"
+                              : fallbackType === "image"
+                                ? "200px"
+                                : fallbackType === "pdf"
+                                  ? "360px"
+                                  : fallbackType === "html"
+                                    ? "320px"
+                                    : fallbackType === "molecule"
+                                      ? "420px"
+                                      : "auto"),
                 content:
                     fallbackType === "text" && safeEl.iconMode && normalizedIconClass
                         ? `<i class="${normalizedIconClass}"></i>`
                         : fallbackType === "text"
-                        ? typeof normalizeTextElementContent === "function"
-                            ? normalizeTextElementContent(sanitizeElementContent(safeEl, fallbackType))
-                            : sanitizeElementContent(safeEl, fallbackType)
-                        : typeof safeEl.content === "string"
-                          ? sanitizeElementContent(safeEl, fallbackType)
-                          : fallbackType === "image"
-                            ? "https://picsum.photos/400/300"
-                            : fallbackType === "html"
-                              ? "<html><body style='font-family: sans-serif; padding: 16px;'>Embedded HTML</body></html>"
-                              : fallbackType === "molecule" && typeof createDefaultMoleculeContent === "function"
-                                ? createDefaultMoleculeContent()
-                              : "",
+                          ? typeof normalizeTextElementContent === "function"
+                              ? normalizeTextElementContent(sanitizeElementContent(safeEl, fallbackType))
+                              : sanitizeElementContent(safeEl, fallbackType)
+                          : typeof safeEl.content === "string"
+                            ? sanitizeElementContent(safeEl, fallbackType)
+                            : fallbackType === "image"
+                              ? "https://picsum.photos/400/300"
+                              : fallbackType === "html"
+                                ? "<html><body style='font-family: sans-serif; padding: 16px;'>Embedded HTML</body></html>"
+                                : fallbackType === "molecule" && typeof createDefaultMoleculeContent === "function"
+                                  ? createDefaultMoleculeContent()
+                                  : "",
                 styles: (() => {
                     const rawStyles = safeEl.styles && typeof safeEl.styles === "object" ? safeEl.styles : null;
                     const normalizedStyles = { ...fallbackStyles, ...sanitizeElementStyles(rawStyles || {}) };
@@ -1209,7 +1323,8 @@ function normalizeStateIds() {
         return {
             ...safeSlide,
             id: nextSlideId,
-            layoutId: typeof safeSlide.layoutId === "string" && safeSlide.layoutId ? safeSlide.layoutId : "blank-titled",
+            layoutId:
+                typeof safeSlide.layoutId === "string" && safeSlide.layoutId ? safeSlide.layoutId : "blank-titled",
             masterId: resolveSlideMasterId(safeSlide),
             notes: typeof safeSlide.notes === "string" ? _truncateStateString(safeSlide.notes, 20000) : "",
             background: normalizeSlideBackground(safeSlide.background),
@@ -1218,7 +1333,16 @@ function normalizeStateIds() {
     });
 
     if (!state.slides.length) {
-        state.slides = [{ id: generateId("slide"), layoutId: "blank-titled", masterId: "content", notes: "", background: null, elements: [] }];
+        state.slides = [
+            {
+                id: generateId("slide"),
+                layoutId: "blank-titled",
+                masterId: "content",
+                notes: "",
+                background: null,
+                elements: [],
+            },
+        ];
     }
 
     if (currentSlideIndex > state.slides.length - 1) {
@@ -1250,15 +1374,19 @@ function _serializeEditorSnapshot() {
 }
 
 function _restoreEditorSnapshot(rawSnapshot) {
-    const parsed = JSON.parse(rawSnapshot);
-    if (parsed && typeof parsed === "object" && parsed.state && Array.isArray(parsed.state.slides)) {
-        state = parsed.state;
-        currentSlideIndex = Number.isInteger(parsed.currentSlideIndex) ? parsed.currentSlideIndex : currentSlideIndex;
-        return true;
-    }
-    if (parsed && typeof parsed === "object" && Array.isArray(parsed.slides)) {
-        state = parsed;
-        return true;
+    try {
+        const parsed = JSON.parse(rawSnapshot);
+        if (parsed && typeof parsed === "object" && parsed.state && Array.isArray(parsed.state.slides)) {
+            state = parsed.state;
+            currentSlideIndex = Number.isInteger(parsed.currentSlideIndex) ? parsed.currentSlideIndex : currentSlideIndex;
+            return true;
+        }
+        if (parsed && typeof parsed === "object" && Array.isArray(parsed.slides)) {
+            state = parsed;
+            return true;
+        }
+    } catch (err) {
+        console.warn("Failed to restore editor snapshot:", err);
     }
     return false;
 }
@@ -1288,12 +1416,16 @@ function restoreRedoState() {
 }
 
 function updateElementState(id, updates) {
-    const el = state.slides[currentSlideIndex].elements.find(e => e.id === id);
+    const slide = state.slides?.[currentSlideIndex];
+    if (!slide) return;
+    const el = slide.elements?.find(e => e.id === id);
     if (el) Object.assign(el, updates);
 }
 
 function updateElementStyleState(id, styleUpdates) {
-    const el = state.slides[currentSlideIndex].elements.find(e => e.id === id);
+    const slide = state.slides?.[currentSlideIndex];
+    if (!slide) return;
+    const el = slide.elements?.find(e => e.id === id);
     if (!el) return;
     if (!el.styles) el.styles = {};
     Object.assign(el.styles, styleUpdates);
@@ -1311,6 +1443,7 @@ function getPersistableState() {
     normalizeStateIds();
     return {
         presentationTheme: state.presentationTheme,
+        presentationTransition: state.presentationTransition,
         pageSetup: getPresentationPageSetupId(state),
         masterSlides: JSON.parse(JSON.stringify(state.masterSlides || normalizeMasterSlidesState())),
         slides: JSON.parse(JSON.stringify(state.slides || [])),
@@ -1419,7 +1552,11 @@ function switchAuthMode(mode = "login") {
     if (title) title.textContent = currentAuthMode === "register" ? "Create account" : "Sign in";
     if (submit) submit.textContent = currentAuthMode === "register" ? "Create account" : "Sign in";
     if (toggle) toggle.textContent = currentAuthMode === "register" ? "Use existing account" : "Create account";
-    if (subtitle) subtitle.textContent = currentAuthMode === "register" ? "Create a user to enable autosave." : "Sign in to load and save presentations.";
+    if (subtitle)
+        subtitle.textContent =
+            currentAuthMode === "register"
+                ? "Create a user to enable autosave."
+                : "Sign in to load and save presentations.";
     if (error) error.textContent = "";
 }
 
@@ -1535,10 +1672,7 @@ async function loadPresentationRecord(presentationId) {
     currentPresentationId = loaded.id;
     currentPresentationAutosaveVersion = loaded.autosaveVersion || 1;
     setCurrentPresentationTitle(loaded.title || "Untitled Presentation");
-    const hasSlides =
-        loaded.state &&
-        Array.isArray(loaded.state.slides) &&
-        loaded.state.slides.length > 0;
+    const hasSlides = loaded.state && Array.isArray(loaded.state.slides) && loaded.state.slides.length > 0;
     if (hasSlides) {
         state = loaded.state;
         state.presentationTheme = state.presentationTheme || loaded.presentationTheme || "editorial";
@@ -1599,7 +1733,12 @@ async function initPresentationPersistence(force = false) {
 }
 
 async function autosavePresentationNow() {
-    if (!_presentationPersistenceEnabled || !_presentationPersistenceReady || !currentPresentationId || isPresentationHydrating()) {
+    if (
+        !_presentationPersistenceEnabled ||
+        !_presentationPersistenceReady ||
+        !currentPresentationId ||
+        isPresentationHydrating()
+    ) {
         return false;
     }
     if (typeof syncMoleculeViewStatesFromDom === "function") {

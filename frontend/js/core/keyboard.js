@@ -93,21 +93,24 @@ function initKeyboard() {
         // Ctrl+A: Select all elements
         if ((e.ctrlKey || e.metaKey) && key === "a") {
             e.preventDefault();
-            const slideElements = state.slides[currentSlideIndex].elements.map(el => el.id);
-            if (slideElements.length) {
-                setSelectedIds(slideElements);
-                slideElements.forEach(id => document.getElementById(id)?.classList.add("selected"));
-                buildPropertiesPanel();
-                if (typeof updateGroupBound === "function") updateGroupBound();
+            const slide = state.slides?.[currentSlideIndex];
+            if (slide && Array.isArray(slide.elements)) {
+                const slideElements = slide.elements.map(el => el.id);
+                if (slideElements.length) {
+                    setSelectedIds(slideElements);
+                    slideElements.forEach(id => document.getElementById(id)?.classList.add("selected"));
+                    buildPropertiesPanel();
+                    if (typeof updateGroupBound === "function") updateGroupBound();
+                }
             }
         }
-        
+
         // Delete / Backspace: Delete selected elements
         if ((rawKey === "Delete" || rawKey === "Backspace") && state.selectedIds.length) {
             e.preventDefault();
             deleteSelectedElements();
         }
-        
+
         // Ctrl+D: Duplicate current slide
         if ((e.ctrlKey || e.metaKey) && !e.shiftKey && key === "d") {
             e.preventDefault();
@@ -119,26 +122,14 @@ function initKeyboard() {
             e.preventDefault();
             duplicateSelectedElements();
         }
-        
-        // Ctrl+C: Copy element
-        if ((e.ctrlKey || e.metaKey) && key === "c") {
-            e.preventDefault();
-            copyElement();
-        }
-        
-        // Ctrl+V: Paste element
-        if ((e.ctrlKey || e.metaKey) && key === "v") {
-            e.preventDefault();
-            pasteElement();
-        }
-        
+
         // Ctrl+Z: Undo
         if (isUndoShortcut) {
             e.preventDefault();
             undo();
             return;
         }
-        
+
         // Ctrl+Shift+Z or Ctrl+Y: Redo
         if (isRedoShortcut) {
             e.preventDefault();

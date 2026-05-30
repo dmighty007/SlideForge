@@ -137,16 +137,16 @@ def _json_error(message, *, status=400):
 def _json_response(data: Optional[Any] = None, *, status: int = 200, error: Optional[str] = None, message: Optional[str] = None) -> JsonResponse:
     """
     Consistent JSON response helper for all API endpoints.
-    
+
     Constructs a response dict with optional data, error, or message fields.
     Ensures uniform response schema across the application.
-    
+
     Args:
         data: Response data payload
         status: HTTP status code
         error: Error message (mutually exclusive with data)
         message: Additional message field (for success messages)
-    
+
     Returns:
         JsonResponse with consistent schema
     """
@@ -156,7 +156,7 @@ def _json_response(data: Optional[Any] = None, *, status: int = 200, error: Opti
         response = data if isinstance(data, dict) else {"data": data}
         if message:
             response["message"] = message
-    
+
     return JsonResponse(response, status=status)
 
 
@@ -457,8 +457,12 @@ def _save_asset_file(uploaded_file, *, asset_type="other", owner=None, presentat
     asset = Asset(owner=owner, presentation=presentation, asset_type=asset_type, metadata_json=metadata)
     try:
         if saved_path:
-            with open(saved_path, "rb") as fh:
-                asset.file.save(basename, File(fh), save=False)
+            try:
+                with open(saved_path, "rb") as fh:
+                    asset.file.save(basename, File(fh), save=False)
+            except (OSError, IOError) as exc:
+                logger.error(f"Failed to save normalized file from {saved_path}: {exc}")
+                raise
         else:
             asset.file.save(basename, uploaded_file, save=False)
         asset.save()
@@ -467,7 +471,7 @@ def _save_asset_file(uploaded_file, *, asset_type="other", owner=None, presentat
         if saved_path:
             try:
                 os.remove(saved_path)
-            except FileNotFoundError:
+            except (OSError, FileNotFoundError):
                 pass
 
 
@@ -638,7 +642,11 @@ def presentation_detail(request, presentation_id):
         return HttpResponseBadRequest(str(exc))
 
     with transaction.atomic():
-        presentation = Presentation.objects.select_for_update().get(id=presentation.id, owner=request.user)
+        try:
+            presentation = Presentation.objects.select_for_update().get(id=presentation.id, owner=request.user)
+        except Presentation.DoesNotExist:
+            return JsonResponse({"error": "Presentation was deleted or access denied"}, status=404)
+        
         next_state = payload.get("state")
         if next_state is not None:
             presentation.state_json = next_state

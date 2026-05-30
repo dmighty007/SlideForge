@@ -256,13 +256,22 @@ async function runAutosaveSmokeTest() {
         const presentationId = await waitFor(
             () => currentPresentationId || localStorage.getItem("pptmaker_presentation_id"),
         );
-        const initial = await fetch(`/api/presentations/${presentationId}/`).then(r => r.json());
+        const initialResp = await fetch(`/api/presentations/${presentationId}/`);
+        if (!initialResp.ok) throw new Error(`Failed to fetch presentation: ${initialResp.status}`);
+        const initial = await initialResp.json();
+
         addSlide();
         await waitFor(async () => {
-            const saved = await fetch(`/api/presentations/${presentationId}/`).then(r => r.json());
+            const savedResp = await fetch(`/api/presentations/${presentationId}/`);
+            if (!savedResp.ok) throw new Error(`Failed to fetch presentation: ${savedResp.status}`);
+            const saved = await savedResp.json();
             return saved.autosaveVersion > initial.autosaveVersion ? saved : null;
         });
-        const after = await fetch(`/api/presentations/${presentationId}/`).then(r => r.json());
+
+        const afterResp = await fetch(`/api/presentations/${presentationId}/`);
+        if (!afterResp.ok) throw new Error(`Failed to fetch presentation: ${afterResp.status}`);
+        const after = await afterResp.json();
+
         resultEl.textContent = JSON.stringify(
             {
                 ok: true,
@@ -290,13 +299,160 @@ async function runAutosaveSmokeTest() {
 // ─── Symbol Picker ─────────────────────────────────────────────────────────────
 
 const _symbols = [
-    "α", "β", "γ", "δ", "ε", "ζ", "η", "θ", "ι", "κ", "λ", "μ", "ν", "ξ", "π", "ρ", "σ", "τ", "υ", "φ", "χ", "ψ", "ω",
-    "Α", "Β", "Γ", "Δ", "Ε", "Ζ", "Η", "Θ", "Κ", "Λ", "Μ", "Ν", "Ξ", "Π", "Ρ", "Σ", "Τ", "Υ", "Φ", "Χ", "Ψ", "Ω",
-    "∞", "∂", "∇", "∫", "∬", "∭", "∮", "∑", "∏", "√", "∛", "∜", "∈", "∉", "∩", "∪", "⊂", "⊃", "⊆", "⊇", "≈", "≠", "≡", "≤", "≥", "±", "×", "÷",
-    "→", "←", "↑", "↓", "↔", "⇒", "⇐", "⇔", "⇑", "⇓", "↗", "↘", "↖", "↙", "∀", "∃", "∄", "¬", "∧", "∨", "⊕", "⊗", "∅", "∝", "∠", "⊥", "∥",
-    "ℝ", "ℤ", "ℕ", "ℂ", "ℚ", "°", "′", "″", "‰", "‱", "∼", "≃", "≅", "≇", "ℏ", "ℓ", "℃", "℉", "Å", "Ω", "μ", "π",
-    "€", "£", "¥", "₹", "₽", "₩", "₿", "$", "¢", "©", "®", "™", "✓", "✗", "★", "☆", "♥", "♦", "♣", "♠", "✓", "✔", "✕", "✖",
-    "✝", "☪", "✡", "☯", "♿", "♻", "⚠", "⚡"
+    "α",
+    "β",
+    "γ",
+    "δ",
+    "ε",
+    "ζ",
+    "η",
+    "θ",
+    "ι",
+    "κ",
+    "λ",
+    "μ",
+    "ν",
+    "ξ",
+    "π",
+    "ρ",
+    "σ",
+    "τ",
+    "υ",
+    "φ",
+    "χ",
+    "ψ",
+    "ω",
+    "Α",
+    "Β",
+    "Γ",
+    "Δ",
+    "Ε",
+    "Ζ",
+    "Η",
+    "Θ",
+    "Κ",
+    "Λ",
+    "Μ",
+    "Ν",
+    "Ξ",
+    "Π",
+    "Ρ",
+    "Σ",
+    "Τ",
+    "Υ",
+    "Φ",
+    "Χ",
+    "Ψ",
+    "Ω",
+    "∞",
+    "∂",
+    "∇",
+    "∫",
+    "∬",
+    "∭",
+    "∮",
+    "∑",
+    "∏",
+    "√",
+    "∛",
+    "∜",
+    "∈",
+    "∉",
+    "∩",
+    "∪",
+    "⊂",
+    "⊃",
+    "⊆",
+    "⊇",
+    "≈",
+    "≠",
+    "≡",
+    "≤",
+    "≥",
+    "±",
+    "×",
+    "÷",
+    "→",
+    "←",
+    "↑",
+    "↓",
+    "↔",
+    "⇒",
+    "⇐",
+    "⇔",
+    "⇑",
+    "⇓",
+    "↗",
+    "↘",
+    "↖",
+    "↙",
+    "∀",
+    "∃",
+    "∄",
+    "¬",
+    "∧",
+    "∨",
+    "⊕",
+    "⊗",
+    "∅",
+    "∝",
+    "∠",
+    "⊥",
+    "∥",
+    "ℝ",
+    "ℤ",
+    "ℕ",
+    "ℂ",
+    "ℚ",
+    "°",
+    "′",
+    "″",
+    "‰",
+    "‱",
+    "∼",
+    "≃",
+    "≅",
+    "≇",
+    "ℏ",
+    "ℓ",
+    "℃",
+    "℉",
+    "Å",
+    "Ω",
+    "μ",
+    "π",
+    "€",
+    "£",
+    "¥",
+    "₹",
+    "₽",
+    "₩",
+    "₿",
+    "$",
+    "¢",
+    "©",
+    "®",
+    "™",
+    "✓",
+    "✗",
+    "★",
+    "☆",
+    "♥",
+    "♦",
+    "♣",
+    "♠",
+    "✓",
+    "✔",
+    "✕",
+    "✖",
+    "✝",
+    "☪",
+    "✡",
+    "☯",
+    "♿",
+    "♻",
+    "⚠",
+    "⚡",
 ];
 
 function openSymbolPicker() {
@@ -431,44 +587,6 @@ function _insertSymbol(sym) {
     }
     closeSymbolPicker();
 }
-
-// ─── Grouping Logic ──────────────────────────────────────────────────────────
-
-function groupSelected() {
-    if (state.selectedIds.length < 2) return;
-    saveStateToUndo();
-    const groupId = generateId("group");
-    state.selectedIds.forEach(id => {
-        updateElementState(id, { groupId });
-    });
-    buildPropertiesPanel();
-}
-
-function ungroupSelected() {
-    if (state.selectedIds.length === 0) return;
-    saveStateToUndo();
-
-    // Collect all groupIds present in selection
-    const groupIdsToClear = new Set();
-    state.selectedIds.forEach(id => {
-        const el = state.slides[currentSlideIndex].elements.find(e => e.id === id);
-        if (el?.groupId) groupIdsToClear.add(el.groupId);
-    });
-
-    if (groupIdsToClear.size === 0) return;
-
-    // Clear these groupIds from ALL elements on the slide
-    state.slides[currentSlideIndex].elements.forEach(el => {
-        if (el.groupId && groupIdsToClear.has(el.groupId)) {
-            updateElementState(el.id, { groupId: null });
-        }
-    });
-
-    buildPropertiesPanel();
-}
-
-window.groupSelected = groupSelected;
-window.ungroupSelected = ungroupSelected;
 
 // ─── Equation Element ─────────────────────────────────────────────────────────
 
@@ -737,7 +855,7 @@ const _icons = [
     { name: "leaf", class: "fa-solid fa-leaf" },
     { name: "fire", class: "fa-solid fa-fire" },
     { name: "water", class: "fa-solid fa-droplet" },
-    { name: "wind", class: "fa-solid fa-wind" }
+    { name: "wind", class: "fa-solid fa-wind" },
 ];
 
 function openIconPicker() {
@@ -802,7 +920,7 @@ function _insertIcon(iconObj) {
     const cascade = existingIcons.length % 12;
     const x = 200 + cascade * 28;
     const y = 200 + cascade * 24;
-            
+
     slide.elements.push({
         id,
         type: "text",
@@ -821,7 +939,7 @@ function _insertIcon(iconObj) {
             fontFamily: theme.bodyFont,
             zIndex: getNextZIndex(),
             textAlign: "center",
-            backgroundColor: "transparent"
+            backgroundColor: "transparent",
         },
     });
     renderSlidesFromState();

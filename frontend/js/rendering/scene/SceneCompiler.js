@@ -154,6 +154,15 @@ function compileAnnotationLayer(slide = {}) {
     };
 }
 
+function compileSketch(element = {}) {
+    return {
+        ...baseNode(element),
+        type: "sketch",
+        strokes: clone(element.strokes || []),
+        exportPolicy: "vector",
+    };
+}
+
 function compileFallback(element = {}) {
     const node = baseNode(element);
     const liveTypes = new Set(["video", "html", "pdf", "molecule"]);
@@ -177,6 +186,8 @@ export function compileElementToSceneNode(element = {}) {
             return compileEquation(element);
         case "mermaid":
             return compileGraph(element);
+        case "sketch":
+            return compileSketch(element);
         default:
             return compileFallback(element);
     }
@@ -184,7 +195,7 @@ export function compileElementToSceneNode(element = {}) {
 
 export function compileSlideToSceneSlide(slide = {}, index = 0, context = {}) {
     const nodes = (slide.elements || [])
-        .filter(element => element && !element.hidden)
+        .filter(element => element && !element.hidden && element.type !== "whiteboard")
         .map(compileElementToSceneNode)
         .sort((a, b) => a.zIndex - b.zIndex);
     const annotationLayer = compileAnnotationLayer(slide);

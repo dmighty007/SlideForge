@@ -4711,6 +4711,17 @@ async function togglePlayMode() {
     }
 
     if (willPlay) {
+        if (typeof clearSelection === "function") clearSelection();
+        if (document.activeElement && typeof document.activeElement.blur === "function") {
+            document.activeElement.blur();
+        }
+        if (window.getSelection) {
+            window.getSelection().removeAllRanges();
+        }
+        document.querySelectorAll('[contenteditable="true"]').forEach(el => {
+            el.contentEditable = "false";
+        });
+
         if (typeof suspendEditorZoom === "function") suspendEditorZoom();
         document.body.classList.add("play-mode-active");
         _syncPresentationViewportLayout();
@@ -4744,8 +4755,8 @@ async function togglePlayMode() {
             controls: false,
             progress: false,
             keyboard: false,
-            transition: "none",
-            backgroundTransition: "none",
+            transition: isPlaying ? state.presentationTransition || "none" : "none",
+            backgroundTransition: isPlaying ? state.presentationTransition || "none" : "none",
             disableLayout: isPlaying,
         });
         Reveal.sync?.();

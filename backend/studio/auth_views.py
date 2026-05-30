@@ -2,6 +2,7 @@ import json
 
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.http import HttpResponseBadRequest, JsonResponse
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_http_methods
 
 
@@ -31,6 +32,7 @@ def _session_payload(request):
 
 
 @require_GET
+@ensure_csrf_cookie
 def auth_session(request):
     return JsonResponse(_session_payload(request))
 

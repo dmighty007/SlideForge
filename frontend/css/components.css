@@ -2110,33 +2110,53 @@ aside {
     z-index: 5;
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 6px;
-    border: 1px solid rgba(226, 232, 240, 0.92);
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.94);
-    box-shadow: 0 10px 26px rgba(15, 23, 42, 0.16);
+    gap: 8px;
+    padding: 8px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.72) !important;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow:
+        0 4px 6px -1px rgba(0, 0, 0, 0.05),
+        0 10px 30px -10px rgba(15, 23, 42, 0.18),
+        inset 0 1px 0 rgba(255, 255, 255, 0.6);
     pointer-events: auto;
 }
 
 .sketch-tool-btn {
-    width: 28px;
-    height: 28px;
+    width: 30px;
+    height: 30px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border: 1px solid transparent;
-    border-radius: 6px;
-    background: #f8fafc;
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    border-radius: 8px;
+    background: rgba(248, 250, 252, 0.6);
     color: #475569;
-    font-size: 12px;
+    font-size: 13px;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.sketch-tool-btn:hover,
-.sketch-tool-btn.is-active {
+.sketch-tool-btn:hover {
+    transform: translateY(-1px);
+    background: rgba(255, 255, 255, 0.9);
+    border-color: rgba(99, 102, 241, 0.25);
     color: #4f46e5;
-    border-color: rgba(99, 102, 241, 0.35);
-    background: #eef2ff;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.08);
+}
+
+.sketch-tool-btn.is-active {
+    color: #ffffff;
+    border-color: #4f46e5;
+    background: #4f46e5;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+}
+
+.sketch-tool-btn.is-active:hover {
+    color: #ffffff;
+    background: #4338ca;
+    border-color: #4338ca;
 }
 
 .sketch-done-btn {
@@ -2239,14 +2259,18 @@ body.whiteboard-mode-active .reveal .slides section.present .whiteboard-slide-la
     position: fixed;
     z-index: 10070;
     display: grid;
-    grid-template-columns: repeat(6, 36px);
-    gap: 4px;
-    padding: 6px;
-    border: 1px solid rgba(226, 232, 240, 0.86);
-    border-radius: 14px;
-    background: rgba(255, 255, 255, 0.96);
-    box-shadow: 0 18px 46px rgba(15, 23, 42, 0.2);
+    grid-template-columns: repeat(6, 38px);
+    gap: 6px;
+    padding: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.72) !important;
+    box-shadow:
+        0 10px 15px -3px rgba(0, 0, 0, 0.05),
+        0 20px 48px -10px rgba(15, 23, 42, 0.25),
+        inset 0 1px 0 rgba(255, 255, 255, 0.6);
     backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
 }
 
 .whiteboard-radial-menu.hidden {
@@ -2254,22 +2278,20 @@ body.whiteboard-mode-active .reveal .slides section.present .whiteboard-slide-la
 }
 
 .whiteboard-radial-menu button {
-    width: 36px;
-    height: 36px;
+    width: 38px;
+    height: 38px;
     border: 0;
     border-radius: 10px;
     background: transparent;
     color: #334155;
-    transition:
-        background-color 0.15s ease,
-        color 0.15s ease,
-        transform 0.15s ease;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .whiteboard-radial-menu button:hover {
     transform: translateY(-1px);
-    background: #eef2ff;
-    color: #4f46e5;
+    background: #4f46e5;
+    color: #ffffff;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25);
 }
 
 .wb-science-preset-row {
@@ -2334,11 +2356,16 @@ body.whiteboard-mode-active .reveal .slides section.present .canvas-element[data
     width: 202px;
     max-height: calc(100vh - 88px);
     overflow-y: auto;
-    padding: 12px;
-    border: 1px solid rgba(226, 232, 240, 0.9);
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.96);
-    box-shadow: 0 12px 34px rgba(15, 23, 42, 0.14);
+    padding: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.76) !important;
+    box-shadow:
+        0 10px 15px -3px rgba(0, 0, 0, 0.05),
+        0 20px 48px -10px rgba(15, 23, 42, 0.18),
+        inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
     transition: opacity 0.18s ease;
 }
 

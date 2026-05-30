@@ -235,6 +235,30 @@ function renderAnnotationLayer(node = {}) {
     return `<g data-node-id="${escapeAttr(node.id)}" data-layer="annotations">${paths.join("")}</g>`;
 }
 
+function renderSketch(node = {}) {
+    const b = node.bounds || {};
+    const strokes = node.strokes || [];
+    const paths = strokes.map(stroke => {
+        const points = stroke.points || [];
+        if (points.length < 2) return "";
+        const d = points.map((point, index) => `${index ? "L" : "M"} ${Number(point.x) || 0} ${Number(point.y) || 0}`).join(" ");
+        return `<path ${attrsToString({
+            d,
+            fill: "none",
+            stroke: stroke.color || "#000000",
+            "stroke-width": stroke.width || 2,
+            "stroke-linecap": "round",
+            "stroke-linejoin": "round",
+            opacity: 0.8,
+        })}/>`;
+    }).join("");
+
+    return `<g data-node-id="${escapeAttr(node.id)}" opacity="${node.opacity ?? 1}" transform="translate(${b.x} ${b.y})${transformAttr({ ...node, bounds: { x: 0, y: 0, width: b.width, height: b.height } })}">
+        <rect x="0" y="0" width="${b.width}" height="${b.height}" fill="#ffffff" opacity="1"/>
+        ${paths}
+    </g>`;
+}
+
 function renderPlaceholder(node = {}, label = "Unsupported") {
     const b = node.bounds || {};
     return `<g data-node-id="${escapeAttr(node.id)}" opacity="0.86">
@@ -258,6 +282,8 @@ export class SvgRenderer {
                 return renderGraph(node);
             case "annotationLayer":
                 return renderAnnotationLayer(node);
+            case "sketch":
+                return renderSketch(node);
             default:
                 return renderPlaceholder(node, node.type || "Unsupported");
         }

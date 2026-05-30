@@ -1129,6 +1129,17 @@ function _buildSlideWorkspacePanel(panel) {
                 }
             </div>
             <div class="flex flex-col gap-1">
+                <label class="text-xs font-bold text-slate-600 uppercase tracking-wide">Slide Transition</label>
+                <select id="prop-global-transition" class="prop-select">
+                    <option value="none" ${state.presentationTransition === "none" ? "selected" : ""}>None</option>
+                    <option value="fade" ${state.presentationTransition === "fade" ? "selected" : ""}>Fade</option>
+                    <option value="slide" ${state.presentationTransition === "slide" ? "selected" : ""}>Slide</option>
+                    <option value="convex" ${state.presentationTransition === "convex" ? "selected" : ""}>Convex</option>
+                    <option value="concave" ${state.presentationTransition === "concave" ? "selected" : ""}>Concave</option>
+                    <option value="zoom" ${state.presentationTransition === "zoom" ? "selected" : ""}>Zoom</option>
+                </select>
+            </div>
+            <div class="flex flex-col gap-1">
                 <label class="text-xs font-bold text-slate-600 uppercase tracking-wide">Slide Size</label>
                 <select id="prop-global-size" class="prop-select">
                     <option value="widescreen-16-9" ${getPresentationPageSetupId(state) === "widescreen-16-9" ? "selected" : ""}>16:9</option>
@@ -1314,6 +1325,7 @@ function _buildSlideWorkspacePanel(panel) {
             ],
         ];
         const globalTheme = document.getElementById("prop-global-theme");
+        const globalTransition = document.getElementById("prop-global-transition");
         const globalSize = document.getElementById("prop-global-size");
         const notesInput = document.getElementById("prop-slide-notes");
 
@@ -1321,6 +1333,18 @@ function _buildSlideWorkspacePanel(panel) {
             globalTheme.onchange = e => {
                 if (typeof changePresentationTheme === "function") changePresentationTheme(e.target.value);
                 else applyPresentationTheme(e.target.value);
+            };
+        }
+        if (globalTransition) {
+            globalTransition.onchange = e => {
+                state.presentationTransition = e.target.value;
+                if (typeof schedulePresentationAutosave === "function") schedulePresentationAutosave();
+                if (typeof Reveal !== "undefined" && document.body.classList.contains("play-mode-active")) {
+                    Reveal.configure({
+                        transition: state.presentationTransition,
+                        backgroundTransition: state.presentationTransition,
+                    });
+                }
             };
         }
         if (globalSize) {
