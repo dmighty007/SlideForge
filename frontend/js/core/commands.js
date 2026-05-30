@@ -4157,7 +4157,7 @@ const _PRESENTER_SYNC_STORAGE_KEY = "slideforge_presenter_sync";
 const _PRESENTER_COMMAND_STORAGE_KEY = "slideforge_presenter_command";
 // Industry-standard animation durations (Apple/Google/Figma principles)
 const PRESENTATION_SLIDE_TRANSITION_MS = 350;
-const PRESENTATION_CROSSFADE_TRANSITION_MS = 500;
+const PRESENTATION_CROSSFADE_TRANSITION_MS = 600;  // Increased from 500ms for smoother fade
 const PRESENTATION_SLIDE_TRANSITIONS = new Set(["fade", "diffuse", "slide", "convex", "concave", "zoom"]);
 
 function _importantStyle(el, prop, value) {
@@ -4305,7 +4305,7 @@ function _capturePresentationSlideTransition(fromIndex, toIndex) {
     if (incomingClone) {
         _importantStyle(incomingClone, "z-index", "2");
         _importantStyle(incomingClone, "opacity", "0");
-        if (type === "diffuse") _importantStyle(incomingClone, "filter", "blur(4px)");
+        // Don't blur the incoming slide - it should appear clear
         cloneShell.appendChild(incomingClone);
     }
     document.body.appendChild(cloneShell);
@@ -4344,23 +4344,31 @@ function _capturePresentationSlideTransition(fromIndex, toIndex) {
             // Use double RAF to ensure layout is committed before animation starts
             requestAnimationFrame(() => {
             const duration = _getPresentationSlideTransitionDuration(type);
-            // Industry-standard easing: ease-out for entrance, ease-in for exit
-            // Ease-out cubic: 1 - (1-progress)^3 = cubic-bezier(0.25, 0.46, 0.45, 0.94)
-            // Ease-in cubic: progress^3 = cubic-bezier(0.55, 0.06, 0.75, 0.54)
+            // For fade/diffuse: use slower, more graceful easing
+            // Entrances: ease-out for responsive feel
+            // Exits: ease-out cubic (not ease-in) for smooth fade
+            // Fades: smooth ease-in-out for gradual transition
             const easingEntrance = "cubic-bezier(0.25, 0.46, 0.45, 0.94)";  // Ease-out cubic
-            const easingExit = "cubic-bezier(0.55, 0.06, 0.75, 0.54)";      // Ease-in cubic
-            const easingFade = "cubic-bezier(0.4, 0.14, 0.58, 0.97)";       // Smooth ease-in-out
+            const easingExit = type === "fade" || type === "diffuse" 
+                ? "cubic-bezier(0.25, 0.46, 0.45, 0.94)"                 // Ease-out (smoother for fade)
+                : "cubic-bezier(0.55, 0.06, 0.75, 0.54)";                // Ease-in cubic (for 3D)
+            const easingFade = "cubic-bezier(0.25, 0.46, 0.45, 0.94)";   // Smooth ease-out
             
             const incomingTransitionStyle = `transform ${duration}ms ${easingEntrance}`;
-            const outgoingTransitionStyle = `opacity ${duration}ms ${easingFade}, transform ${duration}ms ${easingExit}, filter ${duration}ms ${easingEntrance}`;
+            const outgoingTransitionStyle = `opacity ${duration}ms ${easingFade}, transform ${duration}ms ${easingExit}, filter ${duration}ms ${easingFade}`;
             if (incomingClone) {
-                const cloneTransitionStyle = `opacity ${duration}ms ${easingFade}, filter ${duration}ms ${easingEntrance}`;
-                _importantStyle(incomingClone, "transition", cloneTransitionStyle);
+                // For fade/diffuse: clean opacity crossfade without blur artifacts
+                // Incoming: ease-out (appear quickly then settle)
+                // Outgoing: linear (consistent smooth fade) for professional feel
+                const incomingEase = "cubic-bezier(0.25, 0.46, 0.45, 0.94)";  // Ease-out
+                const outgoingEase = "cubic-bezier(0.4, 0.0, 0.6, 1.0)";      // Linear-like smooth
+                const cloneTransitionStyleIn = `opacity ${duration}ms ${incomingEase}`;
+                const cloneTransitionStyleOut = `opacity ${duration}ms ${outgoingEase}`;
+                _importantStyle(incomingClone, "transition", cloneTransitionStyleIn);
                 _importantStyle(incomingClone, "opacity", "1");
-                _importantStyle(incomingClone, "filter", "blur(0px)");
-                _importantStyle(clone, "transition", cloneTransitionStyle);
+                _importantStyle(clone, "transition", cloneTransitionStyleOut);
                 _importantStyle(clone, "opacity", "0");
-                if (type === "diffuse") _importantStyle(clone, "filter", "blur(4px)");
+                // No blur effects - pure clean opacity fade
             } else {
                 _importantStyle(incomingSection, "transition", incomingTransitionStyle);
                 _importantStyle(cloneShell, "transition", outgoingTransitionStyle);
