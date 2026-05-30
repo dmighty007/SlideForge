@@ -185,6 +185,7 @@ function addSlide(targetIndex = null) {
         layoutId: "blank-titled",
         masterId: "content",
         notes: "",
+        presentationTransition: "none",
         elements: [],
     });
     setCurrentSlideIndex(activeIndex + 1);
@@ -2397,7 +2398,7 @@ function _bridgeBuildPresetSlide(presetId, theme, mutator = null) {
         if (mutator) mutator(slideState.elements || []);
         return slideState;
     }
-    return { id: generateId("slide"), layoutId: presetId, elements: [] };
+    return { id: generateId("slide"), layoutId: presetId, presentationTransition: "none", elements: [] };
 }
 
 function _bridgeTextPlain(value) {
@@ -3366,7 +3367,7 @@ function _convertBridgeExportToEditorState(data) {
     return {
         presentationTheme: themeId,
         pageSetup: targetPageSetup,
-        slides: slides.length ? slides : [{ id: generateId("slide"), elements: [] }],
+        slides: slides.length ? slides : [{ id: generateId("slide"), presentationTransition: "none", elements: [] }],
         selectedIds: [],
         clipboard: null,
     };
@@ -4127,6 +4128,225 @@ const _presentationRuntimeState = {
 };
 const _PRESENTER_SYNC_STORAGE_KEY = "slideforge_presenter_sync";
 const _PRESENTER_COMMAND_STORAGE_KEY = "slideforge_presenter_command";
+const PRESENTATION_SLIDE_TRANSITION_MS = 360;
+const PRESENTATION_CROSSFADE_TRANSITION_MS = 1250;
+const PRESENTATION_SLIDE_TRANSITIONS = new Set(["fade", "diffuse", "slide", "convex", "concave", "zoom"]);
+
+function _importantStyle(el, prop, value) {
+    el?.style?.setProperty(prop, value, "important");
+}
+
+function _removeImportantStyles(el, props = []) {
+    props.forEach(prop => el?.style?.removeProperty(prop));
+}
+
+function _getPresentationSlideTransition(slideIndex = currentSlideIndex) {
+    const slideTransition = state.slides?.[slideIndex]?.presentationTransition;
+    const transition = String(slideTransition || "none").trim();
+    return PRESENTATION_SLIDE_TRANSITIONS.has(transition) ? transition : "none";
+}
+
+function _getPresentationSlideTransitionDuration(type) {
+    return type === "fade" || type === "diffuse"
+        ? PRESENTATION_CROSSFADE_TRANSITION_MS
+        : PRESENTATION_SLIDE_TRANSITION_MS;
+}
+
+function _clearPresentationSlideTransition() {
+    const runtime = _presentationRuntimeState;
+    if (runtime.slideTransitionTimer) {
+        clearTimeout(runtime.slideTransitionTimer);
+        runtime.slideTransitionTimer = null;
+    }
+    document.querySelectorAll(".presentation-slide-transition-clone").forEach(el => el.remove());
+    document.querySelectorAll(".presentation-slide-transitioning").forEach(el => {
+        el.classList.remove("presentation-slide-transitioning");
+        _removeImportantStyles(el, [
+            "opacity",
+            "transform",
+            "transform-origin",
+            "transition",
+            "filter",
+            "backface-visibility",
+            "will-change",
+        ]);
+    });
+}
+
+function _getPresentationTransitionTransforms(type, direction) {
+    const sign = direction >= 0 ? 1 : -1;
+    switch (type) {
+        case "slide":
+            return {
+                incomingFrom: `translateX(${sign * 1.6}%)`,
+                incomingTo: "translateX(0)",
+                outgoingTo: `translateX(${-sign * 1.2}%)`,
+            };
+        case "zoom":
+            return {
+                incomingFrom: "scale(1.004)",
+                incomingTo: "scale(1)",
+                outgoingTo: "scale(0.997)",
+            };
+        case "convex":
+            return {
+                incomingFrom: `perspective(2200px) rotateY(${sign * 2}deg) scale(0.998)`,
+                incomingTo: "perspective(1800px) rotateY(0deg) scale(1)",
+                outgoingTo: `perspective(2200px) rotateY(${-sign * 1.5}deg) scale(0.998)`,
+            };
+        case "concave":
+            return {
+                incomingFrom: `perspective(2200px) rotateY(${-sign * 2}deg) scale(0.998)`,
+                incomingTo: "perspective(1800px) rotateY(0deg) scale(1)",
+                outgoingTo: `perspective(2200px) rotateY(${sign * 1.5}deg) scale(0.998)`,
+            };
+        default:
+            return {
+                incomingFrom: "translateX(0)",
+                incomingTo: "translateX(0)",
+                outgoingTo: "translateX(0)",
+            };
+    }
+}
+
+function _createPresentationSlideTransitionClone(sourceSection, slideWidth, slideHeight, scale) {
+    const clone = sourceSection.cloneNode(true);
+    clone.removeAttribute("id");
+    clone.classList.remove("present", "past", "future");
+    _importantStyle(clone, "position", "absolute");
+    _importantStyle(clone, "left", "0");
+    _importantStyle(clone, "top", "0");
+    _importantStyle(clone, "width", `${slideWidth}px`);
+    _importantStyle(clone, "height", `${slideHeight}px`);
+    _importantStyle(clone, "margin", "0");
+    _importantStyle(clone, "transform-origin", "top left");
+    _importantStyle(clone, "transform", `scale(${scale})`);
+    _importantStyle(clone, "visibility", "visible");
+    _importantStyle(clone, "opacity", "1");
+    _importantStyle(clone, "pointer-events", "none");
+    return clone;
+}
+
+function _capturePresentationSlideTransition(fromIndex, toIndex) {
+    if (!document.body.classList.contains("play-mode-active")) return null;
+    if (fromIndex === toIndex) return null;
+    const type = _getPresentationSlideTransition(toIndex);
+    if (type === "none") return null;
+
+    const outgoingSection =
+        document.querySelector(`.reveal .slides > section.presentation-slide[data-slide-index="${fromIndex}"]`) ||
+        document.querySelector(".reveal .slides > section.present");
+    const incomingSourceSection = document.querySelector(
+        `.reveal .slides > section.presentation-slide[data-slide-index="${toIndex}"]`,
+    );
+    const slidesEl = document.querySelector(".reveal .slides");
+    if (!outgoingSection || !slidesEl || !incomingSourceSection) return null;
+
+    _clearPresentationSlideTransition();
+
+    const slideConfig = typeof getPresentationPageSetupConfig === "function"
+        ? getPresentationPageSetupConfig()
+        : { width: 1024, height: 768 };
+    const slideWidth = Math.max(1, Number(slideConfig.width) || 1024);
+    const slideHeight = Math.max(1, Number(slideConfig.height) || 768);
+    const slidesRect = slidesEl.getBoundingClientRect();
+    const scale = Math.max(0.001, slidesRect.width / slideWidth);
+    const cloneShell = document.createElement("div");
+    cloneShell.className = "presentation-slide-transition-clone";
+    cloneShell.setAttribute("aria-hidden", "true");
+    _importantStyle(cloneShell, "position", "fixed");
+    _importantStyle(cloneShell, "left", `${slidesRect.left}px`);
+    _importantStyle(cloneShell, "top", `${slidesRect.top}px`);
+    _importantStyle(cloneShell, "width", `${slidesRect.width}px`);
+    _importantStyle(cloneShell, "height", `${slidesRect.height}px`);
+    _importantStyle(cloneShell, "overflow", "hidden");
+    _importantStyle(cloneShell, "z-index", "10040");
+    _importantStyle(cloneShell, "pointer-events", "none");
+    _importantStyle(cloneShell, "opacity", "1");
+    _importantStyle(cloneShell, "transform", "translate3d(0, 0, 0)");
+    _importantStyle(cloneShell, "will-change", "opacity, transform");
+
+    const clone = _createPresentationSlideTransitionClone(outgoingSection, slideWidth, slideHeight, scale);
+    _importantStyle(clone, "z-index", "1");
+    cloneShell.appendChild(clone);
+    const incomingClone = type === "fade" || type === "diffuse"
+        ? _createPresentationSlideTransitionClone(incomingSourceSection, slideWidth, slideHeight, scale)
+        : null;
+    if (incomingClone) {
+        _importantStyle(incomingClone, "z-index", "2");
+        _importantStyle(incomingClone, "opacity", "0");
+        if (type === "diffuse") _importantStyle(incomingClone, "filter", "blur(3px)");
+        cloneShell.appendChild(incomingClone);
+    }
+    document.body.appendChild(cloneShell);
+
+    const direction = toIndex > fromIndex ? 1 : -1;
+    const transforms = _getPresentationTransitionTransforms(type, direction);
+
+    return () => {
+        const incomingSection = document.querySelector(
+            `.reveal .slides > section.presentation-slide[data-slide-index="${toIndex}"]`,
+        );
+        if (!incomingSection) {
+            cloneShell.remove();
+            return;
+        }
+
+        incomingSection.classList.add("presentation-slide-transitioning");
+        _importantStyle(incomingSection, "transition", "none");
+        _importantStyle(incomingSection, "will-change", "opacity, transform");
+        _importantStyle(incomingSection, "backface-visibility", "hidden");
+        _importantStyle(incomingSection, "transform-origin", "center center");
+        _importantStyle(incomingSection, "opacity", incomingClone ? "0" : "1");
+        _importantStyle(incomingSection, "transform", incomingClone ? "none" : transforms.incomingFrom);
+        _importantStyle(cloneShell, "transition", "none");
+
+        // Force the browser to commit the initial opacity/filter values. Without
+        // this, Chromium can coalesce the setup and target styles into one paint,
+        // which makes Fade/Diffuse feel like a jump instead of a gradual dissolve.
+        cloneShell.getBoundingClientRect();
+
+        requestAnimationFrame(() => {
+            if (!document.body.classList.contains("play-mode-active")) {
+                _clearPresentationSlideTransition();
+                return;
+            }
+            const duration = _getPresentationSlideTransitionDuration(type);
+            const easing = type === "fade" || type === "diffuse" ? "cubic-bezier(0.2, 0, 0.2, 1)" : "cubic-bezier(0.4, 0, 0.2, 1)";
+            const incomingTransitionStyle = `transform ${duration}ms ${easing}`;
+            const outgoingTransitionStyle = `opacity ${duration}ms ${easing}, transform ${duration}ms ${easing}, filter ${duration}ms ${easing}`;
+            if (incomingClone) {
+                const cloneTransitionStyle = `opacity ${duration}ms ${easing}, filter ${duration}ms ${easing}`;
+                _importantStyle(incomingClone, "transition", cloneTransitionStyle);
+                _importantStyle(incomingClone, "opacity", "1");
+                _importantStyle(incomingClone, "filter", "blur(0px)");
+                _importantStyle(clone, "transition", cloneTransitionStyle);
+                _importantStyle(clone, "opacity", "0");
+                if (type === "diffuse") _importantStyle(clone, "filter", "blur(2px)");
+            } else {
+                _importantStyle(incomingSection, "transition", incomingTransitionStyle);
+                _importantStyle(cloneShell, "transition", outgoingTransitionStyle);
+                _importantStyle(incomingSection, "transform", transforms.incomingTo);
+                _importantStyle(cloneShell, "opacity", "0");
+                _importantStyle(cloneShell, "transform", transforms.outgoingTo);
+            }
+            _presentationRuntimeState.slideTransitionTimer = setTimeout(() => {
+                cloneShell.remove();
+                incomingSection.classList.remove("presentation-slide-transitioning");
+                _removeImportantStyles(incomingSection, [
+                    "opacity",
+                    "transform",
+                    "transform-origin",
+                    "transition",
+                    "filter",
+                    "backface-visibility",
+                    "will-change",
+                ]);
+                _presentationRuntimeState.slideTransitionTimer = null;
+            }, _getPresentationSlideTransitionDuration(type) + 100);
+        });
+    };
+}
 
 function _getAnimatedSlideEntries(slideIndex) {
     const slide = state.slides?.[slideIndex];
@@ -4644,9 +4864,12 @@ function _hasRevealFragmentAdvance(reverse = false) {
 
 function presentationGoToSlide(index) {
     const safeIndex = Math.max(0, Math.min(Number(index) || 0, Math.max(0, (state.slides?.length || 1) - 1)));
+    const previousIndex = Math.max(0, Math.min(currentSlideIndex, Math.max(0, (state.slides?.length || 1) - 1)));
+    const playTransition = _capturePresentationSlideTransition(previousIndex, safeIndex);
     currentSlideIndex = safeIndex;
     if (typeof Reveal !== "undefined" && typeof Reveal.slide === "function") {
         Reveal.slide(safeIndex, 0, -1);
+        playTransition?.();
     } else {
         _preparePresentationSlideAnimations(safeIndex);
     }
@@ -4740,6 +4963,7 @@ async function togglePlayMode() {
         });
     } else {
         _playModeExiting = true;
+        _clearPresentationSlideTransition();
         _resetAnimations();
         document.body.classList.remove("play-mode-active");
     }
@@ -4751,12 +4975,13 @@ async function togglePlayMode() {
     }
 
     if (typeof Reveal !== "undefined" && typeof Reveal.configure === "function") {
+        const activeTransition = isPlaying ? _getPresentationSlideTransition(targetH) : "none";
         Reveal.configure({
             controls: false,
             progress: false,
             keyboard: false,
-            transition: isPlaying ? state.presentationTransition || "none" : "none",
-            backgroundTransition: isPlaying ? state.presentationTransition || "none" : "none",
+            transition: activeTransition,
+            backgroundTransition: activeTransition,
             disableLayout: isPlaying,
         });
         Reveal.sync?.();

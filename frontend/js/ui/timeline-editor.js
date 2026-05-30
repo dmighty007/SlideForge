@@ -1327,8 +1327,13 @@ function toggleTimelineEditor() {
     const editor = getTimelineEditor();
     editor.isVisible = !editor.isVisible;
     const container = document.getElementById("timeline-editor-panel");
+    const button = document.getElementById("toggle-timeline-editor");
     if (container) {
         container.style.display = editor.isVisible ? "flex" : "none";
+    }
+    if (button) {
+        button.setAttribute("aria-pressed", editor.isVisible ? "true" : "false");
+        button.title = editor.isVisible ? "Hide Animation Timeline Editor" : "Animation Timeline Editor";
     }
     if (editor.isVisible) {
         editor.updateTimeline();

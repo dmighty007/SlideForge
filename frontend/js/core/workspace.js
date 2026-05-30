@@ -79,8 +79,11 @@ function setWorkspaceMode(mode) {
         btn.setAttribute("aria-pressed", active ? "true" : "false");
     });
 
-    if (mode === "whiteboard" && typeof toggleWhiteboardMode === "function" && !document.body.classList.contains("whiteboard-mode")) {
-        toggleWhiteboardMode();
+    const isWhiteboardActive = document.body.classList.contains("whiteboard-mode-active");
+    if (mode === "whiteboard" && typeof window.toggleWhiteboardMode === "function" && !isWhiteboardActive) {
+        window.toggleWhiteboardMode();
+    } else if (mode !== "whiteboard" && isWhiteboardActive && typeof window.exitWhiteboardMode === "function") {
+        window.exitWhiteboardMode();
     }
 
     if (mode === "timeline") {

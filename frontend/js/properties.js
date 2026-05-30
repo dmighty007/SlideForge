@@ -1101,6 +1101,7 @@ function _buildSlideWorkspacePanel(panel) {
 
     const slide = state.slides[currentSlideIndex] || { layoutId: "blank-titled", notes: "" };
     const background = normalizeSlideBackground(slide.background);
+    const currentSlideTransition = slide.presentationTransition || "none";
 
     const activeThemeSystem =
         typeof getPresentationThemeSystem === "function" ? getPresentationThemeSystem(state.presentationTheme) : null;
@@ -1127,17 +1128,6 @@ function _buildSlideWorkspacePanel(panel) {
                         <div class="sf-theme-guidance">${escapeHtml(activeThemeSystem.aiGuidance?.densityAdvice || "")}</div>`
                         : ""
                 }
-            </div>
-            <div class="flex flex-col gap-1">
-                <label class="text-xs font-bold text-slate-600 uppercase tracking-wide">Slide Transition</label>
-                <select id="prop-global-transition" class="prop-select">
-                    <option value="none" ${state.presentationTransition === "none" ? "selected" : ""}>None</option>
-                    <option value="fade" ${state.presentationTransition === "fade" ? "selected" : ""}>Fade</option>
-                    <option value="slide" ${state.presentationTransition === "slide" ? "selected" : ""}>Slide</option>
-                    <option value="convex" ${state.presentationTransition === "convex" ? "selected" : ""}>Convex</option>
-                    <option value="concave" ${state.presentationTransition === "concave" ? "selected" : ""}>Concave</option>
-                    <option value="zoom" ${state.presentationTransition === "zoom" ? "selected" : ""}>Zoom</option>
-                </select>
             </div>
             <div class="flex flex-col gap-1">
                 <label class="text-xs font-bold text-slate-600 uppercase tracking-wide">Slide Size</label>
@@ -1171,6 +1161,20 @@ function _buildSlideWorkspacePanel(panel) {
     ];
     layoutGrp.innerHTML += `
         <div class="space-y-3 sf-preset-browser-shell">
+            <div class="flex flex-col gap-1">
+                <label class="text-xs font-bold text-slate-600 uppercase tracking-wide">Slide Transition</label>
+                <select id="prop-slide-transition" class="prop-select">
+                    <option value="none" ${currentSlideTransition === "none" ? "selected" : ""}>None</option>
+                    <option value="fade" ${currentSlideTransition === "fade" ? "selected" : ""}>Fade</option>
+                    <option value="diffuse" ${currentSlideTransition === "diffuse" ? "selected" : ""}>Diffuse</option>
+                    <option value="slide" ${currentSlideTransition === "slide" ? "selected" : ""}>Slide</option>
+                    <option value="convex" ${currentSlideTransition === "convex" ? "selected" : ""}>Convex</option>
+                    <option value="concave" ${currentSlideTransition === "concave" ? "selected" : ""}>Concave</option>
+                    <option value="zoom" ${currentSlideTransition === "zoom" ? "selected" : ""}>Zoom</option>
+                </select>
+                <button id="prop-apply-transition-all" class="prop-action-btn prop-action-secondary" type="button">Apply to all slides</button>
+                <div class="text-xs text-slate-600">Changing this selector affects only the active slide.</div>
+            </div>
             <select id="prop-slide-layout" class="w-full text-xs">${presetOptions}</select>
             <div class="grid grid-cols-2 gap-2">
                 <button id="prop-apply-layout" class="prop-action-btn prop-action-primary">Apply Layout</button>
@@ -1325,7 +1329,8 @@ function _buildSlideWorkspacePanel(panel) {
             ],
         ];
         const globalTheme = document.getElementById("prop-global-theme");
-        const globalTransition = document.getElementById("prop-global-transition");
+        const slideTransitionInput = document.getElementById("prop-slide-transition");
+        const applyTransitionAllBtn = document.getElementById("prop-apply-transition-all");
         const globalSize = document.getElementById("prop-global-size");
         const notesInput = document.getElementById("prop-slide-notes");
 
@@ -1335,16 +1340,35 @@ function _buildSlideWorkspacePanel(panel) {
                 else applyPresentationTheme(e.target.value);
             };
         }
-        if (globalTransition) {
-            globalTransition.onchange = e => {
-                state.presentationTransition = e.target.value;
+        if (slideTransitionInput) {
+            slideTransitionInput.onchange = e => {
+                const activeSlide = state.slides[currentSlideIndex];
+                if (!activeSlide) return;
+                saveStateToUndo?.();
+                activeSlide.presentationTransition = e.target.value;
                 if (typeof schedulePresentationAutosave === "function") schedulePresentationAutosave();
+                buildPropertiesPanel?.();
                 if (typeof Reveal !== "undefined" && document.body.classList.contains("play-mode-active")) {
+                    const activeTransition = activeSlide.presentationTransition || "none";
                     Reveal.configure({
-                        transition: state.presentationTransition,
-                        backgroundTransition: state.presentationTransition,
+                        transition: activeTransition,
+                        backgroundTransition: activeTransition,
                     });
                 }
+            };
+        }
+        if (applyTransitionAllBtn) {
+            applyTransitionAllBtn.onclick = () => {
+                const activeSlide = state.slides[currentSlideIndex];
+                if (!activeSlide) return;
+                const transition = activeSlide.presentationTransition || "none";
+                saveStateToUndo?.();
+                state.presentationTransition = transition;
+                state.slides.forEach(targetSlide => {
+                    targetSlide.presentationTransition = transition;
+                });
+                if (typeof schedulePresentationAutosave === "function") schedulePresentationAutosave();
+                buildPropertiesPanel?.();
             };
         }
         if (globalSize) {

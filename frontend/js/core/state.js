@@ -22,6 +22,7 @@ function buildDefaultPresentationState() {
                 layoutId: "blank-titled",
                 masterId: "content",
                 notes: "",
+                presentationTransition: "none",
                 elements: [
                     {
                         id: generateId("el"),
@@ -152,6 +153,7 @@ const PRESENTATION_ANIMATION_EFFECTS = [
     "pulse",
     "glow",
 ];
+const PRESENTATION_TRANSITION_EFFECTS = new Set(["none", "fade", "diffuse", "slide", "convex", "concave", "zoom"]);
 const PRESENTATION_ENTRANCE_EFFECTS = new Set([
     "fade-in",
     "slide-up",
@@ -584,27 +586,43 @@ function updateAuthUi() {
     }
 
     if (authPrimary) {
-        authPrimary.innerHTML = currentAuthUser
-            ? `<i class="fa-solid fa-folder-open"></i><span>Saved projects</span>`
-            : `<i class="fa-solid fa-right-to-bracket"></i><span>Sign In</span>`;
-        authPrimary.onclick = currentAuthUser
-            ? () => {
-                  closeUserMenu();
-                  openProjectsModal();
-              }
-            : () => openAuthModal("login");
+        if (!_backendApiAvailable) {
+            authPrimary.innerHTML = `<i class="fa-solid fa-circle-info"></i><span>Local mode</span>`;
+            authPrimary.disabled = true;
+        } else {
+            authPrimary.disabled = false;
+            authPrimary.innerHTML = currentAuthUser
+                ? `<i class="fa-solid fa-folder-open"></i><span>Saved projects</span>`
+                : `<i class="fa-solid fa-right-to-bracket"></i><span>Sign In</span>`;
+            authPrimary.onclick = currentAuthUser
+                ? () => {
+                      closeUserMenu();
+                      openProjectsModal();
+                  }
+                : () => openAuthModal("login");
+        }
     }
 
     if (authSecondary) {
-        authSecondary.innerHTML = currentAuthUser
-            ? `<i class="fa-solid fa-arrow-right-from-bracket"></i><span>Logout</span>`
-            : `<i class="fa-solid fa-user-plus"></i><span>Register</span>`;
-        authSecondary.onclick = currentAuthUser
-            ? () => {
-                  closeUserMenu();
-                  logoutCurrentUser();
-              }
-            : () => openAuthModal("register");
+        if (!_backendApiAvailable) {
+            authSecondary.innerHTML = `<i class="fa-solid fa-hard-drive"></i><span>Continue locally</span>`;
+            authSecondary.disabled = false;
+            authSecondary.onclick = () => {
+                closeUserMenu();
+                continueAsGuest();
+            };
+        } else {
+            authSecondary.disabled = false;
+            authSecondary.innerHTML = currentAuthUser
+                ? `<i class="fa-solid fa-arrow-right-from-bracket"></i><span>Logout</span>`
+                : `<i class="fa-solid fa-user-plus"></i><span>Register</span>`;
+            authSecondary.onclick = currentAuthUser
+                ? () => {
+                      closeUserMenu();
+                      logoutCurrentUser();
+                  }
+                : () => openAuthModal("register");
+        }
     }
 
     if (autosaveBadge) {
@@ -987,7 +1005,11 @@ function normalizeStateIds() {
     if (!state.presentationTheme || typeof state.presentationTheme !== "string") {
         state.presentationTheme = "editorial";
     }
-    if (!state.presentationTransition || typeof state.presentationTransition !== "string") {
+    if (
+        !state.presentationTransition ||
+        typeof state.presentationTransition !== "string" ||
+        !PRESENTATION_TRANSITION_EFFECTS.has(state.presentationTransition)
+    ) {
         state.presentationTransition = "none";
     }
     ensurePresentationPageSetup(state);
@@ -996,6 +1018,7 @@ function normalizeStateIds() {
     const usedSlideIds = new Set();
     const usedElementIds = new Set();
 
+    const legacyDeckTransition = state.presentationTransition;
     state.slides = (state.slides || []).slice(0, MAX_PRESENTATION_SLIDES).map(slide => {
         const safeSlide = slide || { elements: [] };
         const nextSlideId = safeSlide.id && !usedSlideIds.has(safeSlide.id) ? safeSlide.id : generateId("slide");
@@ -1327,6 +1350,11 @@ function normalizeStateIds() {
                 typeof safeSlide.layoutId === "string" && safeSlide.layoutId ? safeSlide.layoutId : "blank-titled",
             masterId: resolveSlideMasterId(safeSlide),
             notes: typeof safeSlide.notes === "string" ? _truncateStateString(safeSlide.notes, 20000) : "",
+            presentationTransition:
+                typeof safeSlide.presentationTransition === "string" &&
+                PRESENTATION_TRANSITION_EFFECTS.has(safeSlide.presentationTransition)
+                    ? safeSlide.presentationTransition
+                    : legacyDeckTransition,
             background: normalizeSlideBackground(safeSlide.background),
             elements: normalizedElements,
         };
@@ -1339,6 +1367,7 @@ function normalizeStateIds() {
                 layoutId: "blank-titled",
                 masterId: "content",
                 notes: "",
+                presentationTransition: "none",
                 background: null,
                 elements: [],
             },
@@ -1565,7 +1594,11 @@ function toggleAuthMode() {
 }
 
 function openAuthModal(mode = "login") {
-    if (!_backendApiAvailable) return;
+    if (!_backendApiAvailable) {
+        closeUserMenu();
+        setProjectSaveHint("Account features unavailable in local mode", "warn");
+        return;
+    }
     const modal = document.getElementById("auth-modal");
     closeUserMenu();
     switchAuthMode(mode);
@@ -1790,7 +1823,10 @@ function adoptPresentationRecord(presentationId, title = null, autosaveVersion =
 }
 
 async function saveCurrentProject() {
-    if (!_backendApiAvailable) return false;
+    if (!_backendApiAvailable) {
+        setProjectSaveHint("Local only mode", "warn");
+        return false;
+    }
     if (!currentAuthUser) {
         openAuthModal("login");
         return false;
@@ -1927,6 +1963,11 @@ async function listSavedProjects() {
 }
 
 async function openProjectsModal() {
+    if (!_backendApiAvailable) {
+        closeUserMenu();
+        setProjectSaveHint("Saved projects unavailable in local mode", "warn");
+        return;
+    }
     if (!currentAuthUser) {
         openAuthModal("login");
         return;
