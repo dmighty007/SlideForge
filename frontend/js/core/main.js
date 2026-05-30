@@ -1,5 +1,35 @@
 // ─── Global window bindings (Exposed immediately for inline HTML onclick) ─────
 
+// HIGH FIX: Centralized event listener tracking for cleanup (prevents memory leaks)
+const _trackedListeners = [];
+function _trackListener(element, eventType, handler, options) {
+    element.addEventListener(eventType, handler, options);
+    _trackedListeners.push({ element, eventType, handler, options });
+}
+
+function _cleanupAllListeners() {
+    _trackedListeners.forEach(({ element, eventType, handler }) => {
+        try {
+            element.removeEventListener(eventType, handler);
+        } catch (err) {
+            // Silently ignore cleanup errors for removed elements
+        }
+    });
+    _trackedListeners.length = 0;
+}
+
+// Auto-cleanup on page unload/reload
+window.addEventListener('beforeunload', _cleanupAllListeners);
+
+
+// HIGH FIX: Global unhandled promise rejection handler
+window.addEventListener('unhandledrejection', (event) => {
+    console.error('Unhandled promise rejection:', event.reason);
+    if (event.reason instanceof TypeError || event.reason instanceof SyntaxError) {
+        console.error('Critical error:', event.reason);
+    }
+});
+
 window.onload = async () => {
     await initPresentationPersistence();
     bindProjectTitleInput();
@@ -93,7 +123,9 @@ window.onload = async () => {
     });
 
     // Deselect on empty-canvas click (main.js checks isGroupBound; marquee is in interact.js)
-    document.getElementById("canvas-wrapper").addEventListener("mousedown", e => {
+    const _canvasWrapperElement = document.getElementById("canvas-wrapper");
+    if (_canvasWrapperElement) {
+        _trackListener(_canvasWrapperElement, "mousedown", e => {
         if (document.body.classList.contains("play-mode-active")) return;
         const path = e.composedPath();
         const isElement = path.some(n => n.classList?.contains("canvas-element"));
@@ -108,6 +140,8 @@ window.onload = async () => {
         if (!isElement && !isGroupBound && !isUi && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
             clearSelection();
         }
+    
+        });
     });
 
     syncPresentationThemeFromState?.({ persist: false });
@@ -115,20 +149,19 @@ window.onload = async () => {
     syncPresentationPageSetup();
     const shapePickerModal = document.getElementById("shape-picker-modal");
     if (shapePickerModal) {
-        shapePickerModal.addEventListener("mousedown", e => {
+        _trackListener(shapePickerModal, "mousedown", e => {
             if (e.target === shapePickerModal) closeShapePicker();
         });
     }
-    window.addEventListener("resize", () =>
+    _trackListener(window, "resize", () =>
         window.requestAnimationFrame(() => {
             relayoutReveal();
             if (typeof handleEditorViewportResize === "function") {
                 handleEditorViewportResize();
             }
             updateFloatingToolbars();
-        }),
-    );
-    document.addEventListener("fullscreenchange", () => {
+        }));
+    _trackListener(document, "fullscreenchange", () => {
         if (typeof handlePresentationFullscreenChange === "function") {
             handlePresentationFullscreenChange();
         }
@@ -219,7 +252,7 @@ function initLayersPopover() {
     if (document.body.dataset.layersPopoverBound === "true") return;
     document.body.dataset.layersPopoverBound = "true";
 
-    document.addEventListener("mousedown", event => {
+    _trackListener(document, "mousedown", event => {
         const popover = document.getElementById("layers-popover");
         const button = document.getElementById("toggle-layers-popover");
         if (!popover || popover.classList.contains("hidden")) return;
