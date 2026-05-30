@@ -4155,8 +4155,9 @@ const _presentationRuntimeState = {
 };
 const _PRESENTER_SYNC_STORAGE_KEY = "slideforge_presenter_sync";
 const _PRESENTER_COMMAND_STORAGE_KEY = "slideforge_presenter_command";
-const PRESENTATION_SLIDE_TRANSITION_MS = 360;
-const PRESENTATION_CROSSFADE_TRANSITION_MS = 1250;
+// Industry-standard animation durations (Apple/Google/Figma principles)
+const PRESENTATION_SLIDE_TRANSITION_MS = 350;
+const PRESENTATION_CROSSFADE_TRANSITION_MS = 500;
 const PRESENTATION_SLIDE_TRANSITIONS = new Set(["fade", "diffuse", "slide", "convex", "concave", "zoom"]);
 
 function _importantStyle(el, prop, value) {
@@ -4343,12 +4344,17 @@ function _capturePresentationSlideTransition(fromIndex, toIndex) {
             // Use double RAF to ensure layout is committed before animation starts
             requestAnimationFrame(() => {
             const duration = _getPresentationSlideTransitionDuration(type);
-            const easing = "cubic-bezier(0.4, 0, 0.2, 1)";
-            const dissolveEasing = "cubic-bezier(0.4, 0, 0.2, 1)";
-            const incomingTransitionStyle = `transform ${duration}ms ${easing}`;
-            const outgoingTransitionStyle = `opacity ${duration}ms ${easing}, transform ${duration}ms ${easing}, filter ${duration}ms ${easing}`;
+            // Industry-standard easing: ease-out for entrance, ease-in for exit
+            // Ease-out cubic: 1 - (1-progress)^3 = cubic-bezier(0.25, 0.46, 0.45, 0.94)
+            // Ease-in cubic: progress^3 = cubic-bezier(0.55, 0.06, 0.75, 0.54)
+            const easingEntrance = "cubic-bezier(0.25, 0.46, 0.45, 0.94)";  // Ease-out cubic
+            const easingExit = "cubic-bezier(0.55, 0.06, 0.75, 0.54)";      // Ease-in cubic
+            const easingFade = "cubic-bezier(0.4, 0.14, 0.58, 0.97)";       // Smooth ease-in-out
+            
+            const incomingTransitionStyle = `transform ${duration}ms ${easingEntrance}`;
+            const outgoingTransitionStyle = `opacity ${duration}ms ${easingFade}, transform ${duration}ms ${easingExit}, filter ${duration}ms ${easingEntrance}`;
             if (incomingClone) {
-                const cloneTransitionStyle = `opacity ${duration}ms ${dissolveEasing}, filter ${duration}ms ${easing}`;
+                const cloneTransitionStyle = `opacity ${duration}ms ${easingFade}, filter ${duration}ms ${easingEntrance}`;
                 _importantStyle(incomingClone, "transition", cloneTransitionStyle);
                 _importantStyle(incomingClone, "opacity", "1");
                 _importantStyle(incomingClone, "filter", "blur(0px)");
