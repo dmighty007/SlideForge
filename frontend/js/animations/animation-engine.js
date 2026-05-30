@@ -72,7 +72,7 @@ class AnimationEngine {
                 });
             });
         });
-        
+
         // Capture initial element snapshots BEFORE any animations play
         // This ensures we can restore to the true pre-animation state
         for (const [elementId] of this.timelines) {
@@ -139,14 +139,14 @@ class AnimationEngine {
             this._restoreElementSnapshot(element, snapshot);
         }
         this.elementSnapshots.clear();
-        
+
         // CRITICAL: In editor mode, ensure ALL elements are visible (not in play mode)
         // This handles case where animations were never captured as snapshots
-        if (typeof document !== 'undefined' && !document.body.classList.contains('play-mode-active')) {
+        if (typeof document !== "undefined" && !document.body.classList.contains("play-mode-active")) {
             this._ensureAllElementsVisible();
         }
     }
-    
+
     /**
      * Ensure all animated elements are visible in editor mode
      * This is called when exiting presentation mode to cleanup any hidden elements
@@ -155,16 +155,16 @@ class AnimationEngine {
         for (const [elementId] of this.timelines) {
             const element = this._resolveElement(elementId);
             if (!element) continue;
-            
+
             // Restore element visibility by removing animation-induced styles
-            if (element.style.opacity === '0') {
-                element.style.opacity = '';
+            if (element.style.opacity === "0") {
+                element.style.opacity = "";
             }
-            if (element.style.display === 'none') {
-                element.style.display = '';
+            if (element.style.display === "none") {
+                element.style.display = "";
             }
-            if (element.style.visibility === 'hidden') {
-                element.style.visibility = '';
+            if (element.style.visibility === "hidden") {
+                element.style.visibility = "";
             }
         }
     }
@@ -330,6 +330,18 @@ class AnimationEngine {
             case "glow":
                 this._applyGlow(element, animation, easedProgress);
                 break;
+            case "elegantFadeIn":
+                this._applyElegantFadeIn(element, animation, easedProgress);
+                break;
+            case "elegantFadeOut":
+                this._applyElegantFadeOut(element, animation, easedProgress);
+                break;
+            case "fadeWithBlur":
+                this._applyFadeWithBlur(element, animation, easedProgress);
+                break;
+            case "diffuse":
+                this._applyDiffuse(element, animation, easedProgress);
+                break;
             default:
                 break;
         }
@@ -365,8 +377,10 @@ class AnimationEngine {
     }
 
     _hasOpacityAnimation(animation) {
-        return Object.prototype.hasOwnProperty.call(animation || {}, "startOpacity")
-            || Object.prototype.hasOwnProperty.call(animation || {}, "endOpacity");
+        return (
+            Object.prototype.hasOwnProperty.call(animation || {}, "startOpacity") ||
+            Object.prototype.hasOwnProperty.call(animation || {}, "endOpacity")
+        );
     }
 
     _captureElementSnapshot(element) {
@@ -1023,7 +1037,11 @@ class AnimationEngine {
         const opacity = interpolate(animation.startOpacity ?? 1, animation.endOpacity ?? 1, progress);
 
         if (animation.startColor || animation.endColor) {
-            const color = interpolateColor(animation.startColor || animation.endColor, animation.endColor || animation.startColor, progress);
+            const color = interpolateColor(
+                animation.startColor || animation.endColor,
+                animation.endColor || animation.startColor,
+                progress,
+            );
             element.style.color = color;
         }
         this._setTransform(element, `scale3d(${scale}, ${scale}, 1)`);
@@ -1280,6 +1298,218 @@ class AnimationEngine {
         const g = parseInt(value.slice(2, 4), 16);
         const b = parseInt(value.slice(4, 6), 16);
         return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, alpha))})`;
+    }
+
+    // IMPROVED: Elegant Fade In - Smooth fade with subtle scale
+    _applyElegantFadeIn(element, animation, progress) {
+        const startOpacity = animation.startOpacity ?? 0;
+        const endOpacity = animation.endOpacity ?? 1;
+        const startScale = animation.startScale ?? 0.95;
+        const endScale = animation.endScale ?? 1;
+
+        const opacity = interpolate(startOpacity, endOpacity, progress);
+        const scale = interpolate(startScale, endScale, progress);
+
+        element.style.opacity = String(Math.max(0, Math.min(1, opacity)));
+        this._setTransform(element, `scale3d(${scale}, ${scale}, 1)`);
+    }
+
+    // IMPROVED: Elegant Fade Out - Smooth fade with subtle scale
+    _applyElegantFadeOut(element, animation, progress) {
+        const startOpacity = animation.startOpacity ?? 1;
+        const endOpacity = animation.endOpacity ?? 0;
+        const startScale = animation.startScale ?? 1;
+        const endScale = animation.endScale ?? 0.95;
+
+        const opacity = interpolate(startOpacity, endOpacity, progress);
+        const scale = interpolate(startScale, endScale, progress);
+
+        element.style.opacity = String(Math.max(0, Math.min(1, opacity)));
+        this._setTransform(element, `scale3d(${scale}, ${scale}, 1)`);
+    }
+
+    // IMPROVED: Fade with Blur - Fade in/out combined with blur effect
+    _applyFadeWithBlur(element, animation, progress) {
+        const startOpacity = animation.startOpacity ?? 0;
+        const endOpacity = animation.endOpacity ?? 1;
+        const startBlur = animation.startBlur ?? 15;
+        const endBlur = animation.endBlur ?? 0;
+
+        const opacity = interpolate(startOpacity, endOpacity, progress);
+        const blur = interpolate(startBlur, endBlur, progress);
+
+        element.style.opacity = String(Math.max(0, Math.min(1, opacity)));
+        element.style.filter = `blur(${Math.max(0, blur)}px)`;
+    }
+
+    // NEW: Diffuse/Particle Effect - Creates a dispersing/dissolving effect
+    _applyDiffuse(element, animation, progress) {
+        const diffuseType = animation.diffuseType || "sparkle";
+        const intensity = interpolate(animation.startIntensity ?? 1, animation.endIntensity ?? 0, progress);
+        
+        // Initialize particle container if needed
+        if (!element.dataset.sfDiffuseInitialized) {
+            this._initializeDiffuseEffect(element, animation, diffuseType);
+            element.dataset.sfDiffuseInitialized = "true";
+        }
+
+        switch (diffuseType) {
+            case "sparkle":
+                this._applyDiffuseSparkle(element, animation, progress, intensity);
+                break;
+            case "wave":
+                this._applyDiffuseWave(element, animation, progress, intensity);
+                break;
+            case "smoke":
+                this._applyDiffuseSmoke(element, animation, progress, intensity);
+                break;
+            case "dissolve":
+                this._applyDiffuseDissolve(element, animation, progress, intensity);
+                break;
+            default:
+                this._applyDiffuseSparkle(element, animation, progress, intensity);
+        }
+    }
+
+    // Initialize diffuse effect with particle elements
+    _initializeDiffuseEffect(element, animation, diffuseType) {
+        const particleCount = animation.particleCount || 12;
+        const container = document.createElement("div");
+        container.className = "sf-diffuse-container";
+        container.style.position = "absolute";
+        container.style.top = "0";
+        container.style.left = "0";
+        container.style.width = "100%";
+        container.style.height = "100%";
+        container.style.pointerEvents = "none";
+        container.style.overflow = "hidden";
+
+        for (let i = 0; i < particleCount; i++) {
+            const particle = document.createElement("div");
+            particle.className = `sf-diffuse-particle sf-diffuse-${diffuseType}`;
+            particle.style.position = "absolute";
+            particle.style.pointerEvents = "none";
+            
+            const size = Math.random() * 4 + 2;
+            particle.style.width = size + "px";
+            particle.style.height = size + "px";
+            particle.style.borderRadius = "50%";
+            particle.style.backgroundColor = animation.particleColor || "rgba(255, 255, 255, 0.8)";
+
+            const x = Math.random() * 100;
+            const y = Math.random() * 100;
+            particle.style.left = x + "%";
+            particle.style.top = y + "%";
+
+            container.appendChild(particle);
+        }
+
+        element.appendChild(container);
+        element.dataset.sfDiffuseContainer = "true";
+    }
+
+    // Sparkle diffuse effect
+    _applyDiffuseSparkle(element, animation, progress, intensity) {
+        const container = element.querySelector(".sf-diffuse-container");
+        if (!container) return;
+
+        const particles = container.querySelectorAll(".sf-diffuse-particle");
+        particles.forEach((particle, index) => {
+            const angle = (index / particles.length) * Math.PI * 2;
+            const distance = progress * (animation.disperseDistance || 100);
+            const x = Math.cos(angle) * distance;
+            const y = Math.sin(angle) * distance;
+
+            const scale = 1 - progress;
+            const opacity = intensity * (1 - progress * 0.5);
+
+            particle.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${scale})`;
+            particle.style.opacity = String(Math.max(0, Math.min(1, opacity)));
+        });
+
+        // Fade main element
+        const opacity = interpolate(animation.startOpacity ?? 1, animation.endOpacity ?? 0, progress);
+        element.style.opacity = String(Math.max(0, Math.min(1, opacity)));
+    }
+
+    // Wave diffuse effect
+    _applyDiffuseWave(element, animation, progress, intensity) {
+        const container = element.querySelector(".sf-diffuse-container");
+        if (!container) return;
+
+        const particles = container.querySelectorAll(".sf-diffuse-particle");
+        const waveLength = animation.waveLength || 8;
+        
+        particles.forEach((particle, index) => {
+            const wavePhase = (index / waveLength) * Math.PI * 2;
+            const distance = progress * (animation.disperseDistance || 120);
+            const waveOffset = Math.sin(progress * Math.PI * 2 + wavePhase) * 30;
+            
+            const x = Math.cos(wavePhase) * distance + waveOffset;
+            const y = Math.sin(wavePhase) * distance + Math.sin(progress * Math.PI) * 40;
+
+            const scale = 1 - progress * 0.7;
+            const opacity = intensity * Math.cos(progress * Math.PI * 2 + wavePhase) * 0.5 + 0.5;
+
+            particle.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${scale})`;
+            particle.style.opacity = String(Math.max(0, Math.min(1, opacity)));
+        });
+
+        const opacity = interpolate(animation.startOpacity ?? 1, animation.endOpacity ?? 0, progress);
+        element.style.opacity = String(Math.max(0, Math.min(1, opacity)));
+    }
+
+    // Smoke diffuse effect
+    _applyDiffuseSmoke(element, animation, progress, intensity) {
+        const container = element.querySelector(".sf-diffuse-container");
+        if (!container) return;
+
+        const particles = container.querySelectorAll(".sf-diffuse-particle");
+        particles.forEach((particle, index) => {
+            const angle = (index / particles.length) * Math.PI * 2 + Math.sin(progress * Math.PI) * 0.5;
+            const distance = progress * (animation.disperseDistance || 150) + Math.random() * 50;
+            
+            const x = Math.cos(angle) * distance;
+            const y = Math.sin(angle) * distance - progress * 80;
+
+            const scale = (1 - progress) * (0.8 + Math.random() * 0.4);
+            const opacity = intensity * (1 - progress);
+
+            particle.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${scale})`;
+            particle.style.opacity = String(Math.max(0, Math.min(1, opacity)));
+        });
+
+        const opacity = interpolate(animation.startOpacity ?? 1, animation.endOpacity ?? 0, progress);
+        element.style.opacity = String(Math.max(0, Math.min(1, opacity)));
+    }
+
+    // Dissolve diffuse effect
+    _applyDiffuseDissolve(element, animation, progress, intensity) {
+        const container = element.querySelector(".sf-diffuse-container");
+        if (!container) return;
+
+        const particles = container.querySelectorAll(".sf-diffuse-particle");
+        particles.forEach((particle, index) => {
+            const seed = index * 12.9898;
+            const randomX = Math.sin(seed) * 0.5 + 0.5;
+            const randomY = Math.sin(seed * 78.233) * 0.5 + 0.5;
+
+            const angle = randomX * Math.PI * 2;
+            const distance = progress * (animation.disperseDistance || 80);
+            
+            const x = Math.cos(angle) * distance;
+            const y = Math.sin(angle) * distance;
+
+            const delayedProgress = Math.max(0, progress - (index / particles.length) * 0.3);
+            const scale = 1 - delayedProgress * 1.2;
+            const opacity = intensity * (1 - delayedProgress);
+
+            particle.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${Math.max(0, scale)})`;
+            particle.style.opacity = String(Math.max(0, Math.min(1, opacity)));
+        });
+
+        const opacity = interpolate(animation.startOpacity ?? 1, animation.endOpacity ?? 0, progress);
+        element.style.opacity = String(Math.max(0, Math.min(1, opacity)));
     }
 }
 
@@ -1617,6 +1847,87 @@ function createGlowAnimation(options = {}) {
 }
 
 /**
+ * Create an Elegant Fade In animation
+ * Smooth fade in with subtle scale effect
+ * @param {Object} options
+ * @returns {Object} Animation config
+ */
+function createElegantFadeInAnimation(options = {}) {
+    return {
+        type: "elegantFadeIn",
+        duration: options.duration || 800,
+        delay: options.delay || 0,
+        easing: options.easing || "easeOutCubic",
+        startOpacity: options.startOpacity !== undefined ? options.startOpacity : 0,
+        endOpacity: options.endOpacity !== undefined ? options.endOpacity : 1,
+        startScale: options.startScale !== undefined ? options.startScale : 0.95,
+        endScale: options.endScale !== undefined ? options.endScale : 1,
+    };
+}
+
+/**
+ * Create an Elegant Fade Out animation
+ * Smooth fade out with subtle scale effect
+ * @param {Object} options
+ * @returns {Object} Animation config
+ */
+function createElegantFadeOutAnimation(options = {}) {
+    return {
+        type: "elegantFadeOut",
+        duration: options.duration || 800,
+        delay: options.delay || 0,
+        easing: options.easing || "easeInCubic",
+        startOpacity: options.startOpacity !== undefined ? options.startOpacity : 1,
+        endOpacity: options.endOpacity !== undefined ? options.endOpacity : 0,
+        startScale: options.startScale !== undefined ? options.startScale : 1,
+        endScale: options.endScale !== undefined ? options.endScale : 0.95,
+    };
+}
+
+/**
+ * Create a Fade with Blur animation
+ * Fade in/out combined with blur effect for smooth transitions
+ * @param {Object} options
+ * @returns {Object} Animation config
+ */
+function createFadeWithBlurAnimation(options = {}) {
+    return {
+        type: "fadeWithBlur",
+        duration: options.duration || 1000,
+        delay: options.delay || 0,
+        easing: options.easing || "easeOut",
+        startOpacity: options.startOpacity !== undefined ? options.startOpacity : 0,
+        endOpacity: options.endOpacity !== undefined ? options.endOpacity : 1,
+        startBlur: options.startBlur !== undefined ? options.startBlur : 15,
+        endBlur: options.endBlur !== undefined ? options.endBlur : 0,
+    };
+}
+
+/**
+ * Create a Diffuse/Particle animation
+ * Creates dispersing particle effects (sparkle, wave, smoke, dissolve)
+ * @param {Object} options
+ * @returns {Object} Animation config
+ */
+function createDiffuseAnimation(options = {}) {
+    return {
+        type: "diffuse",
+        duration: options.duration || 1200,
+        delay: options.delay || 0,
+        easing: options.easing || "easeOut",
+        diffuseType: options.diffuseType || "sparkle", // sparkle, wave, smoke, dissolve
+        startOpacity: options.startOpacity !== undefined ? options.startOpacity : 1,
+        endOpacity: options.endOpacity !== undefined ? options.endOpacity : 0,
+        startIntensity: options.startIntensity !== undefined ? options.startIntensity : 1,
+        endIntensity: options.endIntensity !== undefined ? options.endIntensity : 0,
+        particleCount: options.particleCount || 12,
+        particleColor: options.particleColor || "rgba(255, 200, 100, 0.8)",
+        disperseDistance: options.disperseDistance || 120,
+        waveLength: options.waveLength || 8,
+    };
+}
+
+/**
  * Path interpolation utilities for MoveAlongPath animations
  */
 
@@ -1748,6 +2059,10 @@ window.createEmphasisAnimation = createEmphasisAnimation;
 window.createBlurAnimation = createBlurAnimation;
 window.create3DFlipAnimation = create3DFlipAnimation;
 window.createGlowAnimation = createGlowAnimation;
+window.createElegantFadeInAnimation = createElegantFadeInAnimation;
+window.createElegantFadeOutAnimation = createElegantFadeOutAnimation;
+window.createFadeWithBlurAnimation = createFadeWithBlurAnimation;
+window.createDiffuseAnimation = createDiffuseAnimation;
 
 // Path utilities
 window.interpolateBezierCurve = interpolateBezierCurve;

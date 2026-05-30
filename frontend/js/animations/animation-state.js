@@ -7,6 +7,10 @@
 const ANIMATION_TRANSITION_TYPES = [
     "fadeIn",
     "fadeOut",
+    "elegantFadeIn",
+    "elegantFadeOut",
+    "fadeWithBlur",
+    "diffuse",
     "transform",
     "replacementTransform",
     "moveAlongPath",

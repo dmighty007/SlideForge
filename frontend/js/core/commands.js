@@ -264,7 +264,11 @@ function addElement(type, options = {}) {
         type,
         ...(type === "text" ? { bulletStyle: "default", autoHeight: true } : {}),
         ...(type === "text" && typeof createTextDocumentFromLegacyContent === "function"
-            ? { textDocument: createTextDocumentFromLegacyContent("Double click to edit text", { bulletStyle: "default" }) }
+            ? {
+                  textDocument: createTextDocumentFromLegacyContent("Double click to edit text", {
+                      bulletStyle: "default",
+                  }),
+              }
             : {}),
         ...(type === "table" ? { tableData: createDefaultTableData(3, 4) } : {}),
         ...(type === "shape" ? { shapeType } : {}),
@@ -358,7 +362,13 @@ function addElement(type, options = {}) {
                       ? "8px"
                       : "0px",
             backgroundColor:
-                type === "molecule" ? "#020617" : type === "sketch" ? "#ffffff" : type === "shape" ? theme.defaultShapeColor : "transparent",
+                type === "molecule"
+                    ? "#020617"
+                    : type === "sketch"
+                      ? "#ffffff"
+                      : type === "shape"
+                        ? theme.defaultShapeColor
+                        : "transparent",
         },
         ...(type === "text" ? { textFitMode: "autoHeight" } : {}),
         animation: null,
@@ -3505,9 +3515,10 @@ function _syncPresentationViewportLayout() {
     if (!document.body.classList.contains("play-mode-active")) return;
     const { wrapper } = _presentationToolsElements();
     const { width, height } = _getPresentationViewportSize();
-    const slideConfig = typeof getPresentationPageSetupConfig === "function"
-        ? getPresentationPageSetupConfig()
-        : { width: 1024, height: 768 };
+    const slideConfig =
+        typeof getPresentationPageSetupConfig === "function"
+            ? getPresentationPageSetupConfig()
+            : { width: 1024, height: 768 };
     const slideWidth = Number(slideConfig.width) || 1024;
     const slideHeight = Number(slideConfig.height) || 768;
     const activeSlide =
@@ -3662,8 +3673,14 @@ function _resizePresentationChalkboard() {
         : { width: wrapper.clientWidth, height: wrapper.clientHeight };
     const scale = Math.max(0.1, Math.min(viewport.width / width, viewport.height / height));
     document.documentElement.style.setProperty("--presentation-scale", String(scale));
-    document.documentElement.style.setProperty("--presentation-offset-x", `${Math.max(0, (viewport.width - width * scale) / 2)}px`);
-    document.documentElement.style.setProperty("--presentation-offset-y", `${Math.max(0, (viewport.height - height * scale) / 2)}px`);
+    document.documentElement.style.setProperty(
+        "--presentation-offset-x",
+        `${Math.max(0, (viewport.width - width * scale) / 2)}px`,
+    );
+    document.documentElement.style.setProperty(
+        "--presentation-offset-y",
+        `${Math.max(0, (viewport.height - height * scale) / 2)}px`,
+    );
     const snapshotCtx = chalkboard.getContext("2d", { willReadFrequently: true });
     const snapshot =
         chalkboard.width > 0 && chalkboard.height > 0
@@ -3770,7 +3787,12 @@ function savePresentationAnnotationsToSlide() {
         visible: true,
         export: { includeInPdf: true, includeInPng: true, includeInSvg: true, flatten: false },
         presentation: { mode: "persistent", audienceVisible: true },
-        animation: { type: "strokeDraw", delay: 0, duration: Math.max(500, (stroke.points || []).length * 7), sequence: null },
+        animation: {
+            type: "strokeDraw",
+            delay: 0,
+            duration: Math.max(500, (stroke.points || []).length * 7),
+            sequence: null,
+        },
     }));
     saveStateToUndo?.();
     slide.whiteboardElements = [...existing, ...next];
@@ -4015,7 +4037,11 @@ function initPresentationTools() {
         if (!point || !_presentationToolsState.lastDrawPoint) return;
         _drawPresentationSegment(_presentationToolsState.lastDrawPoint, point);
         _presentationToolsState.lastDrawPoint = point;
-        _presentationToolsState.currentStroke?.points?.push({ ...point, pressure: event.pressure || 0.6, t: Date.now() });
+        _presentationToolsState.currentStroke?.points?.push({
+            ...point,
+            pressure: event.pressure || 0.6,
+            t: Date.now(),
+        });
         event.preventDefault();
     });
     chalkboard.addEventListener("pointerup", () => {
@@ -4057,7 +4083,8 @@ function initPresentationTools() {
         if (!document.body.classList.contains("play-mode-active")) return;
         if (_presentationToolsState.chalkEnabled || event.button !== 0) return;
         const { menu, contextMenu, menuToggle: toggle } = _presentationToolsElements();
-        if (menu?.contains(event.target) || contextMenu?.contains(event.target) || toggle?.contains(event.target)) return;
+        if (menu?.contains(event.target) || contextMenu?.contains(event.target) || toggle?.contains(event.target))
+            return;
         presentationNextStep();
     });
 
@@ -4178,27 +4205,27 @@ function _getPresentationTransitionTransforms(type, direction) {
     switch (type) {
         case "slide":
             return {
-                incomingFrom: `translateX(${sign * 1.6}%)`,
+                incomingFrom: `translateX(${sign * 1.5}%)`,
                 incomingTo: "translateX(0)",
-                outgoingTo: `translateX(${-sign * 1.2}%)`,
+                outgoingTo: `translateX(${-sign * 1.5}%)`,
             };
         case "zoom":
             return {
-                incomingFrom: "scale(1.004)",
+                incomingFrom: "scale(1.08)",
                 incomingTo: "scale(1)",
-                outgoingTo: "scale(0.997)",
+                outgoingTo: "scale(0.92)",
             };
         case "convex":
             return {
-                incomingFrom: `perspective(2200px) rotateY(${sign * 2}deg) scale(0.998)`,
+                incomingFrom: `perspective(2200px) rotateY(${sign * 2.5}deg) scale(0.95)`,
                 incomingTo: "perspective(1800px) rotateY(0deg) scale(1)",
-                outgoingTo: `perspective(2200px) rotateY(${-sign * 1.5}deg) scale(0.998)`,
+                outgoingTo: `perspective(2200px) rotateY(${-sign * 2.5}deg) scale(0.95)`,
             };
         case "concave":
             return {
-                incomingFrom: `perspective(2200px) rotateY(${-sign * 2}deg) scale(0.998)`,
+                incomingFrom: `perspective(2200px) rotateY(${-sign * 2.5}deg) scale(0.95)`,
                 incomingTo: "perspective(1800px) rotateY(0deg) scale(1)",
-                outgoingTo: `perspective(2200px) rotateY(${sign * 1.5}deg) scale(0.998)`,
+                outgoingTo: `perspective(2200px) rotateY(${sign * 2.5}deg) scale(0.95)`,
             };
         default:
             return {
@@ -4244,9 +4271,10 @@ function _capturePresentationSlideTransition(fromIndex, toIndex) {
 
     _clearPresentationSlideTransition();
 
-    const slideConfig = typeof getPresentationPageSetupConfig === "function"
-        ? getPresentationPageSetupConfig()
-        : { width: 1024, height: 768 };
+    const slideConfig =
+        typeof getPresentationPageSetupConfig === "function"
+            ? getPresentationPageSetupConfig()
+            : { width: 1024, height: 768 };
     const slideWidth = Math.max(1, Number(slideConfig.width) || 1024);
     const slideHeight = Math.max(1, Number(slideConfig.height) || 768);
     const slidesRect = slidesEl.getBoundingClientRect();
@@ -4260,7 +4288,7 @@ function _capturePresentationSlideTransition(fromIndex, toIndex) {
     _importantStyle(cloneShell, "width", `${slidesRect.width}px`);
     _importantStyle(cloneShell, "height", `${slidesRect.height}px`);
     _importantStyle(cloneShell, "overflow", "hidden");
-    _importantStyle(cloneShell, "z-index", "10040");
+    _importantStyle(cloneShell, "z-index", "9050");
     _importantStyle(cloneShell, "pointer-events", "none");
     _importantStyle(cloneShell, "opacity", "1");
     _importantStyle(cloneShell, "transform", "translate3d(0, 0, 0)");
@@ -4269,13 +4297,14 @@ function _capturePresentationSlideTransition(fromIndex, toIndex) {
     const clone = _createPresentationSlideTransitionClone(outgoingSection, slideWidth, slideHeight, scale);
     _importantStyle(clone, "z-index", "1");
     cloneShell.appendChild(clone);
-    const incomingClone = type === "fade" || type === "diffuse"
-        ? _createPresentationSlideTransitionClone(incomingSourceSection, slideWidth, slideHeight, scale)
-        : null;
+    const incomingClone =
+        type === "fade" || type === "diffuse"
+            ? _createPresentationSlideTransitionClone(incomingSourceSection, slideWidth, slideHeight, scale)
+            : null;
     if (incomingClone) {
         _importantStyle(incomingClone, "z-index", "2");
         _importantStyle(incomingClone, "opacity", "0");
-        if (type === "diffuse") _importantStyle(incomingClone, "filter", "blur(3px)");
+        if (type === "diffuse") _importantStyle(incomingClone, "filter", "blur(4px)");
         cloneShell.appendChild(incomingClone);
     }
     document.body.appendChild(cloneShell);
@@ -4298,7 +4327,7 @@ function _capturePresentationSlideTransition(fromIndex, toIndex) {
         _importantStyle(incomingSection, "backface-visibility", "hidden");
         _importantStyle(incomingSection, "transform-origin", "center center");
         _importantStyle(incomingSection, "opacity", incomingClone ? "0" : "1");
-        _importantStyle(incomingSection, "transform", incomingClone ? "none" : transforms.incomingFrom);
+        _importantStyle(incomingSection, "transform", incomingClone ? "scale(1)" : transforms.incomingFrom);
         _importantStyle(cloneShell, "transition", "none");
 
         // Force the browser to commit the initial opacity/filter values. Without
@@ -4311,18 +4340,21 @@ function _capturePresentationSlideTransition(fromIndex, toIndex) {
                 _clearPresentationSlideTransition();
                 return;
             }
+            // Use double RAF to ensure layout is committed before animation starts
+            requestAnimationFrame(() => {
             const duration = _getPresentationSlideTransitionDuration(type);
-            const easing = type === "fade" || type === "diffuse" ? "cubic-bezier(0.2, 0, 0.2, 1)" : "cubic-bezier(0.4, 0, 0.2, 1)";
+            const easing = "cubic-bezier(0.4, 0, 0.2, 1)";
+            const dissolveEasing = "cubic-bezier(0.4, 0, 0.2, 1)";
             const incomingTransitionStyle = `transform ${duration}ms ${easing}`;
             const outgoingTransitionStyle = `opacity ${duration}ms ${easing}, transform ${duration}ms ${easing}, filter ${duration}ms ${easing}`;
             if (incomingClone) {
-                const cloneTransitionStyle = `opacity ${duration}ms ${easing}, filter ${duration}ms ${easing}`;
+                const cloneTransitionStyle = `opacity ${duration}ms ${dissolveEasing}, filter ${duration}ms ${easing}`;
                 _importantStyle(incomingClone, "transition", cloneTransitionStyle);
                 _importantStyle(incomingClone, "opacity", "1");
                 _importantStyle(incomingClone, "filter", "blur(0px)");
                 _importantStyle(clone, "transition", cloneTransitionStyle);
                 _importantStyle(clone, "opacity", "0");
-                if (type === "diffuse") _importantStyle(clone, "filter", "blur(2px)");
+                if (type === "diffuse") _importantStyle(clone, "filter", "blur(4px)");
             } else {
                 _importantStyle(incomingSection, "transition", incomingTransitionStyle);
                 _importantStyle(cloneShell, "transition", outgoingTransitionStyle);
@@ -4330,20 +4362,24 @@ function _capturePresentationSlideTransition(fromIndex, toIndex) {
                 _importantStyle(cloneShell, "opacity", "0");
                 _importantStyle(cloneShell, "transform", transforms.outgoingTo);
             }
-            _presentationRuntimeState.slideTransitionTimer = setTimeout(() => {
-                cloneShell.remove();
-                incomingSection.classList.remove("presentation-slide-transitioning");
-                _removeImportantStyles(incomingSection, [
-                    "opacity",
-                    "transform",
-                    "transform-origin",
-                    "transition",
-                    "filter",
-                    "backface-visibility",
-                    "will-change",
-                ]);
-                _presentationRuntimeState.slideTransitionTimer = null;
-            }, _getPresentationSlideTransitionDuration(type) + 100);
+            _presentationRuntimeState.slideTransitionTimer = setTimeout(
+                () => {
+                    cloneShell.remove();
+                    incomingSection.classList.remove("presentation-slide-transitioning");
+                    _removeImportantStyles(incomingSection, [
+                        "opacity",
+                        "transform",
+                        "transform-origin",
+                        "transition",
+                        "filter",
+                        "backface-visibility",
+                        "will-change",
+                    ]);
+                    _presentationRuntimeState.slideTransitionTimer = null;
+                },
+                _getPresentationSlideTransitionDuration(type) + 100,
+            );
+            });
         });
     };
 }
@@ -5193,13 +5229,48 @@ const COMMANDS = [
     { id: "add-text", title: "Add Text Box", icon: "fa-t", action: () => addElement("text") },
     { id: "add-shape-rect", title: "Add Rectangle", icon: "fa-square", action: () => addShape("rectangle") },
     { id: "add-shape-circle", title: "Add Circle", icon: "fa-circle", action: () => addShape("circle") },
-    { id: "add-mermaid", title: "Insert Flowchart / Mermaid Diagram", icon: "fa-diagram-project", action: () => window.openMermaidDialog?.() },
-    { id: "graph-add-node", title: "Graph: Add Node", icon: "fa-circle-plus", action: () => window.openMermaidDialog?.(state.selectedIds?.[0], "add-node") },
-    { id: "graph-auto-layout", title: "Graph: Auto-layout Selection", icon: "fa-wand-magic-sparkles", action: () => window.openMermaidDialog?.(state.selectedIds?.[0], "auto-layout") },
-    { id: "graph-create-group", title: "Graph: Create Group", icon: "fa-object-group", action: () => window.openMermaidDialog?.(state.selectedIds?.[0], "create-group") },
-    { id: "graph-branch-reveal", title: "Graph: Branch Reveal Animation", icon: "fa-route", action: () => window.openMermaidDialog?.(state.selectedIds?.[0], "branch-reveal") },
-    { id: "graph-scientific-stage", title: "Graph: Scientific Workflow Stage", icon: "fa-atom", action: () => window.openMermaidDialog?.(state.selectedIds?.[0], "scientific-stage") },
-    { id: "graph-generate-legend", title: "Graph: Generate Legend", icon: "fa-list", action: () => window.openMermaidDialog?.(state.selectedIds?.[0], "generate-legend") },
+    {
+        id: "add-mermaid",
+        title: "Insert Flowchart / Mermaid Diagram",
+        icon: "fa-diagram-project",
+        action: () => window.openMermaidDialog?.(),
+    },
+    {
+        id: "graph-add-node",
+        title: "Graph: Add Node",
+        icon: "fa-circle-plus",
+        action: () => window.openMermaidDialog?.(state.selectedIds?.[0], "add-node"),
+    },
+    {
+        id: "graph-auto-layout",
+        title: "Graph: Auto-layout Selection",
+        icon: "fa-wand-magic-sparkles",
+        action: () => window.openMermaidDialog?.(state.selectedIds?.[0], "auto-layout"),
+    },
+    {
+        id: "graph-create-group",
+        title: "Graph: Create Group",
+        icon: "fa-object-group",
+        action: () => window.openMermaidDialog?.(state.selectedIds?.[0], "create-group"),
+    },
+    {
+        id: "graph-branch-reveal",
+        title: "Graph: Branch Reveal Animation",
+        icon: "fa-route",
+        action: () => window.openMermaidDialog?.(state.selectedIds?.[0], "branch-reveal"),
+    },
+    {
+        id: "graph-scientific-stage",
+        title: "Graph: Scientific Workflow Stage",
+        icon: "fa-atom",
+        action: () => window.openMermaidDialog?.(state.selectedIds?.[0], "scientific-stage"),
+    },
+    {
+        id: "graph-generate-legend",
+        title: "Graph: Generate Legend",
+        icon: "fa-list",
+        action: () => window.openMermaidDialog?.(state.selectedIds?.[0], "generate-legend"),
+    },
     {
         id: "add-image",
         title: "Add Image",
@@ -5213,7 +5284,12 @@ const COMMANDS = [
     { id: "ai-cleanup", title: "AI Clean Up Slide", icon: "fa-wand-magic-sparkles", action: aiCleanUpSlide },
     { id: "present", title: "Toggle Presentation Mode", icon: "fa-play", action: togglePlayMode },
     { id: "export-pdf", title: "Export to PDF", icon: "fa-file-pdf", action: exportPresentationPDF },
-    { id: "export-scene-svg", title: "Export Current Slide SVG", icon: "fa-vector-square", action: exportPresentationSceneSVG },
+    {
+        id: "export-scene-svg",
+        title: "Export Current Slide SVG",
+        icon: "fa-vector-square",
+        action: exportPresentationSceneSVG,
+    },
     { id: "export-pptx", title: "Export to PPTX", icon: "fa-file-powerpoint", action: exportPresentationPPTX },
     { id: "export-zip", title: "Export to Web (ZIP)", icon: "fa-file-zipper", action: exportPresentationZip },
     { id: "export-json", title: "Export to JSON", icon: "fa-file-code", action: exportPresentationJson },
