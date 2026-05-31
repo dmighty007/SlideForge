@@ -51,13 +51,13 @@ function buildTextPanel(panel, data) {
         ),
     );
 
-    // Compact Row for Size, Color, Bold, Italic
+    // Compact Row: Size | Color | B I U S Clear
     const textToolsRow = document.createElement("div");
-    textToolsRow.className = "grid grid-cols-4 gap-2 items-end mt-2";
+    textToolsRow.className = "grid grid-cols-6 gap-1.5 items-end mt-2";
 
     // Size
     const sizeCol = document.createElement("div");
-    sizeCol.className = "col-span-1";
+    sizeCol.className = "col-span-2";
     sizeCol.innerHTML = `<label class="text-xs font-bold text-slate-600 uppercase tracking-wide mb-1 block">Size</label>
         <input type="text" id="prop-fs" class="prop-input-sm" value="${data.styles.fontSize || "32px"}">`;
 
@@ -67,12 +67,16 @@ function buildTextPanel(panel, data) {
     colorCol.innerHTML = `<label class="text-xs font-bold text-slate-600 uppercase tracking-wide mb-1 block">Color</label>
         <input type="color" id="prop-tc" class="prop-color-input" value="${_normalizeColorForInput(data.styles.color, "#ffffff")}">`;
 
-    // Format buttons
+    // Format buttons — B I U S + Clear
+    const isUnderline = (data.styles.textDecoration || "").includes("underline");
+    const isStrike = (data.styles.textDecoration || "").includes("line-through");
     const formatCol = document.createElement("div");
-    formatCol.className = "col-span-2 flex gap-1";
+    formatCol.className = "col-span-3 flex gap-1 flex-wrap";
     formatCol.innerHTML = `
         <button id="prop-bold" class="prop-icon-btn ${data.styles.fontWeight === "bold" ? "active" : ""}" title="Bold">B</button>
         <button id="prop-italic" class="prop-icon-btn italic ${data.styles.fontStyle === "italic" ? "active" : ""}" title="Italic">I</button>
+        <button id="prop-underline" class="prop-icon-btn underline ${isUnderline ? "active" : ""}" title="Underline">U</button>
+        <button id="prop-strikethrough" class="prop-icon-btn line-through ${isStrike ? "active" : ""}" title="Strikethrough">S</button>
         <button id="prop-clear-format" class="prop-icon-btn" title="Clear formatting"><i class="fa-solid fa-eraser"></i></button>
     `;
 
@@ -164,6 +168,23 @@ function buildTextPanel(panel, data) {
     `,
         ),
     );
+
+    // Line Height + Letter Spacing
+    const spacingRow = document.createElement("div");
+    spacingRow.className = "grid grid-cols-2 gap-2 items-end";
+    const lineHeightRaw = parseFloat(data.styles.lineHeight) || 1.2;
+    const letterSpacingRaw = parseFloat(data.styles.letterSpacing) || 0;
+    spacingRow.innerHTML = `
+        <div>
+            <label class="text-xs font-bold text-slate-600 uppercase tracking-wide mb-1 block">Line Height</label>
+            <input type="number" id="prop-line-height" class="prop-input-sm" value="${lineHeightRaw}" min="0.8" max="4" step="0.05">
+        </div>
+        <div>
+            <label class="text-xs font-bold text-slate-600 uppercase tracking-wide mb-1 block">Letter Spacing</label>
+            <input type="number" id="prop-letter-spacing" class="prop-input-sm" value="${letterSpacingRaw}" min="-5" max="20" step="0.5">
+        </div>
+    `;
+    grp.appendChild(spacingRow);
 
     // List Type Selector (Visual)
     const listTypeField = createField(
@@ -288,6 +309,34 @@ function buildTextPanel(panel, data) {
                 inlineAction: "italic",
             });
         setTextControlActive(italic, data.styles.fontStyle === "italic");
+    }
+
+    const underlineBtn = document.getElementById("prop-underline");
+    if (underlineBtn) {
+        bindInlineFormattingGuard(underlineBtn);
+        const _curDecoration = data.styles.textDecoration || "";
+        const _hasUnderline = _curDecoration.includes("underline");
+        underlineBtn.onclick = () =>
+            applyTextFormatting(
+                "textDecoration",
+                _hasUnderline ? _curDecoration.replace("underline", "").trim() || "none" : [_curDecoration, "underline"].filter(Boolean).join(" ").trim(),
+                { inlineAction: "underline" },
+            );
+        setTextControlActive(underlineBtn, _hasUnderline);
+    }
+
+    const strikethroughBtn = document.getElementById("prop-strikethrough");
+    if (strikethroughBtn) {
+        bindInlineFormattingGuard(strikethroughBtn);
+        const _curDec2 = data.styles.textDecoration || "";
+        const _hasStrike = _curDec2.includes("line-through");
+        strikethroughBtn.onclick = () =>
+            applyTextFormatting(
+                "textDecoration",
+                _hasStrike ? _curDec2.replace("line-through", "").trim() || "none" : [_curDec2, "line-through"].filter(Boolean).join(" ").trim(),
+                { inlineAction: "textDecoration" },
+            );
+        setTextControlActive(strikethroughBtn, _hasStrike);
     }
 
     const clearFormat = document.getElementById("prop-clear-format");
@@ -438,6 +487,34 @@ function buildTextPanel(panel, data) {
             };
         }
     });
+
+    // Line Height control
+    const lineHeightInput = document.getElementById("prop-line-height");
+    if (lineHeightInput) {
+        const commitLineHeight = () => {
+            const v = parseFloat(lineHeightInput.value);
+            if (!Number.isFinite(v) || v < 0.5) return;
+            saveStateToUndo();
+            applyStyle("lineHeight", String(Math.round(v * 100) / 100));
+            refreshPreviews?.();
+        };
+        lineHeightInput.addEventListener("change", commitLineHeight);
+        lineHeightInput.addEventListener("blur", commitLineHeight);
+    }
+
+    // Letter Spacing control
+    const letterSpacingInput = document.getElementById("prop-letter-spacing");
+    if (letterSpacingInput) {
+        const commitLetterSpacing = () => {
+            const v = parseFloat(letterSpacingInput.value);
+            if (!Number.isFinite(v)) return;
+            saveStateToUndo();
+            applyStyle("letterSpacing", `${Math.round(v * 10) / 10}px`);
+            refreshPreviews?.();
+        };
+        letterSpacingInput.addEventListener("change", commitLetterSpacing);
+        letterSpacingInput.addEventListener("blur", commitLetterSpacing);
+    }
 
     // List Type Toggles
     const setListKind = kind => {

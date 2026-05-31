@@ -185,7 +185,7 @@
 .ppt-bullet-edit-list {
     margin: 0;
     padding: 0;
-    list-style: none;
+    list-style: none !important;
     width: 100%;
 }
 .ppt-bullet-edit-item {
@@ -378,9 +378,12 @@
 }
 
 .canvas-element.group-member-selected {
-    outline: 1.5px dashed rgba(37, 99, 235, 0.46);
-    outline-offset: 3px;
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
+    outline: 2px solid rgba(37, 99, 235, 0.72);
+    outline-offset: 2px;
+    box-shadow:
+        0 0 0 4px rgba(37, 99, 235, 0.1),
+        0 0 0 8px rgba(37, 99, 235, 0.05);
+    background-color: rgba(37, 99, 235, 0.045) !important;
 }
 
 .canvas-element.editing-table {
@@ -394,7 +397,7 @@
 }
 
 /* ── Hover ── */
-.canvas-element:not(.selected):hover {
+.canvas-element:not(.selected):not(.group-member-selected):hover {
     outline: 2px solid rgba(37, 99, 235, 0.3);
     outline-offset: 2px;
     box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.08);
@@ -1277,8 +1280,10 @@ body.play-mode-active {
 }
 .ppt-bullet-marker {
     display: inline-block;
+    width: 1.2em;
     min-width: 1.2em;
     line-height: 1.2;
+    text-align: center;
     color: var(--bullet-color, currentColor);
     font-size: calc(1em * var(--bullet-font-scale, 1));
 }
@@ -1310,8 +1315,10 @@ body.play-mode-active {
 .ppt-bulleted-block .ppt-bulleted-item::before {
     content: var(--bullet-marker, "•");
     display: inline-block;
+    width: 1.2em;
     min-width: 1.2em;
     line-height: 1.2;
+    text-align: center;
     color: var(--bullet-color, currentColor);
     font-size: calc(1em * var(--bullet-font-scale, 1));
 }

@@ -1291,7 +1291,23 @@ async function optimizeImageToWebP(file, maxWidth = 3840, maxHeight = 2160, qual
 }
 
 async function handlePaste(e) {
-    const isTextEditing = document.activeElement && document.activeElement.isContentEditable;
+    const pasteTarget = e?.target || document.activeElement;
+    const editablePasteHost =
+        pasteTarget?.closest?.('[contenteditable="true"]') ||
+        document.activeElement?.closest?.('[contenteditable="true"]') ||
+        null;
+    const isNativeTextInput =
+        pasteTarget?.tagName === "TEXTAREA" ||
+        pasteTarget?.tagName === "SELECT" ||
+        (pasteTarget?.tagName === "INPUT" &&
+            !["button", "checkbox", "color", "file", "image", "radio", "range", "reset", "submit"].includes(
+                String(pasteTarget.type || "text").toLowerCase(),
+            ));
+    if (isNativeTextInput) return;
+
+    const isTextEditing = Boolean(
+        editablePasteHost || pasteTarget?.isContentEditable || document.activeElement?.isContentEditable,
+    );
     const items = e.clipboardData?.items || [];
     let hasImage = false;
     let handled = false;

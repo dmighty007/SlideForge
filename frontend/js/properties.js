@@ -834,20 +834,23 @@ function buildTextContentFromSidebarValue(data, value) {
 
     if (isStructuredBulletContent(data.content)) {
         const style = data.bulletStyle || "default";
-        const populatedLines = normalizeBulletedListLines(lines);
+        const parsedContent =
+            typeof parseEditableStructuredText === "function"
+                ? parseEditableStructuredText(rawValue, data.content)
+                : buildStructuredBulletContent(normalizeBulletedListLines(lines), style);
         return {
-            content: buildStructuredBulletContent(populatedLines.length ? populatedLines : ["List item"], style),
+            content: parsedContent,
             bulletStyle: style,
         };
     }
 
     if (listState.kind === "bulleted") {
-        const populatedLines = normalizeBulletedListLines(lines);
+        const parsedContent =
+            typeof parseEditableStructuredText === "function"
+                ? parseEditableStructuredText(rawValue, data.content)
+                : buildStructuredBulletContent(normalizeBulletedListLines(lines), listState.style || "default");
         return {
-            content: buildStructuredBulletContent(
-                populatedLines.length ? populatedLines : ["List item"],
-                listState.style || "default",
-            ),
+            content: parsedContent,
             bulletStyle: listState.style || "default",
         };
     }
@@ -896,12 +899,28 @@ function applySidebarTextContent(data, value) {
             contentHost.dataset.structuredEdit = "true";
             contentHost.dataset.structuredEditMode = "list";
             contentHost.dataset.structuredEditBulletStyle = next.bulletStyle || "default";
+            if (!contentHost.dataset.structuredEditPreviousTextAlign) {
+                contentHost.dataset.structuredEditPreviousTextAlign = contentHost.style.textAlign || "";
+            }
+            contentHost.style.setProperty("text-align", "left", "important");
             contentHost.innerHTML = buildStructuredBulletEditorHtml(next.content, next.bulletStyle || "default");
+            if (typeof setActiveInlineEditor === "function") setActiveInlineEditor(null);
+            if (typeof _focusEditableHost === "function") _focusEditableHost(contentHost);
         } else {
+            delete contentHost.dataset.structuredEdit;
+            delete contentHost.dataset.structuredEditMode;
+            delete contentHost.dataset.structuredEditBulletStyle;
+            const previousTextAlign = contentHost.dataset.structuredEditPreviousTextAlign || "";
+            delete contentHost.dataset.structuredEditPreviousTextAlign;
+            if (previousTextAlign) {
+                contentHost.style.setProperty("text-align", previousTextAlign);
+            } else {
+                contentHost.style.removeProperty("text-align");
+            }
             contentHost.innerHTML = renderTextContent(data);
+            if (typeof setActiveInlineEditor === "function") setActiveInlineEditor(contentHost);
+            if (typeof captureInlineSelection === "function") captureInlineSelection();
         }
-        if (typeof _focusEditableHost === "function") _focusEditableHost(contentHost);
-        if (typeof captureInlineSelection === "function") captureInlineSelection();
     } else {
         syncTextDomContent(data);
     }
@@ -946,15 +965,46 @@ function applyTextBulletState(data, nextKind, nextStyle = "default") {
 
     const dom = document.getElementById(data.id);
     const contentHost = dom?.querySelector(".text-element-content");
-    if (
-        contentHost?.dataset?.structuredEdit === "true" &&
-        contentHost?.dataset?.structuredEditMode === "list" &&
-        isStructuredBulletContent(nextContent)
-    ) {
-        contentHost.dataset.structuredEditBulletStyle = nextBulletStyle || "default";
-        contentHost.innerHTML = buildStructuredBulletEditorHtml(nextContent, nextBulletStyle || "default");
-        contentHost.contentEditable = true;
-        if (typeof _focusEditableHost === "function") _focusEditableHost(contentHost);
+    const isEditing = contentHost && (contentHost.contentEditable === "true" || dom?.classList?.contains("editing-text"));
+
+    if (isEditing) {
+        if (isStructuredBulletContent(nextContent)) {
+            contentHost.dataset.structuredEdit = "true";
+            contentHost.dataset.structuredEditMode = "list";
+            contentHost.dataset.structuredEditBulletStyle = nextBulletStyle || "default";
+            if (!contentHost.dataset.structuredEditPreviousTextAlign) {
+                contentHost.dataset.structuredEditPreviousTextAlign = contentHost.style.textAlign || "";
+            }
+            contentHost.style.setProperty("text-align", "left", "important");
+            contentHost.innerHTML = buildStructuredBulletEditorHtml(nextContent, nextBulletStyle || "default");
+            contentHost.contentEditable = "true";
+            if (typeof setActiveInlineEditor === "function") setActiveInlineEditor(null);
+            if (typeof _focusEditableHost === "function") _focusEditableHost(contentHost);
+        } else {
+            delete contentHost.dataset.structuredEdit;
+            delete contentHost.dataset.structuredEditMode;
+            delete contentHost.dataset.structuredEditBulletStyle;
+            const previousTextAlign = contentHost.dataset.structuredEditPreviousTextAlign || "";
+            delete contentHost.dataset.structuredEditPreviousTextAlign;
+            if (previousTextAlign) {
+                contentHost.style.setProperty("text-align", previousTextAlign);
+            } else {
+                contentHost.style.removeProperty("text-align");
+            }
+            contentHost.innerHTML = renderTextContent(data);
+            contentHost.contentEditable = "true";
+            if (typeof setActiveInlineEditor === "function") setActiveInlineEditor(contentHost);
+            contentHost.focus();
+            const selection = window.getSelection();
+            if (selection) {
+                const range = document.createRange();
+                range.selectNodeContents(contentHost);
+                range.collapse(false);
+                selection.removeAllRanges();
+                selection.addRange(range);
+            }
+            if (typeof captureInlineSelection === "function") captureInlineSelection();
+        }
     } else {
         syncTextDomContent(data);
     }
@@ -1559,7 +1609,7 @@ function shiftTextBulletLevels(data, delta) {
     if (!isStructuredBulletContent(data.content)) return;
     const nextContent = data.content.map(item => ({
         ...item,
-        level: Math.max(0, Math.min(2, (Number(item.level) || 0) + delta)),
+        level: Math.max(0, Math.min(8, (Number(item.level) || 0) + delta)),
     }));
     updateElementState(data.id, { content: nextContent });
     data.content = nextContent;
@@ -1854,6 +1904,39 @@ function _bindFloatingTextToolbar(data, toolbar) {
         };
         setTextControlActive(italicBtn, data.styles.fontStyle === "italic");
     }
+
+    const underlineFloatBtn = document.getElementById("floating-text-underline");
+    if (underlineFloatBtn) {
+        bindInlineFormattingGuard(underlineFloatBtn);
+        underlineFloatBtn.onclick = () => {
+            const latest = getSelectedElementData();
+            const curDec = latest?.styles?.textDecoration || "";
+            const hasUnderline = curDec.includes("underline");
+            applyFloatingTextFormatting(
+                "textDecoration",
+                hasUnderline ? curDec.replace("underline", "").trim() || "none" : [curDec, "underline"].filter(Boolean).join(" ").trim(),
+                { inlineAction: "underline" },
+            );
+        };
+        setTextControlActive(underlineFloatBtn, (data.styles.textDecoration || "").includes("underline"));
+    }
+
+    const strikethroughFloatBtn = document.getElementById("floating-text-strikethrough");
+    if (strikethroughFloatBtn) {
+        bindInlineFormattingGuard(strikethroughFloatBtn);
+        strikethroughFloatBtn.onclick = () => {
+            const latest = getSelectedElementData();
+            const curDec = latest?.styles?.textDecoration || "";
+            const hasStrike = curDec.includes("line-through");
+            applyFloatingTextFormatting(
+                "textDecoration",
+                hasStrike ? curDec.replace("line-through", "").trim() || "none" : [curDec, "line-through"].filter(Boolean).join(" ").trim(),
+                { inlineAction: "textDecoration" },
+            );
+        };
+        setTextControlActive(strikethroughFloatBtn, (data.styles.textDecoration || "").includes("line-through"));
+    }
+
     if (fontSelect) {
         bindInlineFormattingGuard(fontSelect);
         if (!isControlBeingEdited(fontSelect) && typeof buildFontOptions === "function") {

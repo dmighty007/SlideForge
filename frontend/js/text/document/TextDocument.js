@@ -166,6 +166,10 @@
         const align = ["left", "center", "right", "justify"].includes(el.style?.textAlign) ? el.style.textAlign : undefined;
         const headingMatch = tag.match(/^H([1-6])$/);
         const type = headingMatch ? "heading" : fallbackList ? "listItem" : "paragraph";
+        const lastChild = el.lastChild;
+        if (lastChild && lastChild.nodeType === Node.ELEMENT_NODE && lastChild.tagName === "BR") {
+            lastChild.remove();
+        }
         const runs = runsFromNode(el);
         const base = {
             type,
@@ -179,6 +183,10 @@
     function textDocumentFromHtml(html = "", options = {}) {
         const template = document.createElement("template");
         template.innerHTML = typeof sanitizeTextHtml === "function" ? sanitizeTextHtml(String(html || "")) : String(html || "");
+        const lastChild = template.content.lastChild;
+        if (lastChild && lastChild.nodeType === Node.ELEMENT_NODE && lastChild.tagName === "BR") {
+            lastChild.remove();
+        }
         const blocks = [];
         let inlineRuns = [];
         const flushInline = () => {
@@ -289,20 +297,70 @@
     function textDocumentToHtml(doc = null, options = {}) {
         const normalized = normalizeTextDocument(doc);
         const bulletStyle = options.bulletStyle || "default";
-        return normalized.blocks
-            .map(block => {
-                const inner = block.children.map(renderRunHtml).join("") || "<br>";
-                if (block.type === "heading") return `<h${block.level || 1}>${inner}</h${block.level || 1}>`;
-                if (block.type === "listItem") {
-                    const style = block.list?.style || bulletStyle;
-                    const level = Math.max(0, Number(block.list?.level) || 0);
-                    return `<div class="ppt-bullet-block" data-bullet-style="${escapeHtml(style)}"><div class="ppt-bullet-row" data-level="${level}" style="--bullet-indent:${level * 20}px;"><span class="ppt-bullet-marker">•</span><span class="ppt-bullet-text">${inner}</span></div></div>`;
+        const parts = [];
+        let pendingListRows = [];
+        let pendingListStyle = "";
+        let pendingListKind = "";
+
+        const flushList = () => {
+            if (!pendingListRows.length) return;
+            if (pendingListKind === "numbered") {
+                parts.push(
+                    `<ol class="ppt-numbered-block" style="list-style-type:${escapeHtml(pendingListStyle || "decimal")};margin:0;padding-left:1.5em;line-height:inherit;width:100%;text-align:inherit;">${pendingListRows.join("")}</ol>`,
+                );
+            } else {
+                parts.push(
+                    `<div class="ppt-bullet-block" data-list-kind="bullet" data-bullet-style="${escapeHtml(pendingListStyle || bulletStyle)}">${pendingListRows.join("")}</div>`,
+                );
+            }
+            pendingListRows = [];
+            pendingListStyle = "";
+            pendingListKind = "";
+        };
+
+        normalized.blocks.forEach(block => {
+            const inner = block.children.map(renderRunHtml).join("") || "<br>";
+            if (block.type === "listItem") {
+                const style = block.list?.style || bulletStyle;
+                const kind = block.list?.kind === "numbered" ? "numbered" : "bullet";
+                const level = Math.max(0, Number(block.list?.level) || 0);
+                let glyph = "•";
+                let indent = level * 20;
+                let color = "inherit";
+                let fontSizeScale = 1;
+                if (kind === "bullet" && typeof getLevelStyle === "function" && typeof getBulletGlyph === "function") {
+                    const levelStyle = getLevelStyle(style, level);
+                    glyph = getBulletGlyph(levelStyle) || "•";
+                    color = levelStyle.color || "inherit";
+                    fontSizeScale = Number(levelStyle.fontSize) || 1;
+                    if (typeof getBulletIndent === "function") {
+                        indent = getBulletIndent(level, levelStyle);
+                    }
                 }
-                if (block.type === "caption") return `<p class="ppt-caption">${inner}</p>`;
-                if (block.type === "code") return `<pre><code>${inner}</code></pre>`;
-                return inner;
-            })
-            .join("<br>");
+                if (pendingListRows.length && (pendingListStyle !== style || pendingListKind !== kind)) {
+                    flushList();
+                }
+                if (!pendingListStyle) pendingListStyle = style;
+                if (!pendingListKind) pendingListKind = kind;
+                if (kind === "numbered") {
+                    pendingListRows.push(`<li style="margin:0;padding:0;line-height:inherit;">${inner}</li>`);
+                } else {
+                    pendingListRows.push(
+                        `<div class="ppt-bullet-row" data-level="${level}" style="--bullet-indent:${indent}px;--bullet-color:${color};--bullet-font-scale:${fontSizeScale};"><span class="ppt-bullet-marker">${escapeHtml(glyph)}</span><span class="ppt-bullet-text">${inner}</span></div>`,
+                    );
+                }
+                return;
+            }
+
+            flushList();
+            if (block.type === "heading") parts.push(`<h${block.level || 1}>${inner}</h${block.level || 1}>`);
+            else if (block.type === "caption") parts.push(`<p class="ppt-caption">${inner}</p>`);
+            else if (block.type === "code") parts.push(`<pre><code>${inner}</code></pre>`);
+            else parts.push(inner);
+        });
+        flushList();
+
+        return parts.join("<br>");
     }
 
     function textDocumentToPlainText(doc = null) {
@@ -374,9 +432,14 @@
 
     function ensureElementTextDocument(element) {
         if (!element || element.type !== "text" || element.iconMode) return null;
-        const next = normalizeTextDocument(element.textDocument || textDocumentFromLegacyContent(element.content, { bulletStyle: element.bulletStyle }));
-        element.textDocument = next;
-        return next;
+        const contentStr = typeof element.content === "object" ? JSON.stringify(element.content) : String(element.content || "");
+        if (!element.textDocument || contentStr !== element._textDocumentSourceContent) {
+            element.textDocument = normalizeTextDocument(textDocumentFromLegacyContent(element.content, { bulletStyle: element.bulletStyle }));
+            element._textDocumentSourceContent = contentStr;
+        } else {
+            element.textDocument = normalizeTextDocument(element.textDocument);
+        }
+        return element.textDocument;
     }
 
     window.SlideForgeText = {

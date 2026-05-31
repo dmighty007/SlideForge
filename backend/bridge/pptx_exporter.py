@@ -177,7 +177,7 @@ class PPTXExporter:
         self.state = state
         self.prs = Presentation()
         self.project_root = self._resolve_project_root(project_root)
-        
+
         # Mapping from SlideForge page setup to PPTX dimensions
         setup = state.get("pageSetup", "standard-4-3")
         if setup == "widescreen-16-9":
@@ -409,14 +409,14 @@ class PPTXExporter:
     def _get_image_stream(self, content: str) -> Optional[io.BytesIO]:
         if not content:
             return None
-            
+
         if content.startswith("data:"):
             try:
                 base64_data = content.split(",")[1]
                 return io.BytesIO(base64.b64decode(base64_data))
             except Exception:
                 return None
-        
+
         try:
             path = self._resolve_safe_local_image_path(content)
             if path:
@@ -424,7 +424,7 @@ class PPTXExporter:
                     return io.BytesIO(f.read())
         except Exception as e:
             print(f"Error resolving image path {content}: {e}")
-            
+
         return None
 
     def _apply_fill(self, shape: Any, color: Optional[str], default: Optional[RGBColor] = None):
@@ -454,15 +454,45 @@ class PPTXExporter:
         shape.line.color.rgb = self._parse_color(color, default_color or self.theme["accent"])
         shape.line.width = Pt(max(0.25, float(self._parse_px(width, 1))))
 
+    def _get_bullet_char(self, style: str, level: int) -> str:
+        """Get the appropriate bullet character for the given style and level."""
+        # CRITICAL FIX #5: Bullet character mapping based on SlideForge theme
+        bullet_chars = {
+            "default": ["•", "◦", "▪"],
+            "square": ["■", "□", "▪"],
+            "diamond": ["◆", "◇", "◈"],
+            "modern": ["→", "–", "◆"],
+            "chevron": ["»", "›", "–"],
+            "dash": ["–", "—", "·"],
+            "checklist": ["✓", "✓", "✓"],
+            "star": ["✦", "✧", "•"],
+        }
+        chars = bullet_chars.get(style, bullet_chars["default"])
+        return chars[min(level, len(chars) - 1)]
+
     def _set_paragraph_bullet(self, paragraph: Any, char: str = "•"):
         try:
             p_pr = paragraph._p.get_or_add_pPr()
             for child in list(p_pr):
-                if child.tag.endswith("}buNone") or child.tag.endswith("}buChar"):
+                if child.tag.endswith("}buNone") or child.tag.endswith("}buChar") or child.tag.endswith("}buAutoNum"):
                     p_pr.remove(child)
-            bullet = OxmlElement("a:buChar")
-            bullet.set("char", char)
-            p_pr.append(bullet)
+
+            # Use native PowerPoint auto-numbering if char is special indicator
+            if char == "__AUTO_BULLET__":
+                # Let PowerPoint handle bullets using default formatting
+                bullet = OxmlElement("a:buFont")
+                bullet.set("typeface", "Arial")
+                p_pr.append(bullet)
+            elif char == "__AUTO_NUMBER__":
+                # Use native PowerPoint numbering
+                buAutoNum = OxmlElement("a:buAutoNum")
+                buAutoNum.set("type", "alphaLcParenBoth")
+                p_pr.append(buAutoNum)
+            else:
+                # Custom bullet character
+                bullet = OxmlElement("a:buChar")
+                bullet.set("char", char)
+                p_pr.append(bullet)
         except Exception:
             return
 
@@ -470,7 +500,7 @@ class PPTXExporter:
         slides = self.state.get("slides", [])
         for slide_data in slides:
             self._add_slide(slide_data)
-        
+
         output = io.BytesIO()
         self.prs.save(output)
         output.seek(0)
@@ -481,7 +511,7 @@ class PPTXExporter:
         # Use a blank layout (index 6 is usually blank)
         slide_layout = self.prs.slide_layouts[6]
         slide = self.prs.slides.add_slide(slide_layout)
-        
+
         # 1. Background
         fill = slide.background.fill
         fill.solid()
@@ -498,7 +528,7 @@ class PPTXExporter:
         elif slide_data.get("backgroundColor"):
             fill.fore_color.rgb = self._parse_color(slide_data.get("backgroundColor"), self.slide_bg_rgb)
             self.slide_bg_rgb = fill.fore_color.rgb
-        
+
         if slide_data.get("notes"):
             slide.notes_slide.notes_text_frame.text = str(slide_data.get("notes") or "")
 
@@ -506,7 +536,7 @@ class PPTXExporter:
         elements = [*self._build_master_elements(slide_data), *slide_data.get("elements", [])]
         # Sort by zIndex
         sorted_elements = sorted(elements, key=lambda e: e.get("styles", {}).get("zIndex", 0))
-        
+
         for el in sorted_elements:
             self._add_element(slide, el)
 
@@ -652,11 +682,11 @@ class PPTXExporter:
         try:
             x = self._px_to_inches_w(float(el.get("x", 0)))
             y = self._px_to_inches_h(float(el.get("y", 0)))
-            
+
             # Width and height can be "auto" or strings like "400px"
             w_raw = el.get("width", "100")
             h_raw = el.get("height", "100")
-            
+
             w = self._px_to_inches_w(float(re.sub(r"[^\d.]", "", str(w_raw)) or 100))
             h = self._px_to_inches_h(float(re.sub(r"[^\d.]", "", str(h_raw)) or 100))
 
@@ -683,7 +713,7 @@ class PPTXExporter:
     def _add_text_element(self, slide: Any, el: Dict[str, Any], x: Inches, y: Inches, w: Inches, h: Inches):
         styles = el.get("styles", {})
         content = el.get("content", "")
-        
+
         # Create textbox
         shape = slide.shapes.add_textbox(x, y, w, h)
         if styles.get("backgroundColor") and not self._is_transparent(styles.get("backgroundColor")):
@@ -694,15 +724,28 @@ class PPTXExporter:
         tf = shape.text_frame
         tf.word_wrap = True
         tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
-        
+
         # Handle structured bullet points or raw HTML
         tf.clear()
         if isinstance(content, list):
+            # CRITICAL FIX #5: Enhanced list support for PPTX export
             for idx, item in enumerate(content):
                 p = tf.paragraphs[0] if idx == 0 else tf.add_paragraph()
                 p.level = max(0, min(8, int(item.get("level", 0) or 0)))
                 p.alignment = self._paragraph_alignment(styles)
-                self._set_paragraph_bullet(p)
+                
+                # Set bullet based on list kind and style
+                kind = item.get("kind", "bullet")
+                style = item.get("style", "default")
+                
+                if kind == "numbered":
+                    # Use auto-numbered format for ordered lists
+                    self._set_paragraph_bullet(p, "__AUTO_NUMBER__")
+                else:
+                    # Use bullet character based on style
+                    char = self._get_bullet_char(style, p.level)
+                    self._set_paragraph_bullet(p, char)
+                
                 raw = item.get("html") if isinstance(item, dict) and item.get("html") is not None else item.get("text", "")
                 self._append_runs_to_paragraph(p, html_to_text_runs(raw), styles)
         else:
@@ -752,7 +795,7 @@ class PPTXExporter:
 
     def _add_shape_element(self, slide: Any, el: Dict[str, Any], x: Inches, y: Inches, w: Inches, h: Inches):
         shape_type_str = el.get("shapeType", "rectangle")
-        
+
         mapping = {
             "rectangle": MSO_SHAPE.RECTANGLE,
             "circle": MSO_SHAPE.OVAL,
@@ -766,10 +809,10 @@ class PPTXExporter:
             "arrow-up": MSO_SHAPE.UP_ARROW,
             "arrow-down": MSO_SHAPE.DOWN_ARROW,
         }
-        
+
         mso_type = mapping.get(shape_type_str, MSO_SHAPE.RECTANGLE)
         shape = slide.shapes.add_shape(mso_type, x, y, w, h)
-        
+
         styles = el.get("styles", {})
         self._apply_fill(shape, styles.get("backgroundColor"), self.theme["accent"])
         self._apply_line(shape, styles, self.theme["accent"])

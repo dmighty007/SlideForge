@@ -54,22 +54,22 @@ const BULLET_STYLE_THEMES = {
 
 const ICON_MAP = {
     "arrow-right": "→",
-    "check": "✓",
-    "circle": "●",
-    "square": "■",
-    "star": "★",
-    "diamond": "◆",
-    "chevron": "»"
+    check: "✓",
+    circle: "●",
+    square: "■",
+    star: "★",
+    diamond: "◆",
+    chevron: "»",
 };
 
 const NUMBERED_STYLE_THEMES = {
-    'decimal': '1, 2, 3...',
-    'decimal-leading-zero': '01, 02, 03...',
-    'lower-roman': 'i, ii, iii...',
-    'upper-roman': 'I, II, III...',
-    'lower-alpha': 'a, b, c...',
-    'upper-alpha': 'A, B, C...',
-    'lower-greek': 'α, β, γ...'
+    decimal: "1, 2, 3...",
+    "decimal-leading-zero": "01, 02, 03...",
+    "lower-roman": "i, ii, iii...",
+    "upper-roman": "I, II, III...",
+    "lower-alpha": "a, b, c...",
+    "upper-alpha": "A, B, C...",
+    "lower-greek": "α, β, γ...",
 };
 
 const BULLETED_LIST_STYLE_TYPES = {
@@ -148,10 +148,25 @@ function extractHtmlLinePayloads(content) {
     probe.innerHTML = String(content || "");
     const lines = [];
     let currentHtml = "";
-    const BLOCK_TAGS = new Set(["DIV", "P", "LI", "SECTION", "ARTICLE", "BLOCKQUOTE", "H1", "H2", "H3", "H4", "H5", "H6"]);
+    const BLOCK_TAGS = new Set([
+        "DIV",
+        "P",
+        "LI",
+        "SECTION",
+        "ARTICLE",
+        "BLOCKQUOTE",
+        "H1",
+        "H2",
+        "H3",
+        "H4",
+        "H5",
+        "H6",
+    ]);
 
     const flushLine = () => {
-        const textOnly = plainTextFromHtmlSnippet(currentHtml).replace(/\u00a0/g, " ").trim();
+        const textOnly = plainTextFromHtmlSnippet(currentHtml)
+            .replace(/\u00a0/g, " ")
+            .trim();
         if (textOnly) {
             lines.push(currentHtml);
         }
@@ -191,11 +206,11 @@ function extractHtmlLinePayloads(content) {
 
         if (tag === "OL" || tag === "UL") {
             flushLine();
-            Array.from(node.children || []).forEach(child => {
-                if (child.tagName === "LI") {
-                    currentHtml = child.innerHTML;
-                    flushLine();
-                }
+            const listItems = _extractStructuredListFromHtml(node);
+            listItems.forEach(item => {
+                const indent = " ".repeat(item.level * 2);
+                currentHtml = `${indent}${escapeHtml(item.text)}`;
+                flushLine();
             });
             return;
         }
@@ -214,10 +229,47 @@ function extractHtmlLinePayloads(content) {
     return lines;
 }
 
+function _extractStructuredListFromHtml(listElement, baseLevel = 0) {
+    const items = [];
+    const isOrdered = listElement.tagName === "OL";
+    let ordinalCounter = 1;
+
+    Array.from(listElement.children || []).forEach(child => {
+        if (child.tagName !== "LI") return;
+
+        // Extract text content (exclude nested lists)
+        let textContent = "";
+        Array.from(child.childNodes).forEach(node => {
+            if (node.nodeType === Node.TEXT_NODE) {
+                textContent += node.textContent;
+            } else if (node.nodeType === Node.ELEMENT_NODE && node.tagName !== "OL" && node.tagName !== "UL") {
+                textContent += plainTextFromHtmlSnippet(node.innerHTML);
+            }
+        });
+
+        items.push({
+            level: baseLevel,
+            text: textContent.trim(),
+            ordinal: isOrdered ? ordinalCounter++ : 0,
+        });
+
+        // Process nested lists
+        const nestedList = child.querySelector("ol, ul");
+        if (nestedList) {
+            items.push(..._extractStructuredListFromHtml(nestedList, baseLevel + 1));
+        }
+    });
+
+    return items;
+}
+
 function extractHtmlLines(content) {
     return extractHtmlLinePayloads(content)
         .map(line => {
-            return plainTextFromHtmlSnippet(line).replace(/\u00a0/g, " ").replace(/[ \t]+/g, " ").trim();
+            return plainTextFromHtmlSnippet(line)
+                .replace(/\u00a0/g, " ")
+                .replace(/[ \t]+/g, " ")
+                .trim();
         })
         .filter(Boolean);
 }
@@ -244,7 +296,7 @@ function normalizeTextElementContent(content) {
 
 function getTextListState(content, bulletStyle = "default") {
     const isBullet = isStructuredBulletContent(content);
-    
+
     // Check if it's already a structured bullet list
     if (isBullet) {
         return { kind: "bulleted", style: bulletStyle || "default" };
@@ -263,7 +315,7 @@ function getTextListState(content, bulletStyle = "default") {
             };
         }
     }
-    
+
     if (str.includes("<ul")) {
         return { kind: "bulleted", style: bulletStyle || "default" };
     }
@@ -286,14 +338,19 @@ function extractPlainLines(content) {
 
 function extractStyledLines(content) {
     if (isStructuredBulletContent(content)) {
-        return content.map(item => normalizeStructuredBulletItem(item).html).filter(line => parseTextFromHtml(line).trim());
+        return content
+            .map(item => normalizeStructuredBulletItem(item).html)
+            .filter(line => parseTextFromHtml(line).trim());
     }
     return extractHtmlLinePayloads(content);
 }
 
 function buildStructuredBulletContent(lines, bulletStyle = "default") {
-    const safeLines = Array.isArray(lines) && lines.length ? lines : ["List item"];
-    return safeLines.map(line => normalizeStructuredBulletItem({ html: String(line || "").trim() || "List item", level: 0 }));
+    const normalized = typeof normalizeBulletedListLines === "function" ? normalizeBulletedListLines(lines) : lines;
+    const safeLines = Array.isArray(normalized) && normalized.length ? normalized : ["List item"];
+    return safeLines.map(line =>
+        normalizeStructuredBulletItem({ html: String(line || "").trim() || "List item", level: 0 }),
+    );
 }
 
 function stripInlineColorFromHtml(html) {
@@ -332,11 +389,13 @@ function stripInlineTextStylesFromHtml(html, props = []) {
         }
     });
 
-    Array.from(probe.querySelectorAll("span")).reverse().forEach(node => {
-        if (node.attributes.length === 0) {
-            node.replaceWith(...Array.from(node.childNodes));
-        }
-    });
+    Array.from(probe.querySelectorAll("span"))
+        .reverse()
+        .forEach(node => {
+            if (node.attributes.length === 0) {
+                node.replaceWith(...Array.from(node.childNodes));
+            }
+        });
 
     return probe.innerHTML;
 }
@@ -362,9 +421,11 @@ function stripInlineTextStylesFromTextContent(content, props = []) {
 function stripAllInlineTextFormattingFromHtml(html) {
     const probe = document.createElement("div");
     probe.innerHTML = stripInlineTextStylesFromHtml(html, "all");
-    Array.from(probe.querySelectorAll("b,strong,i,em,u,s,sub,sup,font")).reverse().forEach(node => {
-        node.replaceWith(...Array.from(node.childNodes));
-    });
+    Array.from(probe.querySelectorAll("b,strong,i,em,u,s,sub,sup,font"))
+        .reverse()
+        .forEach(node => {
+            node.replaceWith(...Array.from(node.childNodes));
+        });
     return probe.innerHTML;
 }
 
@@ -429,9 +490,7 @@ function applyTextBulletState(elData, kind, style = "default") {
 
 function getSafeIconHtml(elData) {
     const raw = String(elData?.iconClass || elData?.content || "");
-    const classMatch =
-        raw.match(/class\s*=\s*["']([^"']+)["']/i) ||
-        raw.match(/class\s*=\s*&quot;([^&]+)&quot;/i);
+    const classMatch = raw.match(/class\s*=\s*["']([^"']+)["']/i) || raw.match(/class\s*=\s*&quot;([^&]+)&quot;/i);
     const classSource = classMatch ? classMatch[1] : raw;
     const safeClasses = classSource
         .split(/\s+/)
@@ -535,13 +594,17 @@ function normalizeBulletedListLines(lines) {
             const raw = String(line || "").trim();
             if (!raw) return "";
             if (/<[^>]+>/.test(raw)) {
-                const plain = plainTextFromHtmlSnippet(raw).replace(/\u00a0/g, " ").trim();
+                const plain = plainTextFromHtmlSnippet(raw)
+                    .replace(/\u00a0/g, " ")
+                    .trim();
                 const parsedPlain = stripEditableBulletPrefix(plain);
                 if (!parsedPlain.text.trim()) return "";
 
                 const probe = document.createElement("div");
                 probe.innerHTML = raw;
-                const firstText = Array.from(probe.childNodes).find(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
+                const firstText = Array.from(probe.childNodes).find(
+                    node => node.nodeType === Node.TEXT_NODE && node.textContent.trim(),
+                );
                 if (firstText) {
                     firstText.textContent = stripEditableBulletPrefix(firstText.textContent).text;
                     return probe.innerHTML.trim();
@@ -563,12 +626,12 @@ function structuredContentToEditableText(content, bulletStyle = "default") {
             const item = normalizeStructuredBulletItem(rawItem);
             const level = item.level;
             const plainText = parseTextFromHtml(item.html);
-            const prefix = getEditableBulletPrefix(level, bulletStyle);
             if (!plainText.trim()) {
-                return prefix;
+                return "";
             }
-            return `${prefix}${plainText}`;
+            return `${getEditableBulletPrefix(level, bulletStyle)}${plainText}`;
         })
+        .filter((line, i, arr) => line !== "" || i < arr.length - 1)
         .join("\n");
 }
 
@@ -638,7 +701,11 @@ function parseStructuredBulletEditorHtml(host, options = {}) {
         }),
     );
 
-    while (!preserveTrailingEmpty && items.length > 1 && !plainTextFromHtmlSnippet(items[items.length - 1].html).trim()) {
+    while (
+        !preserveTrailingEmpty &&
+        items.length > 1 &&
+        !plainTextFromHtmlSnippet(items[items.length - 1].html).trim()
+    ) {
         items.pop();
     }
 

@@ -145,6 +145,71 @@ function _refreshStructuredBulletEditorMarkers(host) {
         item.dataset.marker = meta.marker;
         item.style.setProperty("--bullet-indent", `${meta.indent}px`);
     });
+    
+    // Initialize virtual scrolling if not already done
+    _initializeVirtualScrollingForListEditor(host);
+}
+
+// ============================================================================
+// VIRTUAL SCROLLING - Optimize rendering for large lists (10k+ items)
+// ============================================================================
+
+let _virtualScrollingInstances = new WeakMap();
+
+function _initializeVirtualScrollingForListEditor(host) {
+    if (!host || _virtualScrollingInstances.has(host)) return;
+    
+    const items = host.querySelectorAll(".ppt-bullet-edit-item");
+    if (items.length < 500) return; // Only enable for large lists
+    
+    _virtualScrollingInstances.set(host, {
+        visibleItems: new Set(),
+        observer: null,
+        renderBuffer: 50, // Render items 50 above and below viewport
+    });
+    
+    const instance = _virtualScrollingInstances.get(host);
+    
+    // Create Intersection Observer to track visible items
+    instance.observer = new IntersectionObserver(
+        entries => {
+            entries.forEach(entry => {
+                const itemId = entry.target.dataset.virtualId;
+                if (entry.isIntersecting) {
+                    instance.visibleItems.add(itemId);
+                    entry.target.style.display = "";
+                } else {
+                    instance.visibleItems.delete(itemId);
+                    // Keep items slightly outside viewport for smoother scrolling
+                    const rect = entry.target.getBoundingClientRect();
+                    const isAboveViewport = rect.bottom < -100;
+                    const isBelowViewport = rect.top > window.innerHeight + 100;
+                    if (isAboveViewport || isBelowViewport) {
+                        entry.target.style.display = "none";
+                    }
+                }
+            });
+        },
+        {
+            root: host.parentElement,
+            rootMargin: `${100}px 0px`,
+            threshold: 0.01,
+        }
+    );
+    
+    // Assign virtual IDs and observe each item
+    items.forEach((item, idx) => {
+        item.dataset.virtualId = `item-${idx}`;
+        instance.observer.observe(item);
+    });
+}
+
+function _disposeVirtualScrolling(host) {
+    const instance = _virtualScrollingInstances.get(host);
+    if (instance && instance.observer) {
+        instance.observer.disconnect();
+    }
+    _virtualScrollingInstances.delete(host);
 }
 
 function _commitStructuredBulletEditorChange(host) {
@@ -156,13 +221,22 @@ function _commitStructuredBulletEditorChange(host) {
     if (!elData || elData.type !== "text") return;
 
     const nextContent = parseStructuredBulletEditorHtml(host, { preserveTrailingEmpty: true });
+    const nextTextDocument =
+        typeof createTextDocumentFromLegacyContent === "function"
+            ? createTextDocumentFromLegacyContent(nextContent, { bulletStyle: _getStructuredEditorBulletStyle(host) })
+            : elData.textDocument;
     if (host.dataset.undoSnapshotCaptured !== "true") {
         saveStateToUndo();
         host.dataset.undoSnapshotCaptured = "true";
     }
-    updateElementState(id, { content: nextContent, bulletStyle: _getStructuredEditorBulletStyle(host) });
+    updateElementState(id, {
+        content: nextContent,
+        bulletStyle: _getStructuredEditorBulletStyle(host),
+        textDocument: nextTextDocument,
+    });
     elData.content = nextContent;
     elData.bulletStyle = _getStructuredEditorBulletStyle(host);
+    elData.textDocument = nextTextDocument;
 
     const layout = syncTextBoxLayout(dom, elData);
     if (layout?.autoHeight && Number.isFinite(layout.height)) {
@@ -188,7 +262,15 @@ function _placeCaretInListItemText(item, { atEnd = false } = {}) {
     const selection = window.getSelection();
     if (!selection) return;
     const range = document.createRange();
-    let textNode = Array.from(item.childNodes).find(node => node.nodeType === Node.TEXT_NODE);
+    if (_isListItemEmpty(item)) {
+        item.textContent = "";
+    }
+    const textNodes = [];
+    const walker = document.createTreeWalker(item, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+        textNodes.push(walker.currentNode);
+    }
+    let textNode = atEnd ? textNodes[textNodes.length - 1] : textNodes[0];
     if (!textNode) {
         textNode = document.createTextNode("");
         item.insertBefore(textNode, atEnd ? null : item.firstChild);
@@ -198,6 +280,113 @@ function _placeCaretInListItemText(item, { atEnd = false } = {}) {
     range.collapse(true);
     selection.removeAllRanges();
     selection.addRange(range);
+}
+
+function _getTextOffsetWithinElement(el, container, offset) {
+    if (!el || !container) return 0;
+    const range = document.createRange();
+    try {
+        range.selectNodeContents(el);
+        range.setEnd(container, offset);
+        return range.toString().length;
+    } catch {
+        return 0;
+    }
+}
+
+function _getPlainTextLength(el) {
+    if (!el) return 0;
+    return plainTextFromHtmlSnippet(el.innerHTML).length;
+}
+
+function _isListItemEmpty(item) {
+    if (!item) return true;
+    return !plainTextFromHtmlSnippet(item.innerHTML).trim() && !item.querySelector("img,svg,math");
+}
+
+function _isRangeAtStartOfElement(el, range) {
+    if (!el || !range) return false;
+    return _getTextOffsetWithinElement(el, range.startContainer, range.startOffset) === 0;
+}
+
+function _isRangeAtEndOfElement(el, range) {
+    if (!el || !range) return false;
+    return _getTextOffsetWithinElement(el, range.startContainer, range.startOffset) >= _getPlainTextLength(el);
+}
+
+function _placeCaretAtTextOffset(el, offset = 0) {
+    if (!el) return;
+    const selection = window.getSelection();
+    if (!selection) return;
+    const targetOffset = Math.max(0, Number(offset) || 0);
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    let remaining = targetOffset;
+
+    while (node) {
+        const length = node.textContent.length;
+        if (remaining <= length) {
+            const range = document.createRange();
+            range.setStart(node, remaining);
+            range.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(range);
+            return;
+        }
+        remaining -= length;
+        node = walker.nextNode();
+    }
+
+    _placeCaretInElement(el, { atEnd: true });
+}
+
+function _removeEmptyStructuredListItem(host, item) {
+    if (!host || !item) return false;
+    const previous = item.previousElementSibling;
+    const next = item.nextElementSibling;
+    if (!previous && !next) {
+        item.innerHTML = "<br>";
+        _refreshStructuredBulletEditorMarkers(host);
+        _placeCaretInListItemText(item);
+        _commitStructuredBulletEditorChange(host);
+        return true;
+    }
+
+    item.remove();
+    _refreshStructuredBulletEditorMarkers(host);
+    if (previous) {
+        _placeCaretInElement(previous, { atEnd: true });
+    } else {
+        _placeCaretInListItemText(next);
+    }
+    _commitStructuredBulletEditorChange(host);
+    return true;
+}
+
+function _moveListItemChildren(target, source) {
+    if (!target || !source || _isListItemEmpty(source)) return;
+    
+    // CRITICAL FIX: Validate level compatibility before merging
+    const targetLevel = Number(target.dataset.level) || 0;
+    const sourceLevel = Number(source.dataset.level) || 0;
+    
+    // If items are at different nesting levels, outdent source children to target level
+    // This prevents structural corruption when merging items at different depths
+    if (sourceLevel !== targetLevel) {
+        const levelDiff = sourceLevel - targetLevel;
+        const children = Array.from(source.childNodes);
+        children.forEach(child => {
+            if (child.nodeType === 1 && child.dataset && child.dataset.level !== undefined) {
+                const childLevel = Number(child.dataset.level) || 0;
+                child.dataset.level = String(Math.max(0, Math.min(8, childLevel - levelDiff)));
+            }
+        });
+    }
+    
+    if (_isListItemEmpty(target)) target.innerHTML = "";
+    while (source.firstChild) {
+        target.appendChild(source.firstChild);
+    }
 }
 
 function _insertStructuredListItemBreak(host) {
@@ -210,6 +399,10 @@ function _insertStructuredListItemBreak(host) {
 
     if (!range.collapsed) {
         range.deleteContents();
+    }
+
+    if (range.collapsed && _isListItemEmpty(item)) {
+        return _removeEmptyStructuredListItem(host, item);
     }
 
     const splitRange = document.createRange();
@@ -242,35 +435,45 @@ function _handleStructuredListBackspace(host) {
     const range = selection.getRangeAt(0);
     if (!item.contains(range.startContainer)) return false;
 
-    const currentText = plainTextFromHtmlSnippet(item.innerHTML).trim();
-    const atStart =
-        range.startOffset === 0 &&
-        (range.startContainer === item ||
-            !range.startContainer.textContent ||
-            range.startContainer === item.firstChild);
+    if (!_isRangeAtStartOfElement(item, range)) return false;
+    if (_isListItemEmpty(item)) return _removeEmptyStructuredListItem(host, item);
 
-    if (currentText || !atStart) return false;
     const previous = item.previousElementSibling;
-    const next = item.nextElementSibling;
+    if (!previous) return false;
+    const caretOffset = _getPlainTextLength(previous);
+    _moveListItemChildren(previous, item);
     item.remove();
-    if (!host.querySelector(".ppt-bullet-edit-item")) {
-        const fallback = document.createElement("li");
-        fallback.className = "ppt-bullet-edit-item";
-        fallback.dataset.level = "0";
-        fallback.innerHTML = "<br>";
-        host.querySelector(".ppt-bullet-edit-list")?.appendChild(fallback);
-        _refreshStructuredBulletEditorMarkers(host);
-        _placeCaretInElement(fallback);
-        _commitStructuredBulletEditorChange(host);
-        return true;
-    }
     _refreshStructuredBulletEditorMarkers(host);
-    _placeCaretInElement(previous || next, { atEnd: Boolean(previous) });
+    _placeCaretAtTextOffset(previous, caretOffset);
+    _commitStructuredBulletEditorChange(host);
+    return true;
+}
+
+function _handleStructuredListDelete(host) {
+    const item = _getActiveStructuredBulletListItem(host);
+    if (!host || !item) return false;
+    const selection = window.getSelection();
+    if (!selection || !selection.isCollapsed) return false;
+    const range = selection.getRangeAt(0);
+    if (!item.contains(range.startContainer)) return false;
+
+    if (!_isRangeAtEndOfElement(item, range)) return false;
+    if (_isListItemEmpty(item)) return _removeEmptyStructuredListItem(host, item);
+
+    const next = item.nextElementSibling;
+    if (!next) return false;
+    const caretOffset = _getPlainTextLength(item);
+    _moveListItemChildren(item, next);
+    next.remove();
+    _refreshStructuredBulletEditorMarkers(host);
+    _placeCaretAtTextOffset(item, caretOffset);
     _commitStructuredBulletEditorChange(host);
     return true;
 }
 
 let _structuredEditorShortcutsInstalled = false;
+let _clipboardHandlersInstalled = false;
+
 function _installStructuredEditorShortcuts() {
     if (_structuredEditorShortcutsInstalled) return;
     _structuredEditorShortcutsInstalled = true;
@@ -301,17 +504,304 @@ function _installStructuredEditorShortcuts() {
                     e.preventDefault();
                     e.stopPropagation();
                 }
+            } else if (e.key === "Delete") {
+                const handled = _getStructuredEditorMode(host) === "list" ? _handleStructuredListDelete(host) : false;
+                if (handled) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
             }
         },
         true,
     );
+    _installStructuredEditorClipboardHandlers();
+}
+
+// ============================================================================
+// CLIPBOARD HANDLERS - Preserve list structure during copy/paste operations
+// ============================================================================
+
+function _installStructuredEditorClipboardHandlers() {
+    if (_clipboardHandlersInstalled) return;
+    _clipboardHandlersInstalled = true;
+
+    document.addEventListener(
+        "copy",
+        e => {
+            const host = _getActiveStructuredEditor();
+            if (!host || _getStructuredEditorMode(host) !== "list") return;
+            _handleStructuredListCopy(e, host);
+        },
+        true,
+    );
+
+    document.addEventListener(
+        "cut",
+        e => {
+            const host = _getActiveStructuredEditor();
+            if (!host || _getStructuredEditorMode(host) !== "list") return;
+            _handleStructuredListCut(e, host);
+        },
+        true,
+    );
+
+    document.addEventListener(
+        "paste",
+        e => {
+            const host = _getActiveStructuredEditor();
+            if (!host || _getStructuredEditorMode(host) !== "list") return;
+            _handleStructuredListPaste(e, host);
+        },
+        true,
+    );
+}
+
+function _serializeListItemsForClipboard(items) {
+    const serialized = items.map(item => ({
+        level: Number(item.dataset.level) || 0,
+        kind: item.dataset.kind || "bullet",
+        style: item.dataset.style || "default",
+        ordinal: Number(item.dataset.ordinal) || 0,
+        textContent: item.textContent || "",
+        html: item.innerHTML,
+    }));
+    return JSON.stringify(serialized);
+}
+
+function _deserializeListItemsFromClipboard(jsonStr) {
+    try {
+        return JSON.parse(jsonStr);
+    } catch (e) {
+        return null;
+    }
+}
+
+function _getSelectedListItems(host) {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return [];
+
+    const range = selection.getRangeAt(0);
+    const items = [];
+    const allItems = Array.from(host.querySelectorAll(".ppt-bullet-edit-item"));
+
+    for (const item of allItems) {
+        if (range.intersectsNode(item)) {
+            items.push(item);
+        }
+    }
+
+    return items.length > 0 ? items : [];
+}
+
+function _handleStructuredListCopy(event, host) {
+    const selectedItems = _getSelectedListItems(host);
+    if (selectedItems.length === 0) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const serialized = _serializeListItemsForClipboard(selectedItems);
+    const plainText = selectedItems.map(item => item.textContent).join("\n");
+
+    event.clipboardData.setData("application/x-slideforge-list", serialized);
+    event.clipboardData.setData("text/plain", plainText);
+    event.clipboardData.setData("text/html", selectedItems.map(item => item.innerHTML).join("<br>"));
+}
+
+function _handleStructuredListCut(event, host) {
+    _handleStructuredListCopy(event, host);
+    const selectedItems = _getSelectedListItems(host);
+    if (selectedItems.length === 0) return;
+
+    selectedItems.forEach(item => item.remove());
+    _refreshStructuredBulletEditorMarkers(host);
+    _commitStructuredBulletEditorChange(host);
+}
+
+function _handleStructuredListPaste(event, host) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const clipboardData = event.clipboardData;
+    if (!clipboardData) return;
+
+    const customData = clipboardData.getData("application/x-slideforge-list");
+    if (customData) {
+        const items = _deserializeListItemsFromClipboard(customData);
+        if (items && Array.isArray(items)) {
+            _insertDeserializedListItems(host, items);
+            return;
+        }
+    }
+
+    const htmlData = clipboardData.getData("text/html");
+    if (htmlData && (htmlData.includes("<li>") || htmlData.includes("<ul>") || htmlData.includes("<ol>"))) {
+        const items = _convertHtmlListToStructured(htmlData);
+        if (items.length > 0) {
+            _insertDeserializedListItems(host, items);
+            return;
+        }
+    }
+
+    const plainText = clipboardData.getData("text/plain");
+    if (plainText) {
+        _insertPlainTextAsListItems(host, plainText);
+    }
+}
+
+function _convertHtmlListToStructured(htmlStr) {
+    const items = [];
+    const tempDiv = document.createElement("div");
+    tempDiv.innerHTML = htmlStr;
+
+    const processListElement = (el, baseLevel = 0) => {
+        if (el.tagName === "UL" || el.tagName === "OL") {
+            const isOrdered = el.tagName === "OL";
+            const children = Array.from(el.children);
+            const liElements = children.filter(c => c.tagName === "LI");
+
+            liElements.forEach((li, idx) => {
+                const nestedLists = Array.from(li.children).filter(child => child.tagName === "UL" || child.tagName === "OL");
+                const textClone = li.cloneNode(true);
+                textClone.querySelectorAll("ul, ol").forEach(list => list.remove());
+                const textContent = (textClone.textContent || "").trim();
+
+                if (textContent) {
+                    items.push({
+                        level: baseLevel,
+                        kind: isOrdered ? "numbered" : "bullet",
+                        style: "default",
+                        ordinal: isOrdered ? idx + 1 : 0,
+                        textContent,
+                        html: escapeHtml(textContent),
+                    });
+                }
+
+                nestedLists.forEach(nestedList => processListElement(nestedList, baseLevel + 1));
+            });
+        }
+    };
+
+    Array.from(tempDiv.children).forEach(child => processListElement(child, 0));
+    return items;
+}
+
+function _createStructuredEditorListItem({ html = "", textContent = "", level = 0 } = {}) {
+    const item = document.createElement("li");
+    item.className = "ppt-bullet-edit-item";
+    item.dataset.level = String(Math.max(0, Math.min(8, Number(level) || 0)));
+    item.innerHTML =
+        html && typeof sanitizeTextHtml === "function" ? sanitizeTextHtml(html) : html ? String(html) : escapeHtml(textContent || "");
+    if (!item.textContent.trim() && !item.querySelector("br,img,svg,math")) {
+        item.innerHTML = "<br>";
+    }
+    return item;
+}
+
+function _parsePlainTextListLine(line, fallbackLevel = 0) {
+    const raw = String(line || "").replace(/\r/g, "");
+    const leading = raw.match(/^[\t ]*/)?.[0] || "";
+    const tabLevel = (leading.match(/\t/g) || []).length;
+    const spaceLevel = Math.floor((leading.replace(/\t/g, "").length || 0) / 2);
+    const markerPattern = /^(\s*)(?:[-*+•◦▪–—]\s+|\d+[.)]\s+|[a-zA-Z][.)]\s+)/;
+    const text = raw.replace(markerPattern, "").trim();
+    return {
+        level: Math.max(0, Math.min(8, tabLevel + spaceLevel || fallbackLevel)),
+        textContent: text || raw.trim(),
+    };
+}
+
+function _insertPlainTextAsListItems(host, plainText) {
+    const item = _getActiveStructuredBulletListItem(host);
+    if (!item) return;
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+    let range = selection.getRangeAt(0);
+    if (!item.contains(range.startContainer)) return;
+
+    const value = String(plainText || "").replace(/\r\n?/g, "\n");
+    if (!value.includes("\n")) {
+        if (!range.collapsed) range.deleteContents();
+        const textNode = document.createTextNode(value);
+        range.insertNode(textNode);
+        range = document.createRange();
+        range.setStart(textNode, textNode.textContent.length);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        _commitStructuredBulletEditorChange(host);
+        return;
+    }
+
+    if (!range.collapsed) {
+        range.deleteContents();
+        range = selection.getRangeAt(0);
+    }
+
+    const caretOffset = _getTextOffsetWithinElement(item, range.startContainer, range.startOffset);
+    const currentText = plainTextFromHtmlSnippet(item.innerHTML);
+    const beforeText = currentText.slice(0, caretOffset);
+    const afterText = currentText.slice(caretOffset);
+    const rawLines = value.split("\n");
+    const baseLevel = Number(item.dataset.level) || 0;
+    const firstText = rawLines[0] || "";
+    const lastIndex = rawLines.length - 1;
+
+    item.textContent = `${beforeText}${firstText}`;
+    let previousItem = item;
+    let caretItem = item;
+    let caretOffsetInItem = item.textContent.length;
+
+    rawLines.slice(1).forEach((line, idx) => {
+        const isLast = idx + 1 === lastIndex;
+        const parsed = _parsePlainTextListLine(line, baseLevel);
+        const text = `${parsed.textContent}${isLast ? afterText : ""}`;
+        if (!text.trim() && !isLast) return;
+        const newItem = _createStructuredEditorListItem({ textContent: text, level: parsed.level });
+        previousItem.insertAdjacentElement("afterend", newItem);
+        previousItem = newItem;
+        caretItem = newItem;
+        caretOffsetInItem = parsed.textContent.length;
+    });
+
+    _refreshStructuredBulletEditorMarkers(host);
+    _placeCaretAtTextOffset(caretItem, caretOffsetInItem);
+    _commitStructuredBulletEditorChange(host);
+}
+
+function _insertDeserializedListItems(host, items) {
+    const targetItem = _getActiveStructuredBulletListItem(host);
+    if (!targetItem || items.length === 0) return;
+
+    let previousItem = targetItem;
+
+    for (let i = 0; i < items.length; i++) {
+        const data = items[i];
+        const newItem = _createStructuredEditorListItem({
+            html: data.html,
+            textContent: data.textContent,
+            level: data.level,
+        });
+
+        if (i === 0) {
+            targetItem.replaceWith(newItem);
+            previousItem = newItem;
+        } else {
+            previousItem.insertAdjacentElement("afterend", newItem);
+            previousItem = newItem;
+        }
+    }
+
+    _refreshStructuredBulletEditorMarkers(host);
+    _placeCaretInListItemText(previousItem);
+    _commitStructuredBulletEditorChange(host);
 }
 
 function _adjustStructuredIndentation(el, direction) {
     if (_getStructuredEditorMode(el) === "list") {
         const item = _getActiveStructuredBulletListItem(el);
         if (!item) return;
-        const nextLevel = Math.max(0, Math.min(2, (Number(item.dataset.level) || 0) + direction));
+        const nextLevel = Math.max(0, Math.min(8, (Number(item.dataset.level) || 0) + direction));
         item.dataset.level = String(nextLevel);
         _refreshStructuredBulletEditorMarkers(el);
         _commitStructuredBulletEditorChange(el);
@@ -330,7 +820,7 @@ function _adjustStructuredIndentation(el, direction) {
     const updated = lines.map(line => {
         if (!line.trim()) return line;
         const parsed = stripEditableBulletPrefix(line);
-        const nextLevel = Math.max(0, Math.min(2, parsed.level + direction));
+        const nextLevel = Math.max(0, Math.min(8, parsed.level + direction));
         return `${getEditableBulletPrefix(nextLevel, bulletStyle)}${parsed.text}`;
     });
 
@@ -494,14 +984,16 @@ function _makeSeededRandom(seed = 1) {
 }
 
 function _themeMotionSphereConfig(style) {
-    return {
-        orbital: { count: 7, radius: 0.11, opacity: 0.14, spread: 3.5 },
-        mesh: { count: 5, radius: 0.08, opacity: 0.1, spread: 3.8 },
-        particles: { count: 10, radius: 0.07, opacity: 0.12, spread: 4.4 },
-        lattice: { count: 6, radius: 0.075, opacity: 0.11, spread: 3.2 },
-        wave: { count: 7, radius: 0.09, opacity: 0.12, spread: 4.1 },
-        vortex: { count: 8, radius: 0.085, opacity: 0.13, spread: 3.6 },
-    }[style] || { count: 6, radius: 0.09, opacity: 0.12, spread: 3.6 };
+    return (
+        {
+            orbital: { count: 7, radius: 0.11, opacity: 0.14, spread: 3.5 },
+            mesh: { count: 5, radius: 0.08, opacity: 0.1, spread: 3.8 },
+            particles: { count: 10, radius: 0.07, opacity: 0.12, spread: 4.4 },
+            lattice: { count: 6, radius: 0.075, opacity: 0.11, spread: 3.2 },
+            wave: { count: 7, radius: 0.09, opacity: 0.12, spread: 4.1 },
+            vortex: { count: 8, radius: 0.085, opacity: 0.13, spread: 3.6 },
+        }[style] || { count: 6, radius: 0.09, opacity: 0.12, spread: 3.6 }
+    );
 }
 
 const THEME_MOTION_MAX_WEBGL_BACKGROUNDS = 6;
@@ -664,7 +1156,7 @@ function _renderCanvasThemeMotion(
     let mouseY = 0;
     let currentOffsetX = 0;
     let currentOffsetY = 0;
-    const onMouseMove = (event) => {
+    const onMouseMove = event => {
         mouseX = (event.clientX / window.innerWidth) * 2 - 1;
         mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
     };
@@ -894,7 +1386,7 @@ function _tryRenderThreeThemeMotion(
     let mouseY = 0;
     let targetX = 0;
     let targetY = 0;
-    const onMouseMove = (event) => {
+    const onMouseMove = event => {
         mouseX = (event.clientX / window.innerWidth) * 2 - 1;
         mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
     };
@@ -966,7 +1458,7 @@ function _tryRenderThreeThemeMotion(
             camera.position.y += (targetY - camera.position.y) * 0.02;
             scene.rotation.x += (-targetY * 0.5 - scene.rotation.x) * 0.02;
             scene.rotation.y += (targetX * 0.5 - scene.rotation.y) * 0.02;
-            
+
             // Organic pulsing
             light.intensity = 0.7 + Math.sin(t * 12) * 0.15;
             const baseOpacity = normalized.style === "particles" ? 0.52 : 0.46;
@@ -3226,6 +3718,25 @@ function _applyTypeContent(el, elData, options = {}) {
             event.stopPropagation();
             selectElement(elData.id, "replace");
             let isStructured = isStructuredBulletContent(elData.content);
+            
+            let targetRowIndex = -1;
+            let targetCaretOffset = 0;
+            if (isStructured) {
+                const selection = window.getSelection();
+                if (selection && selection.rangeCount > 0) {
+                    const range = selection.getRangeAt(0);
+                    const clickedRow = range.startContainer.nodeType === Node.TEXT_NODE
+                        ? range.startContainer.parentElement.closest(".ppt-bullet-row")
+                        : range.startContainer.closest?.(".ppt-bullet-row");
+                    if (clickedRow) {
+                        const rows = Array.from(contentHost.querySelectorAll(".ppt-bullet-row"));
+                        targetRowIndex = rows.indexOf(clickedRow);
+                        const textSpan = clickedRow.querySelector(".ppt-bullet-text") || clickedRow;
+                        targetCaretOffset = _getTextOffsetWithinElement(textSpan, range.startContainer, range.startOffset);
+                    }
+                }
+            }
+
             if (isStructured) {
                 contentHost.dataset.structuredEdit = "true";
                 contentHost.dataset.structuredEditMode = "list";
@@ -3246,7 +3757,18 @@ function _applyTypeContent(el, elData, options = {}) {
             interact(el).draggable(false);
             interact(el).resizable(false);
             requestAnimationFrame(() => {
-                _focusEditableHost(contentHost);
+                if (isStructured && targetRowIndex !== -1) {
+                    const items = contentHost.querySelectorAll(".ppt-bullet-edit-item");
+                    const targetItem = items[targetRowIndex];
+                    if (targetItem) {
+                        contentHost.focus();
+                        _placeCaretAtTextOffset(targetItem, targetCaretOffset);
+                    } else {
+                        _focusEditableHost(contentHost);
+                    }
+                } else {
+                    _focusEditableHost(contentHost);
+                }
                 if (!isStructured) {
                     captureInlineSelection();
                 }
@@ -3263,6 +3785,12 @@ function _applyTypeContent(el, elData, options = {}) {
         });
         contentHost.addEventListener("keydown", e => {
             if (e.defaultPrevented) return;
+            if (e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                contentHost.blur();
+                return;
+            }
             if (contentHost.dataset.structuredEdit !== "true") return;
             if (e.key === "Tab") {
                 e.preventDefault();
@@ -3685,7 +4213,8 @@ function _applyTypeContent(el, elData, options = {}) {
             surface.className = "mermaid-object-surface";
             const svgHost = document.createElement("div");
             svgHost.className = "mermaid-svg-host";
-            svgHost.innerHTML = DOMPurify.sanitize(elData.svgContent) ||
+            svgHost.innerHTML =
+                DOMPurify.sanitize(elData.svgContent) ||
                 `<div class="mermaid-render-status"><i class="fa-solid fa-diagram-project"></i><span>Diagram</span></div>`;
             surface.appendChild(svgHost);
             el.appendChild(surface);

@@ -344,6 +344,371 @@ async function ensureEditor(page) {
         assert(result.reloadedFontSize === "44px", `Saved/reloaded font size should survive: ${JSON.stringify(result)}`);
     });
 
+    await step("Text box bullet toggle renders and edits a coherent list", async () => {
+        await ensureEditor(page);
+        const result = await page.evaluate(async () => {
+            const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+            currentSlideIndex = 0;
+            const slide = state.slides[0];
+            slide.elements = [
+                {
+                    id: "smoke_bullet_text",
+                    type: "text",
+                    x: 180,
+                    y: 180,
+                    width: 520,
+                    height: 120,
+                    content: "Alpha<br>Beta",
+                    bulletStyle: "default",
+                    autoHeight: true,
+                    styles: {
+                        fontSize: "32px",
+                        color: "#172033",
+                        zIndex: 2,
+                    },
+                },
+            ];
+            selectedIds = ["smoke_bullet_text"];
+            renderSlidesFromState();
+            await sleep(120);
+            selectElement("smoke_bullet_text", "replace");
+            buildPropertiesPanel();
+            await sleep(80);
+            document.querySelector("#prop-list-bullet")?.click();
+            await sleep(180);
+
+            const el = state.slides[0].elements[0];
+            const host = document.querySelector("#smoke_bullet_text .text-element-content");
+            const beforeEdit = {
+                contentIsArray: Array.isArray(el.content),
+                blockCount: host?.querySelectorAll(".ppt-bullet-block").length || 0,
+                rowCount: host?.querySelectorAll(".ppt-bullet-row").length || 0,
+                brCount: host?.querySelectorAll(":scope > br").length || 0,
+                html: host?.innerHTML || "",
+            };
+
+            document.querySelector("#smoke_bullet_text")?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+            await sleep(120);
+            let editor = document.querySelector("#smoke_bullet_text .text-element-content");
+            const items = () => [...(editor?.querySelectorAll(".ppt-bullet-edit-item") || [])];
+            const textNodeFor = item => {
+                const walker = document.createTreeWalker(item, NodeFilter.SHOW_TEXT);
+                return walker.nextNode() || item.appendChild(document.createTextNode(""));
+            };
+            const placeCaret = (item, atEnd = true) => {
+                const textNode = textNodeFor(item);
+                const range = document.createRange();
+                range.setStart(textNode, atEnd ? textNode.textContent.length : 0);
+                range.collapse(true);
+                const selection = window.getSelection();
+                selection.removeAllRanges();
+                selection.addRange(range);
+            };
+            const pressKey = (target, key, options = {}) => {
+                const event = new KeyboardEvent("keydown", {
+                    key,
+                    bubbles: true,
+                    cancelable: true,
+                    shiftKey: Boolean(options.shiftKey),
+                });
+                target.dispatchEvent(event);
+                return event.defaultPrevented;
+            };
+            const pasteInto = (target, payload) => {
+                const data = new DataTransfer();
+                Object.entries(payload).forEach(([type, value]) => data.setData(type, value));
+                const event = new ClipboardEvent("paste", {
+                    bubbles: true,
+                    cancelable: true,
+                    clipboardData: data,
+                });
+                target.dispatchEvent(event);
+                return event.defaultPrevented;
+            };
+            const secondItem = items()[1];
+            const selection = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(secondItem);
+            range.collapse(false);
+            selection.removeAllRanges();
+            selection.addRange(range);
+            pressKey(secondItem, "Enter");
+            document.execCommand("insertText", false, "Gamma");
+            pressKey(items()[2], "Tab");
+            const afterCreate = {
+                levels: items().map(item => Number(item.dataset.level) || 0),
+                texts: items().map(item => item.textContent.trim()),
+            };
+            const initialEditMode = editor?.dataset.structuredEditMode || "";
+
+            const resetStructuredEditor = async content => {
+                document.querySelectorAll("#smoke_bullet_text .text-element-content").forEach(host => {
+                    host.contentEditable = "false";
+                    delete host.dataset.structuredEdit;
+                    delete host.dataset.structuredEditMode;
+                    delete host.dataset.structuredEditBulletStyle;
+                });
+                document.querySelector("#smoke_bullet_text")?.classList.remove("cursor-text", "editing-text");
+                state.slides[0].elements = [
+                    {
+                        id: "smoke_bullet_text",
+                        type: "text",
+                        x: 180,
+                        y: 180,
+                        width: 520,
+                        height: 120,
+                        content,
+                        bulletStyle: "default",
+                        autoHeight: true,
+                        styles: { fontSize: "32px", color: "#172033", zIndex: 2 },
+                    },
+                ];
+                selectedIds = ["smoke_bullet_text"];
+                renderSlidesFromState();
+                await sleep(100);
+                editor = document.querySelector("#smoke_bullet_text .text-element-content");
+                editor.dataset.structuredEdit = "true";
+                editor.dataset.structuredEditMode = "list";
+                editor.dataset.structuredEditBulletStyle = "default";
+                editor.innerHTML = buildStructuredBulletEditorHtml(content, "default");
+                editor.contentEditable = "true";
+                editor.focus();
+                document.querySelector("#smoke_bullet_text")?.classList.add("cursor-text", "editing-text");
+            };
+
+            await resetStructuredEditor([
+                { html: "Alpha", level: 0 },
+                { html: "", level: 0 },
+                { html: "Beta", level: 0 },
+            ]);
+            placeCaret(items()[1], false);
+            const emptyEnterPrevented = pressKey(items()[1], "Enter");
+            const afterEmptyEnter = items().map(item => item.textContent.trim());
+
+            await resetStructuredEditor([
+                { html: "Alpha", level: 0 },
+                { html: "Beta", level: 0 },
+                { html: "Gamma", level: 0 },
+            ]);
+            placeCaret(items()[1], false);
+            const backspaceMergePrevented = pressKey(items()[1], "Backspace");
+            const afterBackspaceMerge = items().map(item => item.textContent.trim());
+
+            await resetStructuredEditor([
+                { html: "AlphaBeta", level: 0 },
+                { html: "Gamma", level: 0 },
+            ]);
+            placeCaret(items()[0], true);
+            const deleteMergePrevented = pressKey(items()[0], "Delete");
+            await sleep(120);
+            const afterDeleteMerge = items().map(item => item.textContent.trim());
+
+            await resetStructuredEditor([
+                { html: "Alpha", level: 0 },
+                { html: "Omega", level: 0 },
+            ]);
+            placeCaret(items()[0], true);
+            const plainPastePrevented = pasteInto(items()[0], { "text/plain": "One\n  Two\nThree" });
+            await sleep(120);
+            const afterPlainPasteTexts = Array.isArray(state.slides[0].elements[0].content)
+                ? state.slides[0].elements[0].content.map(item => parseTextFromHtml(item.html).trim())
+                : [];
+            const afterPlainPasteLevels = Array.isArray(state.slides[0].elements[0].content)
+                ? state.slides[0].elements[0].content.map(item => Number(item.level) || 0)
+                : [];
+
+            await resetStructuredEditor([
+                { html: "Line one", level: 0 },
+                { html: "Line two", level: 0 },
+                { html: "Line three", level: 0 },
+            ]);
+            placeCaret(items()[2], true);
+            const leadingNewlinePastePrevented = pasteInto(items()[2], { "text/plain": "\nLine four" });
+            await sleep(120);
+            const afterLeadingNewlinePasteTexts = Array.isArray(state.slides[0].elements[0].content)
+                ? state.slides[0].elements[0].content.map(item => parseTextFromHtml(item.html).trim())
+                : [];
+
+            await resetStructuredEditor([{ html: "Start", level: 0 }]);
+            placeCaret(items()[0], true);
+            const htmlPastePrevented = pasteInto(items()[0], {
+                "text/html": "<ul><li>Parent<ul><li>Child</li></ul></li><li>Sibling</li></ul>",
+                "text/plain": "Parent\nChild\nSibling",
+            });
+            await sleep(120);
+            const afterHtmlPasteTexts = Array.isArray(state.slides[0].elements[0].content)
+                ? state.slides[0].elements[0].content.map(item => parseTextFromHtml(item.html).trim())
+                : [];
+            const afterHtmlPasteLevels = Array.isArray(state.slides[0].elements[0].content)
+                ? state.slides[0].elements[0].content.map(item => Number(item.level) || 0)
+                : [];
+            document.querySelectorAll("#smoke_bullet_text .text-element-content").forEach(host => {
+                host.contentEditable = "false";
+                delete host.dataset.structuredEdit;
+                delete host.dataset.structuredEditMode;
+                delete host.dataset.structuredEditBulletStyle;
+            });
+            document.querySelector("#smoke_bullet_text")?.classList.remove("cursor-text", "editing-text");
+
+            return {
+                beforeEdit,
+                editMode: initialEditMode,
+                levels: afterCreate.levels,
+                texts: afterCreate.texts,
+                emptyEnterPrevented,
+                afterEmptyEnter,
+                backspaceMergePrevented,
+                afterBackspaceMerge,
+                deleteMergePrevented,
+                afterDeleteMerge,
+                plainPastePrevented,
+                afterPlainPasteTexts,
+                afterPlainPasteLevels,
+                leadingNewlinePastePrevented,
+                afterLeadingNewlinePasteTexts,
+                htmlPastePrevented,
+                afterHtmlPasteTexts,
+                afterHtmlPasteLevels,
+                content: el.content,
+            };
+        });
+        assert(result.beforeEdit.contentIsArray, `Bullet toggle should create structured content: ${JSON.stringify(result)}`);
+        assert(result.beforeEdit.blockCount === 1, `Bullets should render as one block: ${JSON.stringify(result.beforeEdit)}`);
+        assert(result.beforeEdit.rowCount === 2, `Bullets should render two rows: ${JSON.stringify(result.beforeEdit)}`);
+        assert(result.beforeEdit.brCount === 0, `Bullet rows should not be split by top-level breaks: ${JSON.stringify(result.beforeEdit)}`);
+        assert(result.editMode === "list", `Double-click should open structured list editing: ${JSON.stringify(result)}`);
+        assert(result.texts.includes("Gamma"), `Enter should create an editable bullet item: ${JSON.stringify(result)}`);
+        assert(result.levels[result.texts.indexOf("Gamma")] === 1, `Tab should indent the new bullet: ${JSON.stringify(result)}`);
+        assert(result.emptyEnterPrevented, `Enter on an empty bullet should be handled: ${JSON.stringify(result)}`);
+        assert(result.afterEmptyEnter.join("|") === "Alpha|Beta", `Empty Enter should not duplicate blank bullets: ${JSON.stringify(result)}`);
+        assert(result.backspaceMergePrevented, `Backspace should merge bullet items at item start: ${JSON.stringify(result)}`);
+        assert(result.afterBackspaceMerge.join("|") === "AlphaBeta|Gamma", `Backspace should merge with previous item: ${JSON.stringify(result)}`);
+        assert(result.deleteMergePrevented, `Delete should merge bullet items at item end: ${JSON.stringify(result)}`);
+        assert(result.afterDeleteMerge.join("|") === "AlphaBetaGamma", `Delete should merge with next item: ${JSON.stringify(result)}`);
+        assert(result.plainPastePrevented, `Plain text paste should be handled inside bullet editor: ${JSON.stringify(result)}`);
+        assert(result.afterPlainPasteTexts.join("|") === "AlphaOne|Two|Three|Omega", `Plain text paste should split at the caret without replacing existing item text: ${JSON.stringify(result)}`);
+        assert(result.afterPlainPasteLevels.join("|") === "0|1|0|0", `Plain text paste should preserve leading-space nesting: ${JSON.stringify(result)}`);
+        assert(result.leadingNewlinePastePrevented, `Leading-newline paste should be handled inside bullet editor: ${JSON.stringify(result)}`);
+        assert(result.afterLeadingNewlinePasteTexts.join("|") === "Line one|Line two|Line three|Line four", `Leading-newline paste should append a new bullet without replacing the active item: ${JSON.stringify(result)}`);
+        assert(result.htmlPastePrevented, `HTML list paste should be handled inside bullet editor: ${JSON.stringify(result)}`);
+        assert(result.afterHtmlPasteTexts.join("|") === "Parent|Child|Sibling", `HTML list paste should create structured items: ${JSON.stringify(result)}`);
+        assert(result.afterHtmlPasteLevels.join("|") === "0|1|0", `HTML list paste should preserve nested list levels: ${JSON.stringify(result)}`);
+    });
+
+    await step("Text box list style selectors preserve bullet and numbered rendering", async () => {
+        await ensureEditor(page);
+        const result = await page.evaluate(async () => {
+            const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+            const seedText = () => {
+                currentSlideIndex = 0;
+                state.slides[0].elements = [
+                    {
+                        id: "smoke_list_style_text",
+                        type: "text",
+                        x: 180,
+                        y: 180,
+                        width: 520,
+                        height: 140,
+                        content: "Alpha<br>Beta<br>Gamma",
+                        bulletStyle: "default",
+                        autoHeight: true,
+                        styles: {
+                            fontSize: "32px",
+                            color: "#172033",
+                            zIndex: 2,
+                        },
+                    },
+                ];
+                selectedIds = ["smoke_list_style_text"];
+                renderSlidesFromState();
+                selectElement("smoke_list_style_text", "replace");
+                buildPropertiesPanel();
+            };
+            const host = () => document.querySelector("#smoke_list_style_text .text-element-content");
+
+            const bulletResults = [];
+            for (const style of Object.keys(BULLET_STYLE_THEMES)) {
+                seedText();
+                await sleep(60);
+                document.querySelector("#prop-list-bullet")?.click();
+                await sleep(60);
+                const styleSelect = document.querySelector("#prop-list-style");
+                styleSelect.value = style;
+                styleSelect.dispatchEvent(new Event("change", { bubbles: true }));
+                await sleep(100);
+                const rows = [...host().querySelectorAll(".ppt-bullet-row")];
+                const textXs = rows.map(row => Math.round(row.querySelector(".ppt-bullet-text").getBoundingClientRect().x * 100) / 100);
+                bulletResults.push({
+                    style,
+                    listState: getTextListState(state.slides[0].elements[0].content, state.slides[0].elements[0].bulletStyle),
+                    markers: rows.map(row => row.querySelector(".ppt-bullet-marker").textContent.trim()),
+                    rowCount: rows.length,
+                    blockCount: host().querySelectorAll(".ppt-bullet-block").length,
+                    textXSpread: textXs.length ? Math.max(...textXs) - Math.min(...textXs) : null,
+                });
+            }
+
+            const numberedResults = [];
+            for (const style of Object.keys(NUMBERED_STYLE_THEMES)) {
+                seedText();
+                await sleep(60);
+                document.querySelector("#prop-list-number")?.click();
+                await sleep(60);
+                const styleSelect = document.querySelector("#prop-list-number-style");
+                styleSelect.value = style;
+                styleSelect.dispatchEvent(new Event("change", { bubbles: true }));
+                await sleep(100);
+                const list = host().querySelector("ol.ppt-numbered-block");
+                numberedResults.push({
+                    style,
+                    listState: getTextListState(state.slides[0].elements[0].content, state.slides[0].elements[0].bulletStyle),
+                    listStyleType: list ? getComputedStyle(list).listStyleType : "",
+                    olCount: host().querySelectorAll("ol.ppt-numbered-block").length,
+                    liCount: host().querySelectorAll("ol.ppt-numbered-block > li").length,
+                    text: [...host().querySelectorAll("ol.ppt-numbered-block > li")].map(li => li.textContent.trim()).join("|"),
+                });
+            }
+
+            seedText();
+            await sleep(60);
+            document.querySelector("#prop-list-bullet")?.click();
+            await sleep(100);
+            const contentTextarea = document.querySelector("#prop-text-content");
+            contentTextarea.value = "Parent\n  Child\n    Grandchild";
+            contentTextarea.dispatchEvent(new Event("input", { bubbles: true }));
+            await sleep(220);
+            const sidebarNesting = {
+                levels: Array.isArray(state.slides[0].elements[0].content)
+                    ? state.slides[0].elements[0].content.map(item => item.level)
+                    : [],
+                texts: Array.isArray(state.slides[0].elements[0].content)
+                    ? state.slides[0].elements[0].content.map(item => parseTextFromHtml(item.html))
+                    : [],
+            };
+            return { bulletResults, numberedResults, sidebarNesting };
+        });
+        result.bulletResults.forEach(item => {
+            assert(item.listState.kind === "bulleted" && item.listState.style === item.style, `Bullet state should preserve ${item.style}: ${JSON.stringify(item)}`);
+            assert(item.blockCount === 1 && item.rowCount === 3, `Bullet style ${item.style} should render one aligned block: ${JSON.stringify(item)}`);
+            assert(item.markers.length === 3 && item.markers.every(Boolean), `Bullet style ${item.style} should render markers: ${JSON.stringify(item)}`);
+            assert(item.textXSpread === 0, `Bullet style ${item.style} text should align across rows: ${JSON.stringify(item)}`);
+        });
+        result.numberedResults.forEach(item => {
+            assert(item.listState.kind === "numbered" && item.listState.style === item.style, `Numbered state should preserve ${item.style}: ${JSON.stringify(item)}`);
+            assert(item.olCount === 1 && item.liCount === 3, `Numbered style ${item.style} should render a real ordered list: ${JSON.stringify(item)}`);
+            assert(item.listStyleType === item.style, `Numbered style ${item.style} should not fall back: ${JSON.stringify(item)}`);
+            assert(item.text === "Alpha|Beta|Gamma", `Numbered style ${item.style} should preserve item text: ${JSON.stringify(item)}`);
+        });
+        assert(
+            JSON.stringify(result.sidebarNesting.levels) === JSON.stringify([0, 1, 2]),
+            `Sidebar leading spaces should create nested bullets: ${JSON.stringify(result.sidebarNesting)}`,
+        );
+        assert(
+            result.sidebarNesting.texts.join("|") === "Parent|Child|Grandchild",
+            `Sidebar nested bullets should preserve text: ${JSON.stringify(result.sidebarNesting)}`,
+        );
+    });
+
     await step("Multiple text boxes support shared formatting without hover toolbar", async () => {
         await ensureEditor(page);
         const result = await page.evaluate(async () => {
@@ -760,6 +1125,110 @@ async function ensureEditor(page) {
         await page.waitForTimeout(300);
         assert(await page.locator("#mermaid-dialog").isVisible(), "Mermaid dialog should open");
         await page.keyboard.press("Escape");
+    });
+
+    await step("LaTeX equation input keeps paste inside the editor", async () => {
+        await ensureEditor(page);
+        const result = await page.evaluate(async () => {
+            const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+            currentSlideIndex = 0;
+            const slide = state.slides[0];
+            slide.elements = [
+                {
+                    id: "equation_paste_guard_text",
+                    type: "text",
+                    x: 180,
+                    y: 180,
+                    width: 360,
+                    height: 90,
+                    content: "Existing element",
+                    styles: { color: "#172033", fontSize: "30px", zIndex: 2 },
+                },
+            ];
+            selectedIds = ["equation_paste_guard_text"];
+            renderSlidesFromState();
+            await sleep(100);
+            openEquationModal();
+            await sleep(100);
+            const input = document.querySelector("#equation-input");
+            input.focus();
+            input.value = "";
+            const beforeCount = state.slides[0].elements.length;
+            const data = new DataTransfer();
+            data.setData("text/plain", "\\\\alpha + \\\\beta");
+            const event = new ClipboardEvent("paste", {
+                bubbles: true,
+                cancelable: true,
+                clipboardData: data,
+            });
+            input.dispatchEvent(event);
+            await sleep(120);
+            const afterCount = state.slides[0].elements.length;
+            closeEquationModal();
+            return {
+                defaultPrevented: event.defaultPrevented,
+                beforeCount,
+                afterCount,
+                activeId: document.activeElement?.id || "",
+            };
+        });
+        assert(!result.defaultPrevented, `Equation textarea paste should remain native: ${JSON.stringify(result)}`);
+        assert(result.afterCount === result.beforeCount, `Equation textarea paste should not create slide elements: ${JSON.stringify(result)}`);
+    });
+
+    await step("Inline text box paste does not create a new element", async () => {
+        await ensureEditor(page);
+        const result = await page.evaluate(async () => {
+            const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+            currentSlideIndex = 0;
+            state.slides[0].elements = [
+                {
+                    id: "inline_paste_guard_text",
+                    type: "text",
+                    x: 180,
+                    y: 180,
+                    width: 420,
+                    height: 100,
+                    content: '<span id="inline-paste-target">Edit here</span>',
+                    autoHeight: true,
+                    styles: { color: "#172033", fontSize: "30px", zIndex: 2 },
+                },
+            ];
+            selectedIds = ["inline_paste_guard_text"];
+            renderSlidesFromState();
+            await sleep(100);
+            document.querySelector("#inline_paste_guard_text").dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+            await sleep(120);
+            const host = document.querySelector("#inline_paste_guard_text .text-element-content");
+            host.innerHTML = '<span id="inline-paste-target">Edit here</span>';
+            const target = document.querySelector("#inline-paste-target");
+            const selection = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(target);
+            range.collapse(false);
+            selection.removeAllRanges();
+            selection.addRange(range);
+            const beforeCount = state.slides[0].elements.length;
+            const data = new DataTransfer();
+            data.setData("text/plain", " pasted text");
+            const event = new ClipboardEvent("paste", {
+                bubbles: true,
+                cancelable: true,
+                clipboardData: data,
+            });
+            target.dispatchEvent(event);
+            await sleep(120);
+            return {
+                defaultPrevented: event.defaultPrevented,
+                beforeCount,
+                afterCount: state.slides[0].elements.length,
+                editing: host?.contentEditable,
+                targetInsideEditor: Boolean(target?.closest?.('[contenteditable="true"]')),
+            };
+        });
+        assert(!result.defaultPrevented, `Inline text paste should remain native: ${JSON.stringify(result)}`);
+        assert(result.afterCount === result.beforeCount, `Inline text paste should not create slide elements: ${JSON.stringify(result)}`);
+        assert(result.targetInsideEditor, `Paste target should be inside the active editor: ${JSON.stringify(result)}`);
     });
 
     await step("Properties, layers, timeline, and export panels toggle", async () => {
